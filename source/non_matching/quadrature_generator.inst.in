@@ -1,0 +1,38 @@
+for (deal_II_dimension : DIMENSIONS)
+  {
+    namespace NonMatching
+    \{
+      template class QuadratureGenerator<deal_II_dimension>;
+
+      namespace internal
+      \{
+        namespace QuadratureGeneratorImplementation
+        \{
+          template struct FunctionBounds<deal_II_dimension>;
+
+          template std::pair<double, double>
+          find_extreme_values(
+            const std::vector<FunctionBounds<deal_II_dimension>> &);
+
+          template void
+          estimate_function_bounds(
+            const std::vector<std::shared_ptr<Function<deal_II_dimension>>> &,
+            const BoundingBox<deal_II_dimension> &,
+            std::vector<FunctionBounds<deal_II_dimension>> &);
+
+          template std_cxx17::optional<Tensor<1, deal_II_dimension>>
+          min_of_all_min_abs_grad(
+            const std::vector<FunctionBounds<deal_II_dimension>> &);
+
+          template std_cxx17::optional<HeightDirectionData>
+          find_best_height_direction(
+            const std::vector<FunctionBounds<deal_II_dimension>> &);
+
+          template void
+          map_quadrature_to_box(const Quadrature<deal_II_dimension> &,
+                                const BoundingBox<deal_II_dimension> &,
+                                ExtendableQuadrature<deal_II_dimension> &);
+        \}
+      \}
+    \}
+  }
