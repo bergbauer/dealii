@@ -16,15 +16,19 @@
 INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(_src
-  quadrature_generator.cc
-  coupling.cc
-  immersed_surface_quadrature.cc
-  )
+        cut_mesh_classifier.cc
+        restriction.cc
+        quadrature_generator.cc
+        coupling.cc
+        immersed_surface_quadrature.cc
+        )
 
 SET(_inst
-  quadrature_generator.inst.in
-  coupling.inst.in
-  )
+        cut_mesh_classifier.inst.in
+        restriction.inst.in
+        quadrature_generator.inst.in
+        coupling.inst.in
+        )
 
 FILE(GLOB _header
   ${CMAKE_SOURCE_DIR}/include/deal.II/non_matching/*.h
