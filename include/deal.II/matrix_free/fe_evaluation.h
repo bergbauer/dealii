@@ -5771,7 +5771,6 @@ inline Tensor<1, n_components_, Tensor<2, dim, VectorizedArrayType>>
 FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
   get_hessian(const unsigned int q_point) const
 {
-  Assert(!is_face, ExcNotImplemented());
 #  ifdef DEBUG
   Assert(this->hessians_quad_initialized == true,
          internal::ExcAccessToUninitializedField());
@@ -5792,7 +5791,7 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
   constexpr unsigned int hdim = (dim * (dim + 1)) / 2;
 
   // Cartesian cell
-  if (this->cell_type == internal::MatrixFreeFunctions::cartesian)
+  if (!is_face && this->cell_type == internal::MatrixFreeFunctions::cartesian)
     {
       for (unsigned int comp = 0; comp < n_components; comp++)
         {
@@ -5829,7 +5828,7 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
         }
     }
   // cell with general Jacobian, but constant within the cell
-  else if (this->cell_type == internal::MatrixFreeFunctions::affine)
+  else if (!is_face && this->cell_type == internal::MatrixFreeFunctions::affine)
     {
       for (unsigned int comp = 0; comp < n_components; comp++)
         {
@@ -8811,13 +8810,14 @@ FEFaceEvaluation<dim,
            const EvaluationFlags::EvaluationFlags evaluation_flag)
 {
   Assert(
-    (evaluation_flag &
-     ~(EvaluationFlags::values | EvaluationFlags::gradients)) == 0,
+    (evaluation_flag & ~(EvaluationFlags::values | EvaluationFlags::gradients |
+                         EvaluationFlags::hessians)) == 0,
     ExcMessage(
-      "Only EvaluationFlags::values and EvaluationFlags::gradients are supported."));
+      "Only EvaluationFlags::values, EvaluationFlags::gradients and EvaluationFlags::hessians are supported."));
 
   if (!(evaluation_flag & EvaluationFlags::values) &&
-      !(evaluation_flag & EvaluationFlags::gradients))
+      !(evaluation_flag & EvaluationFlags::gradients) &&
+      !(evaluation_flag & EvaluationFlags::hessians))
     return;
 
   if (this->dof_access_index ==
@@ -8846,9 +8846,11 @@ FEFaceEvaluation<dim,
           values_array,
           this->begin_values(),
           this->begin_gradients(),
+          this->begin_hessians(),
           this->scratch_data,
           evaluation_flag & EvaluationFlags::values,
           evaluation_flag & EvaluationFlags::gradients,
+          evaluation_flag & EvaluationFlags::hessians,
           face_nos[0],
           this->subface_index,
           face_orientations[0],
@@ -8865,9 +8867,11 @@ FEFaceEvaluation<dim,
             values_array,
             this->begin_values(),
             this->begin_gradients(),
+            this->begin_hessians(),
             this->scratch_data,
             evaluation_flag & EvaluationFlags::values,
             evaluation_flag & EvaluationFlags::gradients,
+            evaluation_flag & EvaluationFlags::hessians,
             this->face_no,
             this->subface_index,
             this->face_orientation,
@@ -8879,9 +8883,11 @@ FEFaceEvaluation<dim,
                    values_array,
                    this->begin_values(),
                    this->begin_gradients(),
+                   this->begin_hessians(),
                    this->scratch_data,
                    evaluation_flag & EvaluationFlags::values,
                    evaluation_flag & EvaluationFlags::gradients,
+                   evaluation_flag & EvaluationFlags::hessians,
                    this->face_no,
                    this->subface_index,
                    this->face_orientation,
@@ -9078,10 +9084,10 @@ FEFaceEvaluation<dim,
                   const EvaluationFlags::EvaluationFlags evaluation_flag)
 {
   Assert(
-    (evaluation_flag &
-     ~(EvaluationFlags::values | EvaluationFlags::gradients)) == 0,
+    (evaluation_flag & ~(EvaluationFlags::values | EvaluationFlags::gradients |
+                         EvaluationFlags::hessians)) == 0,
     ExcMessage(
-      "Only EvaluationFlags::values and EvaluationFlags::gradients are supported."));
+      "Only EvaluationFlags::values, EvaluationFlags::gradients and EvaluationFlags::hessians are supported."));
 
   const auto fu = [&]() {
     const auto shared_vector_data = internal::get_shared_vector_data(
@@ -9112,9 +9118,11 @@ FEFaceEvaluation<dim,
           *this->dof_info,
           this->begin_values(),
           this->begin_gradients(),
+          this->begin_hessians(),
           this->scratch_data,
           evaluation_flag & EvaluationFlags::values,
           evaluation_flag & EvaluationFlags::gradients,
+          evaluation_flag & EvaluationFlags::hessians,
           this->active_fe_index,
           this->first_selected_component,
           cells,
@@ -9152,9 +9160,11 @@ FEFaceEvaluation<dim,
               *this->dof_info,
               this->begin_values(),
               this->begin_gradients(),
+              this->begin_hessians(),
               this->scratch_data,
               evaluation_flag & EvaluationFlags::values,
               evaluation_flag & EvaluationFlags::gradients,
+              evaluation_flag & EvaluationFlags::hessians,
               this->active_fe_index,
               this->first_selected_component,
               cells_,
@@ -9175,9 +9185,11 @@ FEFaceEvaluation<dim,
                               *this->dof_info,
                               this->begin_values(),
                               this->begin_gradients(),
+                              this->begin_hessians(),
                               this->scratch_data,
                               evaluation_flag & EvaluationFlags::values,
                               evaluation_flag & EvaluationFlags::gradients,
+                              evaluation_flag & EvaluationFlags::hessians,
                               this->active_fe_index,
                               this->first_selected_component,
                               cells_,
@@ -9200,6 +9212,8 @@ FEFaceEvaluation<dim,
     this->values_quad_initialized = true;
   if (evaluation_flag & EvaluationFlags::gradients)
     this->gradients_quad_initialized = true;
+  if (evaluation_flag & EvaluationFlags::hessians)
+    this->hessians_quad_initialized = true;
 #  endif
 }
 
@@ -9288,9 +9302,11 @@ FEFaceEvaluation<dim,
             this->begin_dof_values(),
             this->begin_values(),
             this->begin_gradients(),
+            this->begin_hessians(),
             this->scratch_data,
             evaluation_flag & EvaluationFlags::values,
             evaluation_flag & EvaluationFlags::gradients,
+            evaluation_flag & EvaluationFlags::hessians,
             this->active_fe_index,
             this->first_selected_component,
             cells_,
@@ -9319,9 +9335,11 @@ FEFaceEvaluation<dim,
                               this->begin_dof_values(),
                               this->begin_values(),
                               this->begin_gradients(),
+                              this->begin_hessians(),
                               this->scratch_data,
                               evaluation_flag & EvaluationFlags::values,
                               evaluation_flag & EvaluationFlags::gradients,
+                              evaluation_flag & EvaluationFlags::hessians,
                               this->active_fe_index,
                               this->first_selected_component,
                               cells_,

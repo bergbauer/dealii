@@ -1913,9 +1913,11 @@ namespace internal
                      Number *                                      values_dofs,
                      Number *                                      values_quad,
                      Number *           gradients_quad,
+                     Number *           hessians_quad,
                      Number *           scratch_data,
                      const bool         evaluate_val,
                      const bool         evaluate_grad,
+                     const bool         evaluate_hessian,
                      const unsigned int subface_index)
     {
       const AlignedVector<Number> &val1 =
@@ -1944,6 +1946,19 @@ namespace internal
              data.data.front().shape_gradients :
              data.data.front().gradients_within_subface[subface_index / 2]);
 
+      const AlignedVector<Number> &hessian1 =
+        symmetric_evaluate ?
+          data.data.front().shape_gradients_eo :
+          (subface_index >= GeometryInfo<dim>::max_children_per_cell ?
+             data.data.front().shape_hessians :
+             data.data.front().hessians_within_subface[subface_index % 2]);
+      const AlignedVector<Number> &hessian2 =
+        symmetric_evaluate ?
+          data.data.front().shape_gradients_eo :
+          (subface_index >= GeometryInfo<dim>::max_children_per_cell ?
+             data.data.front().shape_hessians :
+             data.data.front().hessians_within_subface[subface_index / 2]);
+
       using Eval =
         internal::EvaluatorTensorProduct<symmetric_evaluate ?
                                            internal::evaluate_evenodd :
@@ -1954,12 +1969,12 @@ namespace internal
                                          Number>;
       Eval eval1(val1,
                  grad1,
-                 AlignedVector<Number>(),
+                 hessian1,
                  data.data.front().fe_degree + 1,
                  data.data.front().n_q_points_1d);
       Eval eval2(val2,
                  grad2,
-                 AlignedVector<Number>(),
+                 hessian2,
                  data.data.front().fe_degree + 1,
                  data.data.front().n_q_points_1d);
 
@@ -1973,6 +1988,10 @@ namespace internal
       const unsigned int n_q_points = fe_degree > -1 ?
                                         Utilities::pow(n_q_points_1d, dim - 1) :
                                         data.n_q_points_face;
+
+      // TODO: implement hessian
+      (void)hessians_quad;
+      (void)evaluate_hessian;
 
       if (evaluate_grad == false)
         for (unsigned int c = 0; c < n_components; ++c)
@@ -2489,10 +2508,12 @@ namespace internal
                               const bool                    integrate,
                               const bool                    values,
                               const bool                    gradients,
+                              const bool                    hessians,
                               const unsigned int            n_q_points,
                               Number *                      tmp_values,
                               Number *                      values_quad,
-                              Number *                      gradients_quad)
+                              Number *                      gradients_quad,
+                              Number *                      hessians_quad)
   {
     Assert(face_orientation, ExcInternalError());
     const unsigned int *orientation = &orientation_map[face_orientation][0];
@@ -2524,6 +2545,9 @@ namespace internal
                 gradients_quad[(c * dim + d) * n_q_points + q] = tmp_values[q];
             }
       }
+    // TODO: hessians
+    (void)hessians;
+    (void)hessians_quad;
   }
 
 
@@ -2538,9 +2562,11 @@ namespace internal
         const VectorizedArrayType *                                values_array,
         VectorizedArrayType *                                      values_quad,
         VectorizedArrayType *         gradients_quad,
+        VectorizedArrayType *         hessians_quad,
         VectorizedArrayType *         scratch_data,
         const bool                    evaluate_values,
         const bool                    evaluate_gradients,
+        const bool                    evaluate_hessians,
         const unsigned int            face_no,
         const unsigned int            subface_index,
         const unsigned int            face_orientation,
@@ -2640,11 +2666,13 @@ namespace internal
                                                  temp1,
                                                  values_quad,
                                                  gradients_quad,
+                                                 hessians_quad,
                                                  scratch_data + 2 *
                                                                   n_components *
                                                                   dofs_per_face,
                                                  evaluate_values,
                                                  evaluate_gradients,
+                                                 evaluate_hessians,
                                                  subface_index);
       else
         FEFaceEvaluationImpl<
@@ -2657,11 +2685,13 @@ namespace internal
                                                  temp1,
                                                  values_quad,
                                                  gradients_quad,
+                                                 hessians_quad,
                                                  scratch_data + 2 *
                                                                   n_components *
                                                                   dofs_per_face,
                                                  evaluate_values,
                                                  evaluate_gradients,
+                                                 evaluate_hessians,
                                                  subface_index);
 
       if (face_orientation)
@@ -2672,10 +2702,12 @@ namespace internal
                                     false,
                                     evaluate_values,
                                     evaluate_gradients,
+                                    evaluate_hessians,
                                     data.n_q_points_face,
                                     scratch_data,
                                     values_quad,
-                                    gradients_quad);
+                                    gradients_quad,
+                                    hessians_quad);
 
       return false;
     }
@@ -2693,9 +2725,11 @@ namespace internal
         VectorizedArrayType *                                      values_array,
         VectorizedArrayType *                                      values_quad,
         VectorizedArrayType *         gradients_quad,
+        VectorizedArrayType *         hessians_quad,
         VectorizedArrayType *         scratch_data,
         const bool                    integrate_values,
         const bool                    integrate_gradients,
+        const bool                    integrate_hessians,
         const unsigned int            face_no,
         const unsigned int            subface_index,
         const unsigned int            face_orientation,
@@ -2778,10 +2812,12 @@ namespace internal
                                     true,
                                     integrate_values,
                                     integrate_gradients,
+                                    integrate_hessians,
                                     data.n_q_points_face,
                                     scratch_data,
                                     values_quad,
-                                    gradients_quad);
+                                    gradients_quad,
+                                    hessians_quad);
 
       constexpr unsigned int static_dofs_per_face =
         fe_degree > -1 ? Utilities::pow(fe_degree + 1, dim - 1) :
@@ -2857,9 +2893,11 @@ namespace internal
     auto &dof_info                 = proc.dof_info;
     auto  values_quad              = proc.values_quad;
     auto  gradients_quad           = proc.gradients_quad;
+    auto  hessians_quad            = proc.hessians_quad;
     auto  scratch_data             = proc.scratch_data;
     auto  do_values                = proc.do_values;
     auto  do_gradients             = proc.do_gradients;
+    auto  do_hessians              = proc.do_hessians;
     auto  active_fe_index          = proc.active_fe_index;
     auto  first_selected_component = proc.first_selected_component;
     auto  cells                    = proc.cells;
@@ -2915,10 +2953,12 @@ namespace internal
                                     true,
                                     do_values,
                                     do_gradients,
+                                    do_hessians,
                                     data.n_q_points_face,
                                     scratch_data,
                                     values_quad,
-                                    gradients_quad);
+                                    gradients_quad,
+                                    hessians_quad);
       }
 
     // we know that the gradient weights for the Hermite case on the
@@ -3562,10 +3602,12 @@ namespace internal
                                     false,
                                     do_values,
                                     do_gradients,
+                                    do_hessians,
                                     data.n_q_points_face,
                                     scratch_data,
                                     values_quad,
-                                    gradients_quad);
+                                    gradients_quad,
+                                    hessians_quad);
       }
 
     return accesses_global_vector;
@@ -3589,9 +3631,11 @@ namespace internal
         const MatrixFreeFunctions::DoFInfo &                       dof_info,
         VectorizedArrayType *                                      values_quad,
         VectorizedArrayType *gradients_quad,
+        VectorizedArrayType *hessians_quad,
         VectorizedArrayType *scratch_data,
         const bool           evaluate_values,
         const bool           evaluate_gradients,
+        const bool           evaluate_hessians,
         const unsigned int   active_fe_index,
         const unsigned int   first_selected_component,
         const std::array<unsigned int, VectorizedArrayType::size()> cells,
@@ -3618,9 +3662,11 @@ namespace internal
                                             dof_info,
                                             values_quad,
                                             gradients_quad,
+                                            hessians_quad,
                                             scratch_data,
                                             evaluate_values,
                                             evaluate_gradients,
+                                            evaluate_hessians,
                                             active_fe_index,
                                             first_selected_component,
                                             cells,
@@ -3657,9 +3703,11 @@ namespace internal
         const MatrixFreeFunctions::DoFInfo &                       dof_info,
         VectorizedArrayType *                                      values_quad,
         VectorizedArrayType *gradients_quad,
+        VectorizedArrayType *hessians_quad,
         VectorizedArrayType *scratch_data,
         const bool           do_values,
         const bool           do_gradients,
+        const bool           do_hessians,
         const unsigned int   active_fe_index,
         const unsigned int   first_selected_component,
         const std::array<unsigned int, VectorizedArrayType::size()> cells,
@@ -3677,9 +3725,11 @@ namespace internal
         , dof_info(dof_info)
         , values_quad(values_quad)
         , gradients_quad(gradients_quad)
+        , hessians_quad(hessians_quad)
         , scratch_data(scratch_data)
         , do_values(do_values)
         , do_gradients(do_gradients)
+        , do_hessians(do_hessians)
         , active_fe_index(active_fe_index)
         , first_selected_component(first_selected_component)
         , cells(cells)
@@ -3784,9 +3834,13 @@ namespace internal
                              temp1,
                              values_quad + comp * n_q_points,
                              gradients_quad + comp * dim * n_q_points,
+                             hessians_quad +
+                               comp * dim * dim *
+                                 n_q_points, // TODO: is this correct?
                              scratch_data + 2 * dofs_per_face,
                              do_values,
                              do_gradients,
+                             do_hessians,
                              subface_index);
         else
           FEFaceEvaluationImpl<false,
@@ -3799,9 +3853,13 @@ namespace internal
                              temp1,
                              values_quad + comp * n_q_points,
                              gradients_quad + comp * dim * n_q_points,
+                             hessians_quad +
+                               comp * dim * dim *
+                                 n_q_points, // TODO: is this correct?
                              scratch_data + 2 * dofs_per_face,
                              do_values,
                              do_gradients,
+                             do_hessians,
                              subface_index);
       }
 
@@ -3813,9 +3871,11 @@ namespace internal
       const MatrixFreeFunctions::DoFInfo &                       dof_info;
       VectorizedArrayType *                                      values_quad;
       VectorizedArrayType *                                      gradients_quad;
+      VectorizedArrayType *                                      hessians_quad;
       VectorizedArrayType *                                      scratch_data;
       const bool                                                 do_values;
       const bool                                                 do_gradients;
+      const bool                                                 do_hessians;
       const unsigned int active_fe_index;
       const unsigned int first_selected_component;
       const std::array<unsigned int, VectorizedArrayType::size()> cells;
@@ -3845,9 +3905,11 @@ namespace internal
         VectorizedArrayType *                                      values_array,
         VectorizedArrayType *                                      values_quad,
         VectorizedArrayType *gradients_quad,
+        VectorizedArrayType *hessians_quad,
         VectorizedArrayType *scratch_data,
         const bool           integrate_values,
         const bool           integrate_gradients,
+        const bool           integrate_hessians,
         const unsigned int   active_fe_index,
         const unsigned int   first_selected_component,
         const std::array<unsigned int, VectorizedArrayType::size()> cells,
@@ -3872,9 +3934,11 @@ namespace internal
                                                    values_array,
                                                    values_quad,
                                                    gradients_quad,
+                                                   hessians_quad,
                                                    scratch_data,
                                                    integrate_values,
                                                    integrate_gradients,
+                                                   integrate_hessians,
                                                    face_nos[0],
                                                    subface_index,
                                                    face_orientations[0],
@@ -3894,9 +3958,11 @@ namespace internal
                                             dof_info,
                                             values_quad,
                                             gradients_quad,
+                                            hessians_quad,
                                             scratch_data,
                                             integrate_values,
                                             integrate_gradients,
+                                            integrate_hessians,
                                             active_fe_index,
                                             first_selected_component,
                                             cells,
@@ -3935,9 +4001,11 @@ namespace internal
         const MatrixFreeFunctions::DoFInfo &                       dof_info,
         VectorizedArrayType *                                      values_quad,
         VectorizedArrayType *gradients_quad,
+        VectorizedArrayType *hessians_quad,
         VectorizedArrayType *scratch_data,
         const bool           do_values,
         const bool           do_gradients,
+        const bool           do_hessians,
         const unsigned int   active_fe_index,
         const unsigned int   first_selected_component,
         const std::array<unsigned int, VectorizedArrayType::size()> cells,
@@ -3956,9 +4024,11 @@ namespace internal
         , dof_info(dof_info)
         , values_quad(values_quad)
         , gradients_quad(gradients_quad)
+        , hessians_quad(hessians_quad)
         , scratch_data(scratch_data)
         , do_values(do_values)
         , do_gradients(do_gradients)
+        , do_hessians(do_hessians)
         , active_fe_index(active_fe_index)
         , first_selected_component(first_selected_component)
         , cells(cells)
@@ -4114,9 +4184,11 @@ namespace internal
       const MatrixFreeFunctions::DoFInfo &                       dof_info;
       VectorizedArrayType *                                      values_quad;
       VectorizedArrayType *                                      gradients_quad;
+      VectorizedArrayType *                                      hessians_quad;
       VectorizedArrayType *                                      scratch_data;
       const bool                                                 do_values;
       const bool                                                 do_gradients;
+      const bool                                                 do_hessians;
       const unsigned int active_fe_index;
       const unsigned int first_selected_component;
       const std::array<unsigned int, VectorizedArrayType::size()> cells;

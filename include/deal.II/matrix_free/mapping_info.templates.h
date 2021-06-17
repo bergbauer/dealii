@@ -2296,6 +2296,9 @@ namespace internal
         AlignedVector<VectorizedDouble> cell_points(dim * n_mapping_points);
         AlignedVector<VectorizedDouble> face_quads(dim * n_q_points);
         AlignedVector<VectorizedDouble> face_grads(dim * dim * n_q_points);
+        // TODO: size of hessians?
+        AlignedVector<VectorizedDouble> face_hessians(dim * dim * dim *
+                                                      n_q_points);
         AlignedVector<VectorizedDouble> scratch_data(
           dim * (2 * n_q_points + 3 * n_mapping_points));
 
@@ -2326,9 +2329,11 @@ namespace internal
                 cell_points.data(),
                 face_quads.data(),
                 face_grads.data(),
+                face_hessians.data(),
                 scratch_data.data(),
                 true,
                 true,
+                false,
                 face_no,
                 GeometryInfo<dim>::max_children_per_cell,
                 faces[face].face_orientation > 8 ?
@@ -2443,9 +2448,11 @@ namespace internal
                              cell_points.data(),
                              face_quads.data(),
                              face_grads.data(),
+                             face_hessians.data(),
                              scratch_data.data(),
                              false,
                              true,
+                             false,
                              faces[face].exterior_face_no,
                              faces[face].subface_index,
                              faces[face].face_orientation < 8 ?
