@@ -358,7 +358,8 @@ namespace internal
              update_quadrature_points ?
            update_quadrature_points :
            update_default) |
-        update_normal_vectors | update_JxW_values | update_jacobians;
+        update_normal_vectors | update_JxW_values | update_jacobians |
+        update_jacobian_grads;
       this->update_flags_inner_faces    = this->update_flags_boundary_faces;
       this->update_flags_faces_by_cells = update_flags_faces_by_cells;
 
@@ -386,7 +387,7 @@ namespace internal
                   flag &= quad[my_q][hpq].get_tensor_basis()[0] ==
                           quad[my_q][hpq].get_tensor_basis()[i];
 
-              if (flag == false)
+              if (true || flag == false)
                 {
                   cell_data[my_q].descriptor[hpq].initialize(quad[my_q][hpq],
                                                              update_default);
@@ -1243,8 +1244,12 @@ namespace internal
             fe_values.reinit(cell_it);
             for (unsigned int d = 0; d < dim; ++d)
               for (unsigned int q = 0; q < n_mapping_points; ++q)
-                plain_quadrature_points[(cell * dim + d) * n_mapping_points +
-                                        q] = fe_values.quadrature_point(q)[d];
+                {
+                  plain_quadrature_points[(cell * dim + d) * n_mapping_points +
+                                          q] = fe_values.quadrature_point(q)[d];
+                }
+
+
 
             // store the first, second, n-th and n^2-th one along a
             // stencil-like pattern
@@ -1719,6 +1724,69 @@ namespace internal
         const Number jacobian_size;
       };
 
+      // For second derivatives on the real cell, we need the gradient of the
+      // inverse Jacobian J. This involves some calculus and is done
+      // vectorized. If L is the gradient of the jacobian on the unit cell,
+      // the gradient of the inverse is given by (multidimensional calculus) -
+      // J * (J * L) * J (the third J is because we need to transform the
+      // gradient L from the unit to the real cell, and then apply the inverse
+      // Jacobian). Compare this with 1D with j(x) = 1/k(phi(x)), where j =
+      // phi' is the inverse of the jacobian and k is the derivative of the
+      // jacobian on the unit cell. Then j' = phi' k'/k^2 = j k' j^2.
+      template <int dim, typename Number>
+      Tensor<1, dim *(dim + 1) / 2, Tensor<1, dim, Number>>
+      process_jacobian_gradient(const Tensor<2, dim, Number> &inv_jac,
+                                const Tensor<3, dim, Number> &jac_grad)
+      {
+        Number inv_jac_grad[dim][dim][dim];
+
+        // compute: inv_jac_grad = J*grad_unit(J^-1)
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int e = 0; e < dim; ++e)
+            for (unsigned int f = 0; f < dim; ++f)
+              {
+                inv_jac_grad[f][e][d] = (inv_jac[f][0] * jac_grad[d][e][0]);
+                for (unsigned int g = 1; g < dim; ++g)
+                  inv_jac_grad[f][e][d] += (inv_jac[f][g] * jac_grad[d][e][g]);
+              }
+
+        // compute: transpose (-jac * jac_grad[d] * jac)
+        Number tmp[dim];
+        Number grad_jac_inv[dim][dim][dim];
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int e = 0; e < dim; ++e)
+            {
+              for (unsigned int f = 0; f < dim; ++f)
+                {
+                  tmp[f] = Number();
+                  for (unsigned int g = 0; g < dim; ++g)
+                    tmp[f] -= inv_jac_grad[d][f][g] * inv_jac[g][e];
+                }
+
+              // needed for non-diagonal part of Jacobian grad
+              for (unsigned int f = 0; f < dim; ++f)
+                {
+                  grad_jac_inv[f][d][e] = inv_jac[f][0] * tmp[0];
+                  for (unsigned int g = 1; g < dim; ++g)
+                    grad_jac_inv[f][d][e] += inv_jac[f][g] * tmp[g];
+                }
+            }
+
+        Tensor<1, dim *(dim + 1) / 2, Tensor<1, dim, Number>> result;
+
+        // the diagonal part of Jacobian gradient comes first
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int e = 0; e < dim; ++e)
+            result[d][e] = grad_jac_inv[d][d][e];
+
+        // then the upper-diagonal part
+        for (unsigned int d = 0, count = 0; d < dim; ++d)
+          for (unsigned int e = d + 1; e < dim; ++e, ++count)
+            for (unsigned int f = 0; f < dim; ++f)
+              result[dim + count][f] = grad_jac_inv[d][e][f];
+        return result;
+      }
+
 
 
       // We always put the derivative normal to the face in the last slot for
@@ -1734,9 +1802,9 @@ namespace internal
       {
         Assert(index < dim, ExcInternalError());
 
-        if ((reference_cell == dealii::ReferenceCells::Invalid ||
-             reference_cell == dealii::ReferenceCells::get_hypercube<dim>()) ==
-            false)
+        if (true || (reference_cell == dealii::ReferenceCells::Invalid ||
+                     reference_cell ==
+                       dealii::ReferenceCells::get_hypercube<dim>()) == false)
           {
             return index;
           }
@@ -2292,13 +2360,14 @@ namespace internal
         const unsigned int n_q_points = my_data.descriptor[0].n_q_points;
         const unsigned int n_mapping_points =
           shape_info.dofs_per_component_on_cell;
+        constexpr unsigned int hess_dim = dim * (dim + 1) / 2;
 
         AlignedVector<VectorizedDouble> cell_points(dim * n_mapping_points);
         AlignedVector<VectorizedDouble> face_quads(dim * n_q_points);
         AlignedVector<VectorizedDouble> face_grads(dim * dim * n_q_points);
-        // TODO: size of hessians?
-        AlignedVector<VectorizedDouble> face_hessians(dim * dim * dim *
-                                                      n_q_points);
+        AlignedVector<VectorizedDouble> face_grad_grads(dim * hess_dim *
+                                                        n_q_points);
+
         AlignedVector<VectorizedDouble> scratch_data(
           dim * (2 * n_q_points + 3 * n_mapping_points));
 
@@ -2329,11 +2398,11 @@ namespace internal
                 cell_points.data(),
                 face_quads.data(),
                 face_grads.data(),
-                face_hessians.data(),
+                face_grad_grads.data(),
                 scratch_data.data(),
                 true,
                 true,
-                false,
+                update_flags_faces & update_jacobian_grads ? true : false,
                 face_no,
                 GeometryInfo<dim>::max_children_per_cell,
                 faces[face].face_orientation > 8 ?
@@ -2380,6 +2449,32 @@ namespace internal
                           inv_jac[ee][d],
                           vv,
                           my_data.jacobians[0][offset + q][d][e]);
+                    }
+
+                  if (update_flags_faces & update_jacobian_grads)
+                    {
+                      Tensor<3, dim, VectorizedDouble> jac_grad;
+                      for (unsigned int d = 0; d < dim; ++d)
+                        {
+                          for (unsigned int e = 0; e < dim; ++e)
+                            jac_grad[d][e][e] =
+                              face_grad_grads[q +
+                                              (d * hess_dim + e) * n_q_points];
+                          for (unsigned int c = dim, e = 0; e < dim; ++e)
+                            for (unsigned int f = e + 1; f < dim; ++f, ++c)
+                              jac_grad[d][e][f] = jac_grad[d][f][e] =
+                                face_grad_grads[q + (d * hess_dim + c) *
+                                                      n_q_points];
+                          const auto inv_jac_grad =
+                            process_jacobian_gradient(inv_jac, jac_grad);
+                          for (unsigned int d = 0; d < hess_dim; ++d)
+                            for (unsigned int e = 0; e < dim; ++e)
+                              store_vectorized_array(
+                                inv_jac_grad[d][e],
+                                vv,
+                                my_data
+                                  .jacobian_gradients[0][offset + q][d][e]);
+                        }
                     }
 
                   std::array<Tensor<1, dim, VectorizedDouble>, dim - 1>
@@ -2448,11 +2543,12 @@ namespace internal
                              cell_points.data(),
                              face_quads.data(),
                              face_grads.data(),
-                             face_hessians.data(),
+                             face_grad_grads.data(),
                              scratch_data.data(),
                              false,
                              true,
-                             false,
+                             update_flags_faces & update_jacobian_grads ? true :
+                                                                          false,
                              faces[face].exterior_face_no,
                              faces[face].subface_index,
                              faces[face].face_orientation < 8 ?
@@ -2484,6 +2580,33 @@ namespace internal
                               vv,
                               my_data.jacobians[1][offset + q][d][e]);
                         }
+
+                      if (update_flags_faces & update_jacobian_grads)
+                        {
+                          Tensor<3, dim, VectorizedDouble> jac_grad;
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              for (unsigned int e = 0; e < dim; ++e)
+                                jac_grad[d][e][e] =
+                                  face_grad_grads[q + (d * hess_dim + e) *
+                                                        n_q_points];
+                              for (unsigned int c = dim, e = 0; e < dim; ++e)
+                                for (unsigned int f = e + 1; f < dim; ++f, ++c)
+                                  jac_grad[d][e][f] = jac_grad[d][f][e] =
+                                    face_grad_grads[q + (d * hess_dim + c) *
+                                                          n_q_points];
+                              const auto inv_jac_grad =
+                                process_jacobian_gradient(inv_jac, jac_grad);
+                              for (unsigned int d = 0; d < hess_dim; ++d)
+                                for (unsigned int e = 0; e < dim; ++e)
+                                  store_vectorized_array(
+                                    inv_jac_grad[d][e],
+                                    vv,
+                                    my_data
+                                      .jacobian_gradients[1][offset + q][d][e]);
+                            }
+                        }
+
                       my_data.normals_times_jacobians[1][offset + q] =
                         my_data.normal_vectors[offset + q] *
                         my_data.jacobians[1][offset + q];
@@ -2734,22 +2857,20 @@ namespace internal
         // we manually use tasks here rather than parallel::apply_to_subranges
         // because we want exactly as many loops as we have threads - the
         // initialization of the loops with FEValues is expensive
-        std::size_t          offset = 0;
-        Threads::TaskGroup<> tasks;
-        for (unsigned int t = 0; t < MultithreadInfo::n_threads();
-             ++t, offset += work_per_chunk)
-          tasks += Threads::new_task(
-            &ExtractCellHelper::mapping_q_query_fe_values<dim>,
-            offset,
-            std::min(cell_array.size(), offset + work_per_chunk),
-            *mapping_q,
-            tria,
-            cell_array,
-            jacobian_size,
-            preliminary_cell_type,
-            plain_quadrature_points,
-            jacobians_on_stencil);
-        tasks.join_all();
+        std::size_t offset = 0;
+
+
+        ExtractCellHelper::mapping_q_query_fe_values<dim>(
+          offset,
+          std::min(cell_array.size(), offset + work_per_chunk),
+          *mapping_q,
+          tria,
+          cell_array,
+          jacobian_size,
+          preliminary_cell_type,
+          plain_quadrature_points,
+          jacobians_on_stencil);
+
         cell_data_index =
           ExtractCellHelper::mapping_q_find_compression(jacobian_size,
                                                         jacobians_on_stencil,

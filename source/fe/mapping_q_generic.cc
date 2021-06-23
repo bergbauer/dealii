@@ -109,7 +109,7 @@ MappingQGeneric<dim, spacedim>::InternalData::initialize(
   if (this->update_each & update_volume_elements)
     volume_elements.resize(n_original_q_points);
 
-  tensor_product_quadrature = q.is_tensor_product();
+  tensor_product_quadrature = false; // q.is_tensor_product();
 
   // use of MatrixFree only for higher order elements and with more than one
   // point where tensor products do not make sense
