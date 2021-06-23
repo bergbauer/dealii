@@ -309,14 +309,14 @@ namespace internal
           shape_values.resize_fast(array_size);
           shape_gradients.resize_fast(array_size * dim);
 
+          std::cout << "shape values ";
           for (unsigned int i = 0; i < n_dofs; ++i)
             for (unsigned int q = 0; q < n_q_points; ++q)
               {
                 shape_values[i * n_q_points + q] =
                   fe.shape_value(i, quad.point(q));
 
-                std::cout << shape_values[i * n_q_points + q] << " "
-                          << std::endl;
+                std::cout << shape_values[i * n_q_points + q] << " ";
 
                 const auto grad = fe.shape_grad(i, quad.point(q));
 
@@ -329,7 +329,8 @@ namespace internal
           {
             const auto reference_cell = fe.reference_cell();
 
-            std::cout << "quad dim " << quad.size() << std::endl;
+            std::cout << "shape info quad dim " << quad.size() << std::endl;
+
             const auto  temp      = get_face_quadrature_collection(quad, false);
             const auto &quad_face = temp.second;
 

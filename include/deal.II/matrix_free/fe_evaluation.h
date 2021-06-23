@@ -5641,7 +5641,8 @@ inline DEAL_II_ALWAYS_INLINE
       for (unsigned int d = 0; d < dim; ++d)
         for (unsigned int comp = 0; comp < n_components; comp++)
           {
-            std::cout << gradients_quad[(comp * dim + d) * nqp + q_point]
+            std::cout << "gradients quad"
+                      << gradients_quad[(comp * dim + d) * nqp + q_point]
                       << std::endl;
             grad_out[comp][d] =
               gradients_quad[(comp * dim + d) * nqp + q_point] *
@@ -5665,7 +5666,7 @@ inline DEAL_II_ALWAYS_INLINE
                 jac[d][e] * gradients_quad[(comp * dim + e) * nqp + q_point];
           }
     }
-  std::cout << grad_out << std::endl;
+  std::cout << "grad out " << grad_out << std::endl;
   return grad_out;
 }
 
@@ -5870,14 +5871,15 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
   // cell with general Jacobian
   else
     {
-      std::cout << this->mapping_data->jacobian_gradients[0].size() << " "
+      std::cout << "jacobian gradients size "
+                << this->mapping_data->jacobian_gradients[0].size() << " "
                 << this->mapping_data->jacobian_gradients[1].size()
                 << std::endl;
       const auto &jac_grad =
         this->mapping_data->jacobian_gradients
           [1 - this->is_interior_face]
           [this->mapping_data->data_index_offsets[this->cell] + q_point];
-      std::cout << jac_grad << std::endl;
+      std::cout << "jac grad" << jac_grad << std::endl;
       for (unsigned int comp = 0; comp < n_components; comp++)
         {
           // compute laplacian before the gradient because it needs to access
@@ -6486,7 +6488,8 @@ inline DEAL_II_ALWAYS_INLINE Tensor<1, dim, VectorizedArrayType>
         {
           grad_out[d] =
             this->gradients_quad[d * nqp + q_point] * this->jacobian[0][d][d];
-          std::cout << this->gradients_quad[d * nqp + q_point]
+          std::cout << "gradient quad "
+                    << this->gradients_quad[d * nqp + q_point] << " jacobian "
                     << this->jacobian[0][d][d] << std::endl;
         }
     }
@@ -6504,7 +6507,7 @@ inline DEAL_II_ALWAYS_INLINE Tensor<1, dim, VectorizedArrayType>
             grad_out[d] += jac[d][e] * this->gradients_quad[e * nqp + q_point];
         }
     }
-  std::cout << grad_out << std::endl;
+  std::cout << "grad out " << grad_out << std::endl;
   return grad_out;
 }
 

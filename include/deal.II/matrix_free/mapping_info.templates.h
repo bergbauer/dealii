@@ -413,8 +413,8 @@ namespace internal
                         .initialize(quad_face.second, update_default);
                     }
 
-                  std::cout << "quad dim " << quad[my_q][hpq].size()
-                            << std::endl;
+                  std::cout << "mapping info quad dim "
+                            << quad[my_q][hpq].size() << std::endl;
                   const auto face_quadrature_collection =
                     get_face_quadrature_collection(quad[my_q][hpq]);
 
@@ -1230,7 +1230,8 @@ namespace internal
                   << std::endl;
         if (begin_cell == end_cell)
           return;
-        std::cout << "and it begins" << mapping_q.get_degree() << std::endl;
+        std::cout << "and it begins! mapping degree is "
+                  << mapping_q.get_degree() << std::endl;
 
         const unsigned int mapping_degree = mapping_q.get_degree();
         FE_Nothing<dim>    dummy_fe;
@@ -1254,9 +1255,10 @@ namespace internal
                 {
                   plain_quadrature_points[(cell * dim + d) * n_mapping_points +
                                           q] = fe_values.quadrature_point(q)[d];
-                  std::cout << "scheisse hier "
+                  std::cout << "plain quadrature points "
                             << fe_values.quadrature_point(q)[d] << std::endl;
                 }
+            std::cout << std::endl;
 
 
 
@@ -1389,10 +1391,6 @@ namespace internal
         const ShapeInfo<VectorizedDouble> &shape_info,
         MappingInfoStorage<dim, dim, Number, VectorizedArrayType> &my_data)
       {
-        for (const auto &i : plain_quadrature_points)
-          std::cout << "plain quadrature points " << i << std::endl;
-        std::cout << std::endl;
-
         constexpr unsigned int n_lanes   = VectorizedArrayType::size();
         constexpr unsigned int n_lanes_d = VectorizedDouble::size();
 
@@ -1468,8 +1466,8 @@ namespace internal
                       for (unsigned int e = 0; e < dim; ++e)
                         jac[d][e] = cell_grads[q + (d * dim + e) * n_q_points];
 
-                    for (const auto &i : cell_grads)
-                      std::cout << "cell grads " << i << std::endl;
+                    // for (const auto &i : cell_grads)
+                    //   std::cout << "cell grads " << i << std::endl;
 
                     // eliminate roundoff errors
                     if (cell_type[cell] == cartesian)
@@ -2471,7 +2469,7 @@ namespace internal
                     {
                       std::cout << "compute jacobian grad" << std::endl;
                       for (const auto &i : face_grad_grads)
-                        std::cout << i << std::endl;
+                        std::cout << "face_grad_grads " << i << std::endl;
                       Tensor<3, dim, VectorizedDouble> jac_grad;
                       for (unsigned int d = 0; d < dim; ++d)
                         {

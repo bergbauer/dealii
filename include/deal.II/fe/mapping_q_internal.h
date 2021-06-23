@@ -1147,6 +1147,7 @@ namespace internal
                   data.mapping_support_points[renumber_to_lexicographic[i]][d];
               }
 
+          std::cout << "tensor path here!" << std::endl;
           // do the actual tensorized evaluation
           internal::FEEvaluationFactory<dim, double, VectorizedArray<double>>::
             evaluate(n_comp,

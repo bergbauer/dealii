@@ -747,7 +747,8 @@ namespace internal
                                                         gradients_quad_ptr);
 
                 for (unsigned int i = 0; i < n_q_points; ++i)
-                  std::cout << gradients_quad_ptr[i] << std::endl;
+                  std::cout << "gradients quad " << gradients_quad_ptr[i]
+                            << std::endl;
                 std::cout << std::endl;
 
                 gradients_quad_ptr += n_q_points;
