@@ -30,6 +30,7 @@
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_poly.h>
 #include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_q_dg0.h>
 #include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/fe_simplex_p_bubbles.h>
@@ -93,7 +94,10 @@ namespace internal
 
       const auto fe_poly = dynamic_cast<const FE_Poly<dim, dim> *>(&fe);
 
-      if (dynamic_cast<const FE_SimplexPoly<dim, dim> *>(&fe) != nullptr ||
+      if (dynamic_cast<const FE_DGQ<dim, dim> *>(&fe) != nullptr ||
+          dynamic_cast<const FE_Q<dim, dim> *>(&fe) != nullptr ||
+          // if (
+          dynamic_cast<const FE_SimplexPoly<dim, dim> *>(&fe) != nullptr ||
           dynamic_cast<const FE_WedgePoly<dim, dim> *>(&fe) != nullptr ||
           dynamic_cast<const FE_PyramidPoly<dim, dim> *>(&fe) != nullptr)
         {
@@ -241,20 +245,25 @@ namespace internal
                               const FiniteElement<dim> &fe_in,
                               const unsigned int        base_element_number)
     {
-      if (quad_in.is_tensor_product() == false ||
-          dynamic_cast<const FE_SimplexP<dim> *>(
-            &fe_in.base_element(base_element_number)) ||
-          dynamic_cast<const FE_SimplexDGP<dim> *>(
-            &fe_in.base_element(base_element_number)) ||
-          dynamic_cast<const FE_WedgeP<dim> *>(
-            &fe_in.base_element(base_element_number)) ||
-          dynamic_cast<const FE_PyramidP<dim> *>(
-            &fe_in.base_element(base_element_number)))
+      if ((dim_q != 1) && (quad_in.is_tensor_product() == false ||
+                           dynamic_cast<const FE_DGQ<dim> *>(
+                             &fe_in.base_element(base_element_number)) ||
+                           dynamic_cast<const FE_Q<dim> *>(
+                             &fe_in.base_element(base_element_number)) ||
+                           // if (quad_in.is_tensor_product() == false ||
+                           dynamic_cast<const FE_SimplexP<dim> *>(
+                             &fe_in.base_element(base_element_number)) ||
+                           dynamic_cast<const FE_SimplexDGP<dim> *>(
+                             &fe_in.base_element(base_element_number)) ||
+                           dynamic_cast<const FE_WedgeP<dim> *>(
+                             &fe_in.base_element(base_element_number)) ||
+                           dynamic_cast<const FE_PyramidP<dim> *>(
+                             &fe_in.base_element(base_element_number))))
         {
           // specialization for arbitrary finite elements and quadrature rules
           // as needed in the context, e.g., of simplices
 
-          AssertDimension(dim, dim_q);
+          // AssertDimension(dim, dim_q);
 
           const auto  quad           = Quadrature<dim>(quad_in);
           const auto &fe             = fe_in.base_element(base_element_number);
@@ -291,6 +300,7 @@ namespace internal
           auto &shape_gradients   = univariate_shape_data.shape_gradients;
           auto &shape_gradients_face =
             univariate_shape_data.shape_gradients_face;
+          auto &shape_hessians_face = univariate_shape_data.shape_hessians_face;
 
           const unsigned int n_dofs = fe.n_dofs_per_cell();
 
@@ -305,16 +315,21 @@ namespace internal
                 shape_values[i * n_q_points + q] =
                   fe.shape_value(i, quad.point(q));
 
+                std::cout << shape_values[i * n_q_points + q] << " "
+                          << std::endl;
+
                 const auto grad = fe.shape_grad(i, quad.point(q));
 
                 for (int d = 0; d < dim; ++d)
                   shape_gradients[d * n_dofs * n_q_points + i * n_q_points +
                                   q] = grad[d];
               }
+          std::cout << std::endl;
 
           {
             const auto reference_cell = fe.reference_cell();
 
+            std::cout << "quad dim " << quad.size() << std::endl;
             const auto  temp      = get_face_quadrature_collection(quad, false);
             const auto &quad_face = temp.second;
 
@@ -362,6 +377,12 @@ namespace internal
                                              dim,
                                              n_dofs * n_q_points_face_max});
 
+                shape_hessians_face.reinit({quad_face.size(),
+                                            n_max_face_orientations,
+                                            dim,
+                                            dim,
+                                            n_dofs * n_q_points_face_max});
+
                 for (unsigned int f = 0; f < quad_face.size(); ++f)
                   {
                     const unsigned int n_face_orientations =
@@ -397,6 +418,14 @@ namespace internal
                               for (int d = 0; d < dim; ++d)
                                 shape_gradients_face(
                                   f, o, d, i * n_q_points_face + q) = grad[d];
+
+                              const auto hessian = fe.shape_grad_grad(i, point);
+
+                              for (int d = 0; d < dim; ++d)
+                                for (int e = 0; e < dim; ++e)
+                                  shape_hessians_face(
+                                    f, o, d, e, i * n_q_points_face + q) =
+                                    hessian[d][e];
                             }
                       }
                   }

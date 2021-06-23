@@ -723,6 +723,16 @@ namespace internal
         auto gradients_quad_ptr     = gradients_quad;
         auto values_dofs_actual_ptr = values_dofs_actual;
 
+        for (unsigned int i = 0;
+             i < shape_info.data.front().shape_gradients.size();
+             ++i)
+          std::cout << "shape gradients " << shape_gradients[i] << std::endl;
+        std::cout << std::endl;
+
+        for (unsigned int i = 0; i < n_dofs * n_components; ++i)
+          std::cout << "values dofs " << values_dofs_actual_ptr[i] << std::endl;
+        std::cout << std::endl;
+
         for (unsigned int c = 0; c < n_components; ++c)
           {
             for (unsigned int d = 0; d < dim; ++d)
@@ -735,6 +745,10 @@ namespace internal
 
                 eval.template gradients<0, true, false>(values_dofs_actual_ptr,
                                                         gradients_quad_ptr);
+
+                for (unsigned int i = 0; i < n_q_points; ++i)
+                  std::cout << gradients_quad_ptr[i] << std::endl;
+                std::cout << std::endl;
 
                 gradients_quad_ptr += n_q_points;
               }
@@ -1993,7 +2007,7 @@ namespace internal
       (void)hessians_quad;
       (void)evaluate_hessian;
 
-      if (evaluate_grad == false)
+      if (evaluate_val && !evaluate_grad && !evaluate_hessian)
         for (unsigned int c = 0; c < n_components; ++c)
           {
             switch (dim)
@@ -2017,7 +2031,7 @@ namespace internal
             values_dofs += 2 * size_deg;
             values_quad += n_q_points;
           }
-      else
+      else if (evaluate_grad && !evaluate_hessian)
         for (unsigned int c = 0; c < n_components; ++c)
           {
             switch (dim)
@@ -2089,6 +2103,79 @@ namespace internal
             values_quad += n_q_points;
             gradients_quad += dim * n_q_points;
           }
+      else // hessians
+        {
+          for (unsigned int c = 0; c < n_components; ++c)
+            {
+              switch (dim)
+                {
+                  case 3:
+                    if (use_collocation)
+                      {
+                        eval1.template values<0, true, false>(values_dofs,
+                                                              values_quad);
+                        eval1.template values<1, true, false>(values_quad,
+                                                              values_quad);
+                        internal::EvaluatorTensorProduct<
+                          internal::evaluate_evenodd,
+                          dim - 1,
+                          n_q_points_1d,
+                          n_q_points_1d,
+                          Number>
+                          eval_hessian(
+                            AlignedVector<Number>(),
+                            data.data.front().shape_hessians_collocation_eo,
+                            AlignedVector<Number>());
+                        eval_hessian.template hessians<0, true, false>(
+                          values_quad, hessians_quad);
+                        eval_hessian.template hessians<1, true, false>(
+                          values_quad, hessians_quad + n_q_points);
+                      }
+                    else
+                      {
+                        eval1.template gradients<0, true, false>(values_dofs,
+                                                                 scratch_data);
+                        eval2.template values<1, true, false>(scratch_data,
+                                                              gradients_quad);
+
+                        eval1.template values<0, true, false>(values_dofs,
+                                                              scratch_data);
+                        eval2.template gradients<1, true, false>(
+                          scratch_data, gradients_quad + n_q_points);
+
+                        if (evaluate_val)
+                          eval2.template values<1, true, false>(scratch_data,
+                                                                values_quad);
+                      }
+                    eval1.template values<0, true, false>(values_dofs +
+                                                            size_deg,
+                                                          scratch_data);
+                    eval2.template values<1, true, false>(
+                      scratch_data, gradients_quad + (dim - 1) * n_q_points);
+
+                    break;
+                  case 2:
+                    eval1.template values<0, true, false>(
+                      values_dofs + size_deg,
+                      gradients_quad + (dim - 1) * n_q_points);
+                    eval1.template gradients<0, true, false>(values_dofs,
+                                                             gradients_quad);
+                    if (evaluate_val)
+                      eval1.template values<0, true, false>(values_dofs,
+                                                            values_quad);
+                    break;
+                  case 1:
+                    values_quad[0]    = values_dofs[0];
+                    gradients_quad[0] = values_dofs[1];
+                    break;
+                  default:
+                    AssertThrow(false, ExcNotImplemented());
+                }
+              values_dofs += 2 * size_deg;
+              values_quad += n_q_points;
+              gradients_quad += dim * n_q_points;
+            }
+        }
     }
 
     static void
@@ -2633,6 +2720,52 @@ namespace internal
                 }
             }
 
+          if (evaluate_hessians)
+            {
+              auto hessians_quad_ptr      = hessians_quad;
+              auto values_dofs_actual_ptr = values_array;
+
+              std::array<std::array<const VectorizedArrayType *, dim>, dim>
+                shape_hessians;
+              for (unsigned int d = 0; d < dim; ++d)
+                for (unsigned int e = 0; e < dim; ++e)
+                  shape_hessians[d][e] = &shape_info.shape_hessians_face(
+                    face_no, face_orientation, d, e, 0);
+
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  for (unsigned int d = 0; d < dim; ++d)
+                    {
+                      Eval eval(nullptr,
+                                nullptr,
+                                shape_hessians[d][d],
+                                n_dofs,
+                                n_q_points);
+
+                      eval.template hessians<0, true, false>(
+                        values_dofs_actual_ptr, hessians_quad_ptr);
+
+                      hessians_quad_ptr += n_q_points;
+                    }
+                  for (unsigned int d = 1; d < dim; ++d)
+                    {
+                      for (unsigned int e = 0; e < d; ++e)
+                        {
+                          Eval eval(nullptr,
+                                    nullptr,
+                                    shape_hessians[d][e],
+                                    n_dofs,
+                                    n_q_points);
+
+                          eval.template hessians<0, true, false>(
+                            values_dofs_actual_ptr, hessians_quad_ptr);
+
+                          hessians_quad_ptr += n_q_points;
+                        }
+                    }
+                  values_dofs_actual_ptr += n_dofs;
+                }
+            }
 
           return true;
         }

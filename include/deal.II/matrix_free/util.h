@@ -41,6 +41,24 @@ namespace internal
     {
       if (dim == 2 || dim == 3)
         {
+          for (unsigned int i = 1; i <= 15; ++i)
+            if (quad == QGauss<dim>(i))
+              {
+                QGauss<dim - 1> quad(i);
+
+                if (dim == 2)
+                  return {
+                    ReferenceCells::Quadrilateral,
+                    dealii::hp::QCollection<dim - 1>(quad, quad, quad, quad)};
+                else
+                  return {ReferenceCells::Hexahedron,
+                          dealii::hp::QCollection<dim - 1>(
+                            quad, quad, quad, quad, quad, quad)};
+              }
+        }
+
+      if (dim == 2 || dim == 3)
+        {
           for (unsigned int i = 1; i <= 4; ++i)
             if (quad == QGaussSimplex<dim>(i))
               {
@@ -104,6 +122,16 @@ namespace internal
     inline std::pair<Quadrature<dim - 1>, Quadrature<dim - 1>>
     get_unique_face_quadratures(const Quadrature<dim> &quad)
     {
+      if (dim == 2 || dim == 3)
+        for (unsigned int i = 1; i <= 3; ++i)
+          if (quad == QGauss<dim>(i))
+            {
+              if (dim == 2)
+                return {QGauss<dim - 1>(i), Quadrature<dim - 1>()};
+              else
+                return {QGauss<dim - 1>(i), Quadrature<dim - 1>()};
+            }
+
       if (dim == 2 || dim == 3)
         for (unsigned int i = 1; i <= 3; ++i)
           if (quad == QGaussSimplex<dim>(i))
