@@ -8622,6 +8622,7 @@ FEEvaluation<dim,
                 values_array,
                 this->values_quad,
                 this->gradients_quad,
+                this->hessians_quad,
                 this->scratch_data,
                 false);
   else
@@ -8632,6 +8633,7 @@ FEEvaluation<dim,
       values_array,
       this->values_quad,
       this->gradients_quad,
+      this->hessians_quad,
       this->scratch_data,
       false);
 
@@ -8700,6 +8702,7 @@ FEEvaluation<dim,
         this->dof_info,
         this->values_quad,
         this->gradients_quad,
+        this->hessians_quad,
         this->scratch_data,
         this->data,
         integration_flag) == false)

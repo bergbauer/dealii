@@ -58,6 +58,7 @@ namespace internal
       VectorizedArrayType *values_dofs_actual,
       VectorizedArrayType *values_quad,
       VectorizedArrayType *gradients_quad,
+      VectorizedArrayType *hessians_quad,
       VectorizedArrayType *scratch_data,
       const bool           sum_into_values_array);
 

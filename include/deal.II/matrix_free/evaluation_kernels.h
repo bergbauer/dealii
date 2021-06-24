@@ -131,6 +131,7 @@ namespace internal
               Number *                                      values_dofs_actual,
               Number *                                      values_quad,
               Number *                                      gradients_quad,
+              Number *                                      hessians_quad,
               Number *                                      scratch_data,
               const bool add_into_values_array);
   };
@@ -165,6 +166,7 @@ namespace internal
               Number *                                      values_dofs_actual,
               Number *                                      values_quad,
               Number *                                      gradients_quad,
+              Number *                                      hessians_quad,
               Number *                                      scratch_data,
               const bool add_into_values_array);
   };
@@ -459,9 +461,13 @@ namespace internal
     Number *                                      values_dofs_actual,
     Number *                                      values_quad,
     Number *                                      gradients_quad,
+    Number *                                      hessians_quad,
     Number *                                      scratch_data,
     const bool                                    add_into_values_array)
   {
+    // TODO: implement hessians
+    (void)hessians_quad;
+
     const EvaluatorVariant variant =
       EvaluatorSelector<type, (fe_degree + n_q_points_1d > 4)>::variant;
     using Eval = EvaluatorTensorProduct<variant,
@@ -764,9 +770,12 @@ namespace internal
                        Number *   values_dofs_actual,
                        Number *   values_quad,
                        Number *   gradients_quad,
+                       Number *   hessians_quad,
                        Number *   scratch_data,
                        const bool add_into_values_array)
   {
+    // TODO: implement hessians
+    (void)hessians_quad;
     (void)scratch_data;
 
     const unsigned int n_dofs     = shape_info.dofs_per_component_on_cell;
@@ -1263,6 +1272,7 @@ namespace internal
               Number *                                      values_dofs,
               Number *                                      values_quad,
               Number *                                      gradients_quad,
+              Number *                                      hessians_quad,
               Number *                                      scratch_data,
               const bool add_into_values_array);
   };
@@ -1356,9 +1366,14 @@ namespace internal
     Number *                                      values_dofs,
     Number *                                      values_quad,
     Number *                                      gradients_quad,
+    Number *                                      hessians_quad,
     Number *,
     const bool add_into_values_array)
   {
+    // TODO: implement hessians
+    (void)hessians_quad;
+
+
     AssertDimension(
       shape_info.data.front().shape_gradients_collocation_eo.size(),
       (fe_degree + 2) / 2 * (fe_degree + 1));
@@ -1440,6 +1455,7 @@ namespace internal
               Number *                                      values_dofs,
               Number *                                      values_quad,
               Number *                                      gradients_quad,
+              Number *                                      hessians_quad,
               Number *                                      scratch_data,
               const bool add_into_values_array);
   };
@@ -1517,9 +1533,13 @@ namespace internal
                        Number *values_dofs,
                        Number *values_quad,
                        Number *gradients_quad,
+                       Number *hessians_quad,
                        Number *,
                        const bool add_into_values_array)
   {
+    // TODO: implement hessians
+    (void)hessians_quad;
+
     Assert(n_q_points_1d > fe_degree,
            ExcMessage("You lose information when going to a collocation space "
                       "of lower degree, so the evaluation results would be "
@@ -1541,6 +1561,7 @@ namespace internal
                       values_quad,
                       nullptr,
                       gradients_quad,
+                      nullptr,
                       nullptr,
                       /*add_into_values_array=*/integration_flag &
                         EvaluationFlags::values);
@@ -1754,6 +1775,7 @@ namespace internal
         Number *   values_dofs_actual,
         Number *   values_quad,
         Number *   gradients_quad,
+        Number *   hessians_quad,
         Number *   scratch_data,
         const bool sum_into_values_array)
     {
@@ -1777,6 +1799,7 @@ namespace internal
                       values_dofs_actual,
                       values_quad,
                       gradients_quad,
+                      hessians_quad,
                       scratch_data,
                       sum_into_values_array);
         }
@@ -1796,6 +1819,7 @@ namespace internal
                                values_dofs_actual,
                                values_quad,
                                gradients_quad,
+                               hessians_quad,
                                scratch_data,
                                sum_into_values_array);
         }
@@ -1814,6 +1838,7 @@ namespace internal
                                values_dofs_actual,
                                values_quad,
                                gradients_quad,
+                               hessians_quad,
                                scratch_data,
                                sum_into_values_array);
         }
@@ -1831,6 +1856,7 @@ namespace internal
                                values_dofs_actual,
                                values_quad,
                                gradients_quad,
+                               hessians_quad,
                                scratch_data,
                                sum_into_values_array);
         }
@@ -1848,6 +1874,7 @@ namespace internal
                                values_dofs_actual,
                                values_quad,
                                gradients_quad,
+                               hessians_quad,
                                scratch_data,
                                sum_into_values_array);
         }
@@ -1864,6 +1891,7 @@ namespace internal
                                                         values_dofs_actual,
                                                         values_quad,
                                                         gradients_quad,
+                                                        hessians_quad,
                                                         scratch_data,
                                                         sum_into_values_array);
         }
@@ -1880,6 +1908,7 @@ namespace internal
                                values_dofs_actual,
                                values_quad,
                                gradients_quad,
+                               hessians_quad,
                                scratch_data,
                                sum_into_values_array);
         }
@@ -2170,11 +2199,15 @@ namespace internal
                       Number *                                      values_dofs,
                       Number *                                      values_quad,
                       Number *           gradients_quad,
+                      Number *           hessians_quad,
                       Number *           scratch_data,
                       const bool         integrate_val,
                       const bool         integrate_grad,
                       const unsigned int subface_index)
     {
+      // TODO: implement hessians
+      (void)hessians_quad;
+
       const AlignedVector<Number> &val1 =
         symmetric_evaluate ?
           data.data.front().shape_values_eo :
@@ -2854,6 +2887,10 @@ namespace internal
         const unsigned int            face_orientation,
         const Table<2, unsigned int> &orientation_map)
     {
+      // TODO: implement hessians
+      (void)hessians_quad;
+      (void)integrate_hessians;
+
       if (data.element_type == MatrixFreeFunctions::tensor_none)
         {
           const unsigned int n_dofs     = data.dofs_per_component_on_cell;
@@ -2963,6 +3000,7 @@ namespace internal
                                                   temp1,
                                                   values_quad,
                                                   gradients_quad,
+                                                  hessians_quad,
                                                   scratch_data +
                                                     2 * n_components *
                                                       dofs_per_face,
@@ -2980,6 +3018,7 @@ namespace internal
                                                   temp1,
                                                   values_quad,
                                                   gradients_quad,
+                                                  hessians_quad,
                                                   scratch_data +
                                                     2 * n_components *
                                                       dofs_per_face,
@@ -4257,6 +4296,7 @@ namespace internal
         const unsigned int n_q_points =
           fe_degree > -1 ? Utilities::pow(n_q_points_1d, dim - 1) :
                            data.n_q_points_face;
+        constexpr unsigned int hdim = (dim * (dim + 1)) / 2;
         if (fe_degree > -1 &&
             subface_index >= GeometryInfo<dim>::max_children_per_cell &&
             data.element_type <=
@@ -4271,6 +4311,7 @@ namespace internal
                               temp1,
                               values_quad + comp * n_q_points,
                               gradients_quad + dim * comp * n_q_points,
+                              hessians_quad + hdim * comp * n_q_points,
                               scratch_data + 2 * dofs_per_face,
                               do_values,
                               do_gradients,
@@ -4286,6 +4327,7 @@ namespace internal
                               temp1,
                               values_quad + comp * n_q_points,
                               gradients_quad + dim * comp * n_q_points,
+                              hessians_quad + hdim * comp * n_q_points,
                               scratch_data + 2 * dofs_per_face,
                               do_values,
                               do_gradients,
