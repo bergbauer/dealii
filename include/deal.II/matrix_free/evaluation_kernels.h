@@ -2887,10 +2887,6 @@ namespace internal
         const unsigned int            face_orientation,
         const Table<2, unsigned int> &orientation_map)
     {
-      // TODO: implement hessians
-      (void)hessians_quad;
-      (void)integrate_hessians;
-
       if (data.element_type == MatrixFreeFunctions::tensor_none)
         {
           const unsigned int n_dofs     = data.dofs_per_component_on_cell;
@@ -2956,6 +2952,56 @@ namespace internal
                 }
             }
 
+          if (integrate_hessians)
+            {
+              auto hessians_quad_ptr      = hessians_quad;
+              auto values_dofs_actual_ptr = values_array;
+
+              std::array<std::array<const VectorizedArrayType *, dim>, dim>
+                shape_hessians;
+              for (unsigned int d = 0; d < dim; ++d)
+                for (unsigned int e = 0; e < dim; ++e)
+                  shape_hessians[d][e] = &shape_info.shape_hessians_face(
+                    face_no, face_orientation, d, e, 0);
+
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  for (unsigned int d = 0; d < dim; ++d)
+                    {
+                      Eval eval(nullptr,
+                                nullptr,
+                                shape_hessians[d][d],
+                                n_dofs,
+                                n_q_points);
+
+                      if ((!integrate_values && !integrate_gradients) && d == 0)
+                        eval.template hessians<0, false, false>(
+                          values_dofs_actual_ptr, hessians_quad_ptr);
+                      else
+                        eval.template hessians<0, false, true>(
+                          values_dofs_actual_ptr, hessians_quad_ptr);
+
+                      hessians_quad_ptr += n_q_points;
+                    }
+                  for (unsigned int d = 1; d < dim; ++d)
+                    {
+                      for (unsigned int e = 0; e < d; ++e)
+                        {
+                          Eval eval(nullptr,
+                                    nullptr,
+                                    shape_hessians[d][e],
+                                    n_dofs,
+                                    n_q_points);
+
+                          eval.template hessians<0, true, false>(
+                            values_dofs_actual_ptr, hessians_quad_ptr);
+
+                          hessians_quad_ptr += n_q_points;
+                        }
+                    }
+                  values_dofs_actual_ptr += n_dofs;
+                }
+            }
 
           return true;
         }
