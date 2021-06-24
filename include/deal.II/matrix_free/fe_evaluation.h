@@ -549,6 +549,8 @@ public:
   using value_type  = Tensor<1, n_components_, VectorizedArrayType>;
   using gradient_type =
     Tensor<1, n_components_, Tensor<1, dim, VectorizedArrayType>>;
+  using hessian_type =
+    Tensor<1, n_components_, Tensor<2, dim, VectorizedArrayType>>;
   static constexpr unsigned int dimension    = dim;
   static constexpr unsigned int n_components = n_components_;
 
@@ -854,6 +856,21 @@ public:
   void
   submit_normal_derivative(const value_type   grad_in,
                            const unsigned int q_point);
+
+  /**
+   * Write a contribution that is tested by the hessian to the field
+   * containing the values on quadrature points with component @p q_point.
+   * Access to the same field as through get_gradient(). If applied before the
+   * function FEEvaluation::integrate(EvaluationFlags::hessians) is called,
+   * this specifies what is tested by all basis function hessians on the
+   * current cell and integrated over.
+   *
+   * Note that the derived class FEEvaluationAccess overloads this operation
+   * with specializations for the scalar case (n_components == 1) and for the
+   * vector-valued case (n_components == dim).
+   */
+  void
+  submit_hessian(const hessian_type grad_in, const unsigned int q_point);
 
   /**
    * Return the Hessian of a finite element function at quadrature point
@@ -1359,6 +1376,13 @@ protected:
   bool gradients_quad_submitted;
 
   /**
+   * Debug information to track whether hessians on quadrature points have
+   * been submitted for integration before the integration is actually stared.
+   * Used to control exceptions when uninitialized data is used.
+   */
+  bool hessians_quad_submitted;
+
+  /**
    * For a FiniteElement with more than one base element, select at which
    * component this data structure should start.
    */
@@ -1480,6 +1504,7 @@ public:
   using number_type                       = Number;
   using value_type                        = VectorizedArrayType;
   using gradient_type                     = Tensor<1, dim, VectorizedArrayType>;
+  using hessian_type                      = Tensor<2, dim, VectorizedArrayType>;
   static constexpr unsigned int dimension = dim;
   using BaseClass =
     FEEvaluationBase<dim, 1, Number, is_face, VectorizedArrayType>;
@@ -1532,6 +1557,12 @@ public:
    */
   void
   submit_gradient(const gradient_type grad_in, const unsigned int q_point);
+
+  /**
+   * @copydoc FEEvaluationBase<dim,1,Number,is_face>::submit_gradient()
+   */
+  void
+  submit_hessian(const hessian_type hessian_in, const unsigned int q_point);
 
   /**
    * @copydoc FEEvaluationBase<dim,1,Number,is_face>::submit_normal_derivative()
@@ -6206,6 +6237,98 @@ template <int dim,
           typename Number,
           bool is_face,
           typename VectorizedArrayType>
+inline DEAL_II_ALWAYS_INLINE void
+FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
+  submit_hessian(
+    const Tensor<1, n_components_, Tensor<2, dim, VectorizedArrayType>>
+                       hessian_in,
+    const unsigned int q_point)
+{
+  Assert(this->cell != numbers::invalid_unsigned_int, ExcNotInitialized());
+  AssertIndexRange(q_point, this->n_quadrature_points);
+  Assert(this->J_value != nullptr,
+         internal::ExcMatrixFreeAccessToUninitializedMappingField(
+           "update_hessians"));
+  Assert(this->jacobian != nullptr,
+         internal::ExcMatrixFreeAccessToUninitializedMappingField(
+           "update_hessians"));
+#  ifdef DEBUG
+  this->hessians_quad_submitted = true;
+#  endif
+
+  const std::size_t      nqp  = this->n_quadrature_points;
+  constexpr unsigned int hdim = (dim * (dim + 1)) / 2;
+  if (!is_face && this->cell_type == internal::MatrixFreeFunctions::cartesian)
+    {
+      const VectorizedArrayType JxW =
+        this->J_value[0] * this->quadrature_weights[q_point];
+
+      // diagonal part
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+          for (unsigned int comp = 0; comp < n_components; comp++)
+            hessians_quad[(comp * hdim + d) * nqp + q_point] =
+              hessian_in[comp][d][d] * factor;
+        }
+
+      unsigned int off_dia = 0;
+
+      // off diagonal part (use symmetry)
+      for (unsigned int d = 1; d < dim; ++d)
+        for (unsigned int e = 0; e < d; ++e)
+          {
+            const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+            for (unsigned int comp = 0; comp < n_components; comp++)
+              {
+                hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
+                  hessian_in[comp][d][e] * factor;
+
+                off_dia += 1;
+              }
+          }
+    }
+  else
+    {
+      const Tensor<2, dim, VectorizedArrayType> jac =
+        this->cell_type > internal::MatrixFreeFunctions::affine ?
+          this->jacobian[q_point] :
+          this->jacobian[0];
+      const VectorizedArrayType JxW =
+        this->cell_type > internal::MatrixFreeFunctions::affine ?
+          this->J_value[q_point] :
+          this->J_value[0] * this->quadrature_weights[q_point];
+      for (unsigned int comp = 0; comp < n_components; ++comp)
+        {
+          unsigned int off_dia = 0;
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+
+              // diagonal part
+              hessians_quad[(comp * hdim + d) * nqp + q_point] =
+                hessian_in[comp][d][d] * factor;
+
+              // off diagonal part (use symmetry)
+              for (unsigned int e = 0; e < d; ++e)
+                {
+                  hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
+                    hessian_in[comp][d][e] * factor;
+
+                  off_dia += 1;
+                }
+            }
+        }
+    }
+}
+
+
+
+template <int dim,
+          int n_components_,
+          typename Number,
+          bool is_face,
+          typename VectorizedArrayType>
 inline Tensor<1, n_components_, VectorizedArrayType>
 FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
   integrate_value() const
@@ -6641,6 +6764,85 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
           for (unsigned int e = 1; e < dim; ++e)
             new_val += jac[e][d] * grad_in[e];
           this->gradients_quad[d * nqp + q_point] = new_val * JxW;
+        }
+    }
+}
+
+
+
+template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
+inline DEAL_II_ALWAYS_INLINE void
+FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
+  submit_hessian(const Tensor<2, dim, VectorizedArrayType> hessian_in,
+                 const unsigned int                        q_point)
+{
+  Assert(this->cell != numbers::invalid_unsigned_int, ExcNotInitialized());
+  AssertIndexRange(q_point, this->n_quadrature_points);
+  Assert(this->J_value != nullptr,
+         internal::ExcMatrixFreeAccessToUninitializedMappingField(
+           "update_hessians"));
+  Assert(this->jacobian != nullptr,
+         internal::ExcMatrixFreeAccessToUninitializedMappingField(
+           "update_hessians"));
+#  ifdef DEBUG
+  this->hessians_quad_submitted = true;
+#  endif
+
+  const std::size_t      nqp  = this->n_quadrature_points;
+  constexpr unsigned int hdim = (dim * (dim + 1)) / 2;
+  if (!is_face && this->cell_type == internal::MatrixFreeFunctions::cartesian)
+    {
+      const VectorizedArrayType JxW =
+        this->J_value[0] * this->quadrature_weights[q_point];
+
+      // diagonal part
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+          this->hessians_quad[d * nqp + q_point] = hessian_in[d][d] * factor;
+        }
+
+      unsigned int off_dia = 0;
+
+      // off diagonal part (use symmetry)
+      for (unsigned int d = 1; d < dim; ++d)
+        for (unsigned int e = 0; e < d; ++e)
+          {
+            const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+
+            this->hessians_quad[(dim + off_dia) * nqp + q_point] =
+              hessian_in[d][e] * factor;
+
+            off_dia += 1;
+          }
+    }
+  else
+    {
+      const Tensor<2, dim, VectorizedArrayType> jac =
+        this->cell_type > internal::MatrixFreeFunctions::affine ?
+          this->jacobian[q_point] :
+          this->jacobian[0];
+      const VectorizedArrayType JxW =
+        this->cell_type > internal::MatrixFreeFunctions::affine ?
+          this->J_value[q_point] :
+          this->J_value[0] * this->quadrature_weights[q_point];
+
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+
+          // diagonal part
+          this->hessians_quad[d * nqp + q_point] = hessian_in[d][d] * factor;
+
+          // off diagonal part (use symmetry)
+          unsigned int off_dia = 0;
+          for (unsigned int e = 0; e < d; ++e)
+            {
+              this->hessians_quad[(dim + off_dia) * nqp + q_point] =
+                hessian_in[d][e] * factor;
+
+              off_dia += 1;
+            }
         }
     }
 }
