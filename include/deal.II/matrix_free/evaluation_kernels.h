@@ -2203,10 +2203,12 @@ namespace internal
                       Number *           scratch_data,
                       const bool         integrate_val,
                       const bool         integrate_grad,
+                      const bool         integrate_hessian,
                       const unsigned int subface_index)
     {
       // TODO: implement hessians
       (void)hessians_quad;
+      (void)integrate_hessian;
 
       const AlignedVector<Number> &val1 =
         symmetric_evaluate ?
@@ -2976,10 +2978,10 @@ namespace internal
 
                       if ((!integrate_values && !integrate_gradients) && d == 0)
                         eval.template hessians<0, false, false>(
-                          values_dofs_actual_ptr, hessians_quad_ptr);
+                          hessians_quad_ptr, values_dofs_actual_ptr);
                       else
                         eval.template hessians<0, false, true>(
-                          values_dofs_actual_ptr, hessians_quad_ptr);
+                          hessians_quad_ptr, values_dofs_actual_ptr);
 
                       hessians_quad_ptr += n_q_points;
                     }
@@ -2994,7 +2996,7 @@ namespace internal
                                     n_q_points);
 
                           eval.template hessians<0, false, true>(
-                            values_dofs_actual_ptr, hessians_quad_ptr);
+                            hessians_quad_ptr, values_dofs_actual_ptr);
 
                           hessians_quad_ptr += n_q_points;
                         }
@@ -3052,6 +3054,7 @@ namespace internal
                                                       dofs_per_face,
                                                   integrate_values,
                                                   integrate_gradients,
+                                                  integrate_hessians,
                                                   subface_index);
       else
         FEFaceEvaluationImpl<
@@ -3070,6 +3073,7 @@ namespace internal
                                                       dofs_per_face,
                                                   integrate_values,
                                                   integrate_gradients,
+                                                  integrate_hessians,
                                                   subface_index);
 
       FEFaceNormalEvaluationImpl<dim, fe_degree, VectorizedArrayType>::
@@ -4361,6 +4365,7 @@ namespace internal
                               scratch_data + 2 * dofs_per_face,
                               do_values,
                               do_gradients,
+                              do_hessians,
                               subface_index);
         else
           internal::FEFaceEvaluationImpl<false,
@@ -4377,6 +4382,7 @@ namespace internal
                               scratch_data + 2 * dofs_per_face,
                               do_values,
                               do_gradients,
+                              do_hessians,
                               subface_index);
       }
 

@@ -6307,28 +6307,29 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
           [this->mapping_data->data_index_offsets[this->cell] + q_point];
       for (unsigned int comp = 0; comp < n_components; ++comp)
         {
-          // 1. tmp = hess(u) * J^T
+          // 1. tmp = hess(u) * J
           VectorizedArrayType tmp[dim][dim];
           for (unsigned int i = 0; i < dim; ++i)
             for (unsigned int j = 0; j < dim; ++j)
               for (unsigned int k = 0; k < dim; ++k)
                 {
-                  const auto jac_jk = this->jacobian[0][j][k];
+                  const auto jac_kj = jac[k][j];
 
-                  tmp[i][j] += hessian_in[comp][i][k] * jac_jk * JxW;
+                  tmp[i][j] += hessian_in[comp][i][k] * jac_kj * JxW;
                 }
 
-          // 2. compute first part of hessian_unit, J * tmp = J * hessian_in(u)
-          // * J^T diagonal part
+          // 2. compute first part of hessian_unit, J^T * tmp = J^T *
+          // hessian_in(u)
+          // * J diagonal part
           for (unsigned int d = 0; d < dim; ++d)
             {
               hessians_quad[(comp * hdim + d) * nqp + q_point] = 0;
               for (unsigned int i = 0; i < dim; ++i)
                 {
-                  const auto jac_di = this->jacobian[0][d][i];
+                  const auto jac_id = jac[i][d];
 
                   hessians_quad[(comp * hdim + d) * nqp + q_point] +=
-                    jac_di * tmp[i][d] * JxW;
+                    jac_id * tmp[i][d];
                 }
             }
 
@@ -6341,35 +6342,37 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
                   0;
                 for (unsigned int i = 0; i < dim; ++i)
                   {
-                    const auto jac_ei = this->jacobian[0][e][i];
+                    const auto jac_ie = jac[i][e];
 
                     hessians_quad[(comp * hdim + dim + off_dia) * nqp +
-                                  q_point] += jac_ei * tmp[i][d] * JxW;
+                                  q_point] += jac_ie * tmp[i][d];
                   }
 
                 off_dia += 1;
               }
 
-          // add diagonal part of J' * grad(u)
-          for (unsigned int d = 0; d < dim; ++d)
-            for (unsigned int e = 0; e < dim; ++e)
-              hessians_quad[(comp * hdim + d) * nqp + q_point] +=
-                jac_grad[d][e] *
-                gradients_quad[(comp * dim + e) * nqp + q_point];
-
-          // add off-diagonal part of J' * grad(u)
-          off_dia = 0;
-          for (unsigned int d = 0, count = dim; d < dim; ++d)
-            for (unsigned int e = d + 1; e < dim; ++e, ++count)
-              {
-                for (unsigned int f = 0; f < dim; ++f)
-                  hessians_quad[(comp * hdim + dim + off_dia) * nqp +
-                                q_point] +=
-                    jac_grad[count][f] *
-                    gradients_quad[(comp * dim + f) * nqp + q_point];
-
-                off_dia += 1;
-              }
+          //          // add diagonal part of J' * grad(u)
+          //          for (unsigned int d = 0; d < dim; ++d)
+          //            for (unsigned int e = 0; e < dim; ++e)
+          //              hessians_quad[(comp * hdim + d) * nqp + q_point] +=
+          //                jac_grad[d][e] *
+          //                gradients_quad[(comp * dim + e) * nqp + q_point];
+          //
+          //          // add off-diagonal part of J' * grad(u)
+          //          off_dia = 0;
+          //          for (unsigned int d = 0, count = dim; d < dim; ++d)
+          //            for (unsigned int e = d + 1; e < dim; ++e, ++count)
+          //              {
+          //                for (unsigned int f = 0; f < dim; ++f)
+          //                  hessians_quad[(comp * hdim + dim + off_dia) * nqp
+          //                  +
+          //                                q_point] +=
+          //                    jac_grad[count][f] *
+          //                    gradients_quad[(comp * dim + f) * nqp +
+          //                    q_point];
+          //
+          //                off_dia += 1;
+          //              }
         }
     }
 }
@@ -6850,8 +6853,10 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
       // diagonal part
       for (unsigned int d = 0; d < dim; ++d)
         {
-          const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
-          this->hessians_quad[d * nqp + q_point] = hessian_in[d][d] * factor;
+          const auto                jac_d  = this->jacobian[0][d][d];
+          const VectorizedArrayType factor = jac_d * jac_d * JxW;
+          this->hessians_quad[(hdim + d) * nqp + q_point] =
+            hessian_in[d][d] * factor;
         }
 
       unsigned int off_dia = 0;
@@ -6860,9 +6865,11 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
       for (unsigned int d = 1; d < dim; ++d)
         for (unsigned int e = 0; e < d; ++e)
           {
-            const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
+            const auto                jac_d  = this->jacobian[0][d][d];
+            const auto                jac_e  = this->jacobian[0][e][e];
+            const VectorizedArrayType factor = jac_d * jac_e * JxW;
 
-            this->hessians_quad[(dim + off_dia) * nqp + q_point] =
+            this->hessians_quad[(hdim + dim + off_dia) * nqp + q_point] =
               hessian_in[d][e] * factor;
 
             off_dia += 1;
@@ -6878,24 +6885,73 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
         this->cell_type > internal::MatrixFreeFunctions::affine ?
           this->J_value[q_point] :
           this->J_value[0] * this->quadrature_weights[q_point];
+      const auto &jac_grad =
+        this->mapping_data->jacobian_gradients
+          [1 - this->is_interior_face]
+          [this->mapping_data->data_index_offsets[this->cell] + q_point];
 
+      // 1. tmp = hess(u) * J
+      VectorizedArrayType tmp[dim][dim];
+      for (unsigned int i = 0; i < dim; ++i)
+        for (unsigned int j = 0; j < dim; ++j)
+          for (unsigned int k = 0; k < dim; ++k)
+            {
+              const auto jac_kj = jac[k][j];
+
+              tmp[i][j] += hessian_in[i][k] * jac_kj * JxW;
+            }
+
+      // 2. compute first part of hessian_unit, J^T * tmp = J^T * hessian_in(u)
+      // * J diagonal part
       for (unsigned int d = 0; d < dim; ++d)
         {
-          const VectorizedArrayType factor = this->jacobian[0][d][d] * JxW;
-
-          // diagonal part
-          this->hessians_quad[d * nqp + q_point] = hessian_in[d][d] * factor;
-
-          // off diagonal part (use symmetry)
-          unsigned int off_dia = 0;
-          for (unsigned int e = 0; e < d; ++e)
+          this->hessians_quad[(hdim + d) * nqp + q_point] = 0;
+          for (unsigned int i = 0; i < dim; ++i)
             {
-              this->hessians_quad[(dim + off_dia) * nqp + q_point] =
-                hessian_in[d][e] * factor;
+              const auto jac_id = jac[i][d];
 
-              off_dia += 1;
+              this->hessians_quad[(hdim + d) * nqp + q_point] +=
+                jac_id * tmp[i][d];
             }
         }
+
+      // off diagonal part (use symmetry)
+      unsigned int off_dia = 0;
+      for (unsigned int d = 1; d < dim; ++d)
+        for (unsigned int e = 0; e < d; ++e)
+          {
+            this->hessians_quad[(hdim + dim + off_dia) * nqp + q_point] = 0;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                const auto jac_ie = jac[i][e];
+
+                this->hessians_quad[(hdim + dim + off_dia) * nqp + q_point] +=
+                  jac_ie * tmp[i][d];
+              }
+
+            off_dia += 1;
+          }
+
+      //          // add diagonal part of J' * grad(u)
+      //          for (unsigned int d = 0; d < dim; ++d)
+      //            for (unsigned int e = 0; e < dim; ++e)
+      //              hessians_quad[(comp * hdim + d) * nqp + q_point] +=
+      //                jac_grad[d][e] *
+      //                gradients_quad[(comp * dim + e) * nqp + q_point];
+      //
+      //          // add off-diagonal part of J' * grad(u)
+      //          off_dia = 0;
+      //          for (unsigned int d = 0, count = dim; d < dim; ++d)
+      //            for (unsigned int e = d + 1; e < dim; ++e, ++count)
+      //              {
+      //                for (unsigned int f = 0; f < dim; ++f)
+      //                  hessians_quad[(comp * hdim + dim + off_dia) * nqp +
+      //                                q_point] +=
+      //                    jac_grad[count][f] *
+      //                    gradients_quad[(comp * dim + f) * nqp + q_point];
+      //
+      //                off_dia += 1;
+      //              }
     }
 }
 
@@ -8434,6 +8490,7 @@ namespace internal
     const internal::MatrixFreeFunctions::DoFInfo *dof_info,
     VectorizedArrayType *                         values_quad,
     VectorizedArrayType *                         gradients_quad,
+    VectorizedArrayType *                         hessians_quad,
     VectorizedArrayType *                         scratch_data,
     const internal::MatrixFreeFunctions::ShapeInfo<VectorizedArrayType> *data,
     const EvaluationFlags::EvaluationFlags integration_flag)
@@ -8473,6 +8530,7 @@ namespace internal
                       vec_values,
                       values_quad,
                       gradients_quad,
+                      hessians_quad,
                       scratch_data,
                       true);
         else
@@ -8483,6 +8541,7 @@ namespace internal
             vec_values,
             values_quad,
             gradients_quad,
+            hessians_quad,
             scratch_data,
             true);
 
@@ -8661,10 +8720,10 @@ FEEvaluation<dim,
          ExcNotInitialized());
 
   Assert(
-    (integration_flag &
-     ~(EvaluationFlags::values | EvaluationFlags::gradients)) == 0,
+    (integration_flag & ~(EvaluationFlags::values | EvaluationFlags::gradients |
+                          EvaluationFlags::hessians)) == 0,
     ExcMessage(
-      "Only EvaluationFlags::values and EvaluationFlags::gradients are supported."));
+      "Only EvaluationFlags::values, EvaluationFlags::gradients and EvaluationFlags::hessians are supported."));
 
   if (fe_degree > -1)
     SelectEvaluator<dim, fe_degree, n_q_points_1d, VectorizedArrayType>::
@@ -9168,6 +9227,8 @@ FEFaceEvaluation<dim,
     this->values_quad_initialized = true;
   if (evaluation_flag & EvaluationFlags::gradients)
     this->gradients_quad_initialized = true;
+  if (evaluation_flag & EvaluationFlags::hessians)
+    this->hessians_quad_initialized = true;
 #  endif
 }
 
@@ -9265,13 +9326,14 @@ FEFaceEvaluation<dim,
             VectorizedArrayType *                  values_array)
 {
   Assert(
-    (evaluation_flag &
-     ~(EvaluationFlags::values | EvaluationFlags::gradients)) == 0,
+    (evaluation_flag & ~(EvaluationFlags::values | EvaluationFlags::gradients |
+                         EvaluationFlags::hessians)) == 0,
     ExcMessage(
-      "Only EvaluationFlags::values and EvaluationFlags::gradients are supported."));
+      "Only EvaluationFlags::values, EvaluationFlags::gradients and EvaluationFlags::hessians are supported."));
 
   if (!(evaluation_flag & EvaluationFlags::values) &&
-      !(evaluation_flag & EvaluationFlags::gradients))
+      !(evaluation_flag & EvaluationFlags::gradients) &&
+      !(evaluation_flag & EvaluationFlags::hessians))
     return;
 
   if (fe_degree > -1)
@@ -9285,6 +9347,7 @@ FEFaceEvaluation<dim,
         this->scratch_data,
         evaluation_flag & EvaluationFlags::values,
         evaluation_flag & EvaluationFlags::gradients,
+        evaluation_flag & EvaluationFlags::hessians,
         this->face_no,
         this->subface_index,
         this->face_orientation,
@@ -9299,6 +9362,7 @@ FEFaceEvaluation<dim,
                 this->scratch_data,
                 evaluation_flag & EvaluationFlags::values,
                 evaluation_flag & EvaluationFlags::gradients,
+                evaluation_flag & EvaluationFlags::hessians,
                 this->face_no,
                 this->subface_index,
                 this->face_orientation,
