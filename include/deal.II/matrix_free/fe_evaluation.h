@@ -6311,6 +6311,10 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
           VectorizedArrayType tmp[dim][dim];
           for (unsigned int i = 0; i < dim; ++i)
             for (unsigned int j = 0; j < dim; ++j)
+              tmp[i][j] = 0.;
+
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
               for (unsigned int k = 0; k < dim; ++k)
                 {
                   const auto jac_kj = jac[k][j];
@@ -6855,8 +6859,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
         {
           const auto                jac_d  = this->jacobian[0][d][d];
           const VectorizedArrayType factor = jac_d * jac_d * JxW;
-          this->hessians_quad[(hdim + d) * nqp + q_point] =
-            hessian_in[d][d] * factor;
+          this->hessians_quad[d * nqp + q_point] = hessian_in[d][d] * factor;
         }
 
       unsigned int off_dia = 0;
@@ -6869,7 +6872,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
             const auto                jac_e  = this->jacobian[0][e][e];
             const VectorizedArrayType factor = jac_d * jac_e * JxW;
 
-            this->hessians_quad[(hdim + dim + off_dia) * nqp + q_point] =
+            this->hessians_quad[(dim + off_dia) * nqp + q_point] =
               hessian_in[d][e] * factor;
 
             off_dia += 1;
@@ -6894,6 +6897,10 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
       VectorizedArrayType tmp[dim][dim];
       for (unsigned int i = 0; i < dim; ++i)
         for (unsigned int j = 0; j < dim; ++j)
+          tmp[i][j] = 0.;
+
+      for (unsigned int i = 0; i < dim; ++i)
+        for (unsigned int j = 0; j < dim; ++j)
           for (unsigned int k = 0; k < dim; ++k)
             {
               const auto jac_kj = jac[k][j];
@@ -6905,13 +6912,12 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
       // * J diagonal part
       for (unsigned int d = 0; d < dim; ++d)
         {
-          this->hessians_quad[(hdim + d) * nqp + q_point] = 0;
+          this->hessians_quad[d * nqp + q_point] = 0;
           for (unsigned int i = 0; i < dim; ++i)
             {
               const auto jac_id = jac[i][d];
 
-              this->hessians_quad[(hdim + d) * nqp + q_point] +=
-                jac_id * tmp[i][d];
+              this->hessians_quad[d * nqp + q_point] += jac_id * tmp[i][d];
             }
         }
 
@@ -6920,12 +6926,12 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
       for (unsigned int d = 1; d < dim; ++d)
         for (unsigned int e = 0; e < d; ++e)
           {
-            this->hessians_quad[(hdim + dim + off_dia) * nqp + q_point] = 0;
+            this->hessians_quad[(dim + off_dia) * nqp + q_point] = 0;
             for (unsigned int i = 0; i < dim; ++i)
               {
                 const auto jac_ie = jac[i][e];
 
-                this->hessians_quad[(hdim + dim + off_dia) * nqp + q_point] +=
+                this->hessians_quad[(dim + off_dia) * nqp + q_point] +=
                   jac_ie * tmp[i][d];
               }
 
