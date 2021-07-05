@@ -859,6 +859,28 @@ public:
 
   /**
    * Write a contribution that is tested by the hessian to the field
+   * containing the values on quadrature points with component @p
+   * q_point. Access to the same field as through get_hessian().
+   * If applied before the function
+   * FEEvaluation::integrate(EvaluationFlags::hessians) is called, this
+   * specifies what is tested by all basis function gradients on the current
+   * cell and integrated over.
+   *
+   * @note This operation writes the data to the same field as
+   * submit_hessian(). As a consequence, only one of these two can be
+   * used. Usually, the contribution of a potential call to this function must
+   * be added into the contribution for submit_hessian().
+   *
+   * @note The derived class FEEvaluationAccess overloads this operation
+   * with specializations for the scalar case (n_components == 1) and for the
+   * vector-valued case (n_components == dim).
+   */
+  void
+  submit_normal_hessian(const value_type   hessian_in,
+                        const unsigned int q_point);
+
+  /**
+   * Write a contribution that is tested by the hessian to the field
    * containing the values on quadrature points with component @p q_point.
    * Access to the same field as through get_gradient(). If applied before the
    * function FEEvaluation::integrate(EvaluationFlags::hessians) is called,
@@ -1570,6 +1592,13 @@ public:
   void
   submit_normal_derivative(const value_type   grad_in,
                            const unsigned int q_point);
+
+  /**
+   * @copydoc FEEvaluationBase<dim,1,Number,is_face>::submit_normal_hessian()
+   */
+  void
+  submit_normal_hessian(const value_type   normal_hessian_in,
+                        const unsigned int q_point);
 
   /**
    * @copydoc FEEvaluationBase<dim,1,Number,is_face>::get_hessian()
@@ -5869,7 +5898,7 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
         }
     }
   // cell with general Jacobian, but constant within the cell
-  else if (!is_face && this->cell_type == internal::MatrixFreeFunctions::affine)
+  else if (this->cell_type <= internal::MatrixFreeFunctions::affine)
     {
       for (unsigned int comp = 0; comp < n_components; comp++)
         {
@@ -6239,6 +6268,225 @@ template <int dim,
           typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE void
 FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
+  submit_normal_hessian(
+    const Tensor<1, n_components_, VectorizedArrayType> normal_hessian_in,
+    const unsigned int                                  q_point)
+{
+  AssertIndexRange(q_point, this->n_quadrature_points);
+  Assert(this->normal_x_jacobian != nullptr,
+         internal::ExcMatrixFreeAccessToUninitializedMappingField(
+           "update_hessians"));
+#  ifdef DEBUG
+  this->hessians_quad_submitted = true;
+#  endif
+
+  const std::size_t      nqp  = this->n_quadrature_points;
+  constexpr unsigned int hdim = (dim * (dim + 1)) / 2;
+  if (!is_face && this->cell_type == internal::MatrixFreeFunctions::cartesian)
+    {
+      const VectorizedArrayType JxW =
+        this->J_value[0] * this->quadrature_weights[q_point];
+
+      const Tensor<1, dim, VectorizedArrayType> normal =
+        this->normal_vectors[0];
+
+      // diagonal part
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          const auto                jac_d  = this->jacobian[0][d][d];
+          const VectorizedArrayType factor = jac_d * jac_d * JxW;
+          for (unsigned int comp = 0; comp < n_components; comp++)
+            {
+              const auto hessian_in =
+                normal_hessian_in[comp] * outer_product(normal, normal);
+              hessians_quad[(comp * hdim + d) * nqp + q_point] =
+                hessian_in[comp][d][d] * factor;
+            }
+        }
+
+      unsigned int off_dia = 0;
+
+      // off diagonal part (use symmetry)
+      for (unsigned int d = 1; d < dim; ++d)
+        for (unsigned int e = 0; e < d; ++e)
+          {
+            const auto                jac_d  = this->jacobian[0][d][d];
+            const auto                jac_e  = this->jacobian[0][e][e];
+            const VectorizedArrayType factor = jac_d * jac_e * JxW;
+            for (unsigned int comp = 0; comp < n_components; comp++)
+              {
+                const auto hessian_in =
+                  normal_hessian_in[comp] * outer_product(normal, normal);
+
+                hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
+                  hessian_in[comp][d][e] * factor;
+
+                off_dia += 1;
+              }
+          }
+    }
+  // cell with general Jacobian, but constant within the cell
+  else if (this->cell_type <= internal::MatrixFreeFunctions::affine)
+    {
+      const Tensor<2, dim, VectorizedArrayType> jac = this->jacobian[0];
+      const VectorizedArrayType                 JxW =
+        this->J_value[0] * this->quadrature_weights[q_point];
+      const Tensor<1, dim, VectorizedArrayType> normal =
+        this->normal_vectors[0];
+      for (unsigned int comp = 0; comp < n_components; ++comp)
+        {
+          const auto hessian_in =
+            normal_hessian_in[comp] * outer_product(normal, normal);
+
+          // 1. tmp = hess(u) * J
+          VectorizedArrayType tmp[dim][dim];
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
+              tmp[i][j] = 0.;
+
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
+              for (unsigned int k = 0; k < dim; ++k)
+                {
+                  const auto jac_kj = jac[k][j];
+
+                  tmp[i][j] += hessian_in[comp][i][k] * jac_kj * JxW;
+                }
+
+          // 2. compute first part of hessian_unit, J^T * tmp = J^T *
+          // hessian_in(u)
+          // * J diagonal part
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              hessians_quad[(comp * hdim + d) * nqp + q_point] = 0;
+              for (unsigned int i = 0; i < dim; ++i)
+                {
+                  const auto jac_id = jac[i][d];
+
+                  hessians_quad[(comp * hdim + d) * nqp + q_point] +=
+                    jac_id * tmp[i][d];
+                }
+            }
+
+          // off diagonal part (use symmetry)
+          unsigned int off_dia = 0;
+          for (unsigned int d = 1; d < dim; ++d)
+            for (unsigned int e = 0; e < d; ++e)
+              {
+                hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
+                  0;
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    const auto jac_ie = jac[i][e];
+
+                    hessians_quad[(comp * hdim + dim + off_dia) * nqp +
+                                  q_point] += jac_ie * tmp[i][d];
+                  }
+
+                off_dia += 1;
+              }
+        }
+    }
+  else
+    {
+      const Tensor<2, dim, VectorizedArrayType> jac = this->jacobian[q_point];
+      const VectorizedArrayType                 JxW =
+        this->J_value[q_point] * this->quadrature_weights[q_point];
+      const auto &jac_grad =
+        this->mapping_data->jacobian_gradients
+          [1 - this->is_interior_face]
+          [this->mapping_data->data_index_offsets[this->cell] + q_point];
+      const Tensor<1, dim, VectorizedArrayType> normal =
+        this->normal_vectors[q_point];
+      for (unsigned int comp = 0; comp < n_components; ++comp)
+        {
+          const auto hessian_in =
+            normal_hessian_in[comp] * outer_product(normal, normal);
+
+          // 1. tmp = hess(u) * J
+          VectorizedArrayType tmp[dim][dim];
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
+              tmp[i][j] = 0.;
+
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
+              for (unsigned int k = 0; k < dim; ++k)
+                {
+                  const auto jac_kj = jac[k][j];
+
+                  tmp[i][j] += hessian_in[comp][i][k] * jac_kj * JxW;
+                }
+
+          // 2. compute first part of hessian_unit, J^T * tmp = J^T *
+          // hessian_in(u)
+          // * J diagonal part
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              hessians_quad[(comp * hdim + d) * nqp + q_point] = 0;
+              for (unsigned int i = 0; i < dim; ++i)
+                {
+                  const auto jac_id = jac[i][d];
+
+                  hessians_quad[(comp * hdim + d) * nqp + q_point] +=
+                    jac_id * tmp[i][d];
+                }
+            }
+
+          // off diagonal part (use symmetry)
+          unsigned int off_dia = 0;
+          for (unsigned int d = 1; d < dim; ++d)
+            for (unsigned int e = 0; e < d; ++e)
+              {
+                hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
+                  0;
+
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    const auto jac_ie = jac[i][e];
+
+                    hessians_quad[(comp * hdim + dim + off_dia) * nqp +
+                                  q_point] += jac_ie * tmp[i][d];
+                  }
+
+                off_dia += 1;
+              }
+
+          //          // add diagonal part of J' * grad(u)
+          //          for (unsigned int d = 0; d < dim; ++d)
+          //            for (unsigned int e = 0; e < dim; ++e)
+          //              hessians_quad[(comp * hdim + d) * nqp + q_point] +=
+          //                jac_grad[d][e] *
+          //                gradients_quad[(comp * dim + e) * nqp + q_point];
+          //
+          //          // add off-diagonal part of J' * grad(u)
+          //          off_dia = 0;
+          //          for (unsigned int d = 0, count = dim; d < dim; ++d)
+          //            for (unsigned int e = d + 1; e < dim; ++e, ++count)
+          //              {
+          //                for (unsigned int f = 0; f < dim; ++f)
+          //                  hessians_quad[(comp * hdim + dim + off_dia) * nqp
+          //                  +
+          //                                q_point] +=
+          //                    jac_grad[count][f] *
+          //                    gradients_quad[(comp * dim + f) * nqp +
+          //                    q_point];
+          //
+          //                off_dia += 1;
+          //              }
+        }
+    }
+}
+
+
+
+template <int dim,
+          int n_components_,
+          typename Number,
+          bool is_face,
+          typename VectorizedArrayType>
+inline DEAL_II_ALWAYS_INLINE void
+FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
   submit_hessian(
     const Tensor<1, n_components_, Tensor<2, dim, VectorizedArrayType>>
                        hessian_in,
@@ -6291,16 +6539,68 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
               }
           }
     }
+  // cell with general Jacobian, but constant within the cell
+  else if (this->cell_type <= internal::MatrixFreeFunctions::affine)
+    {
+      const Tensor<2, dim, VectorizedArrayType> jac = this->jacobian[0];
+      const VectorizedArrayType                 JxW =
+        this->J_value[0] * this->quadrature_weights[q_point];
+      for (unsigned int comp = 0; comp < n_components; ++comp)
+        {
+          // 1. tmp = hess(u) * J
+          VectorizedArrayType tmp[dim][dim];
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
+              tmp[i][j] = 0.;
+
+          for (unsigned int i = 0; i < dim; ++i)
+            for (unsigned int j = 0; j < dim; ++j)
+              for (unsigned int k = 0; k < dim; ++k)
+                {
+                  const auto jac_kj = jac[k][j];
+
+                  tmp[i][j] += hessian_in[comp][i][k] * jac_kj * JxW;
+                }
+
+          // 2. compute first part of hessian_unit, J^T * tmp = J^T *
+          // hessian_in(u)
+          // * J diagonal part
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              hessians_quad[(comp * hdim + d) * nqp + q_point] = 0;
+              for (unsigned int i = 0; i < dim; ++i)
+                {
+                  const auto jac_id = jac[i][d];
+
+                  hessians_quad[(comp * hdim + d) * nqp + q_point] +=
+                    jac_id * tmp[i][d];
+                }
+            }
+
+          // off diagonal part (use symmetry)
+          unsigned int off_dia = 0;
+          for (unsigned int d = 1; d < dim; ++d)
+            for (unsigned int e = 0; e < d; ++e)
+              {
+                hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
+                  0;
+                for (unsigned int i = 0; i < dim; ++i)
+                  {
+                    const auto jac_ie = jac[i][e];
+
+                    hessians_quad[(comp * hdim + dim + off_dia) * nqp +
+                                  q_point] += jac_ie * tmp[i][d];
+                  }
+
+                off_dia += 1;
+              }
+        }
+    }
   else
     {
-      const Tensor<2, dim, VectorizedArrayType> jac =
-        this->cell_type > internal::MatrixFreeFunctions::affine ?
-          this->jacobian[q_point] :
-          this->jacobian[0];
-      const VectorizedArrayType JxW =
-        this->cell_type > internal::MatrixFreeFunctions::affine ?
-          this->J_value[q_point] :
-          this->J_value[0] * this->quadrature_weights[q_point];
+      const Tensor<2, dim, VectorizedArrayType> jac = this->jacobian[q_point];
+      const VectorizedArrayType                 JxW =
+        this->J_value[q_point] * this->quadrature_weights[q_point];
       const auto &jac_grad =
         this->mapping_data->jacobian_gradients
           [1 - this->is_interior_face]
@@ -6782,6 +7082,19 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE void
 FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
+  submit_normal_hessian(const VectorizedArrayType normal_hessian_in,
+                        const unsigned int        q_point)
+{
+  Tensor<1, 1, VectorizedArrayType> normal_hessian;
+  normal_hessian[0] = normal_hessian_in;
+  BaseClass::submit_normal_hessian(normal_hessian, q_point);
+}
+
+
+
+template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
+inline DEAL_II_ALWAYS_INLINE void
+FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
   submit_gradient(const Tensor<1, dim, VectorizedArrayType> grad_in,
                   const unsigned int                        q_point)
 {
@@ -6874,6 +7187,59 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
 
             this->hessians_quad[(dim + off_dia) * nqp + q_point] =
               hessian_in[d][e] * factor;
+
+            off_dia += 1;
+          }
+    }
+  // cell with general Jacobian, but constant within the cell
+  else if (this->cell_type <= internal::MatrixFreeFunctions::affine)
+    {
+      const Tensor<2, dim, VectorizedArrayType> jac = this->jacobian[0];
+      const VectorizedArrayType                 JxW =
+        this->J_value[0] * this->quadrature_weights[q_point];
+
+      // 1. tmp = hess(u) * J
+      VectorizedArrayType tmp[dim][dim];
+      for (unsigned int i = 0; i < dim; ++i)
+        for (unsigned int j = 0; j < dim; ++j)
+          tmp[i][j] = 0.;
+
+      for (unsigned int i = 0; i < dim; ++i)
+        for (unsigned int j = 0; j < dim; ++j)
+          for (unsigned int k = 0; k < dim; ++k)
+            {
+              const auto jac_kj = jac[k][j];
+
+              tmp[i][j] += hessian_in[i][k] * jac_kj * JxW;
+            }
+
+      // 2. compute first part of hessian_unit, J^T * tmp = J^T *
+      // hessian_in(u)
+      // * J diagonal part
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          this->hessians_quad[d * nqp + q_point] = 0;
+          for (unsigned int i = 0; i < dim; ++i)
+            {
+              const auto jac_id = jac[i][d];
+
+              this->hessians_quad[d * nqp + q_point] += jac_id * tmp[i][d];
+            }
+        }
+
+      // off diagonal part (use symmetry)
+      unsigned int off_dia = 0;
+      for (unsigned int d = 1; d < dim; ++d)
+        for (unsigned int e = 0; e < d; ++e)
+          {
+            this->hessians_quad[(dim + off_dia) * nqp + q_point] = 0;
+            for (unsigned int i = 0; i < dim; ++i)
+              {
+                const auto jac_ie = jac[i][e];
+
+                this->hessians_quad[(dim + off_dia) * nqp + q_point] +=
+                  jac_ie * tmp[i][d];
+              }
 
             off_dia += 1;
           }
