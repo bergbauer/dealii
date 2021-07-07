@@ -387,7 +387,7 @@ namespace internal
                   flag &= quad[my_q][hpq].get_tensor_basis()[0] ==
                           quad[my_q][hpq].get_tensor_basis()[i];
 
-              if (true || flag == false)
+              if (flag == false)
                 {
                   cell_data[my_q].descriptor[hpq].initialize(quad[my_q][hpq],
                                                              update_default);
@@ -1802,9 +1802,9 @@ namespace internal
       {
         Assert(index < dim, ExcInternalError());
 
-        if (true || (reference_cell == dealii::ReferenceCells::Invalid ||
-                     reference_cell ==
-                       dealii::ReferenceCells::get_hypercube<dim>()) == false)
+        if ((reference_cell == dealii::ReferenceCells::Invalid ||
+             reference_cell == dealii::ReferenceCells::get_hypercube<dim>()) ==
+            false)
           {
             return index;
           }

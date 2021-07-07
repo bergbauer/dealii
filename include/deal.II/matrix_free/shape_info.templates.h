@@ -94,10 +94,8 @@ namespace internal
 
       const auto fe_poly = dynamic_cast<const FE_Poly<dim, dim> *>(&fe);
 
-      if (dynamic_cast<const FE_DGQ<dim, dim> *>(&fe) != nullptr ||
-          dynamic_cast<const FE_Q<dim, dim> *>(&fe) != nullptr ||
-          // if (
-          dynamic_cast<const FE_SimplexPoly<dim, dim> *>(&fe) != nullptr ||
+
+      if (dynamic_cast<const FE_SimplexPoly<dim, dim> *>(&fe) != nullptr ||
           dynamic_cast<const FE_WedgePoly<dim, dim> *>(&fe) != nullptr ||
           dynamic_cast<const FE_PyramidPoly<dim, dim> *>(&fe) != nullptr)
         {
@@ -245,20 +243,15 @@ namespace internal
                               const FiniteElement<dim> &fe_in,
                               const unsigned int        base_element_number)
     {
-      if ((dim_q != 1) && (quad_in.is_tensor_product() == false ||
-                           dynamic_cast<const FE_DGQ<dim> *>(
-                             &fe_in.base_element(base_element_number)) ||
-                           dynamic_cast<const FE_Q<dim> *>(
-                             &fe_in.base_element(base_element_number)) ||
-                           // if (quad_in.is_tensor_product() == false ||
-                           dynamic_cast<const FE_SimplexP<dim> *>(
-                             &fe_in.base_element(base_element_number)) ||
-                           dynamic_cast<const FE_SimplexDGP<dim> *>(
-                             &fe_in.base_element(base_element_number)) ||
-                           dynamic_cast<const FE_WedgeP<dim> *>(
-                             &fe_in.base_element(base_element_number)) ||
-                           dynamic_cast<const FE_PyramidP<dim> *>(
-                             &fe_in.base_element(base_element_number))))
+      if (quad_in.is_tensor_product() == false ||
+          dynamic_cast<const FE_SimplexP<dim> *>(
+            &fe_in.base_element(base_element_number)) ||
+          dynamic_cast<const FE_SimplexDGP<dim> *>(
+            &fe_in.base_element(base_element_number)) ||
+          dynamic_cast<const FE_WedgeP<dim> *>(
+            &fe_in.base_element(base_element_number)) ||
+          dynamic_cast<const FE_PyramidP<dim> *>(
+            &fe_in.base_element(base_element_number)))
         {
           // specialization for arbitrary finite elements and quadrature rules
           // as needed in the context, e.g., of simplices
