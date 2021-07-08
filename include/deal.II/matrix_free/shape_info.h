@@ -298,7 +298,7 @@ namespace internal
       Table<4, Number> shape_gradients_face;
 
       /**
-       * Stores the shape gradients of the finite element evaluated on all
+       * Stores the shape hessians of the finite element evaluated on all
        * quadrature points for all faces, orientations, and directions
        * (no tensor-product structure  exploited).
        */
