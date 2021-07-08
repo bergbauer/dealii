@@ -2759,10 +2759,51 @@ namespace internal
               for (unsigned int q = 0; q < n_q_points; ++q)
                 gradients_quad[(c * dim + d) * n_q_points + q] = tmp_values[q];
             }
+        if (hessians == true)
+          {
+            // diagonal part
+            const unsigned int hdim = (dim * (dim + 1)) / 2;
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                if (integrate)
+                  for (unsigned int q = 0; q < n_q_points; ++q)
+                    tmp_values[q] = hessians_quad[(c * hdim + d) * n_q_points +
+                                                  orientation[q]];
+                else
+                  for (unsigned int q = 0; q < n_q_points; ++q)
+                    tmp_values[orientation[q]] =
+                      hessians_quad[(c * hdim + d) * n_q_points + q];
+                for (unsigned int q = 0; q < n_q_points; ++q)
+                  hessians_quad[(c * hdim + d) * n_q_points + q] =
+                    tmp_values[q];
+              }
+
+            // off diagonal part
+            unsigned int off_dia = 0;
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                for (unsigned int e = 0; e < d; ++d)
+                  {
+                    if (integrate)
+                      for (unsigned int q = 0; q < n_q_points; ++q)
+                        tmp_values[q] =
+                          hessians_quad[(c * hdim + dim + off_dia) *
+                                          n_q_points +
+                                        orientation[q]];
+                    else
+                      for (unsigned int q = 0; q < n_q_points; ++q)
+                        tmp_values[orientation[q]] =
+                          hessians_quad[(c * hdim + dim + off_dia) *
+                                          n_q_points +
+                                        q];
+                    for (unsigned int q = 0; q < n_q_points; ++q)
+                      hessians_quad[(c * hdim + dim + off_dia) * n_q_points +
+                                    q] = tmp_values[q];
+                    ++off_dia;
+                  }
+              }
+          }
       }
-    // TODO: hessians
-    (void)hessians;
-    (void)hessians_quad;
   }
 
 
