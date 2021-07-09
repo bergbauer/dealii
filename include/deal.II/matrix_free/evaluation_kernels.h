@@ -2041,7 +2041,7 @@ namespace internal
                 default:
                   Assert(false, ExcNotImplemented());
               }
-            values_dofs += (evaluate_hessian ? 3 : 2) * size_deg;
+            values_dofs += 3 * size_deg;
             values_quad += n_q_points;
           }
       else
@@ -2115,7 +2115,7 @@ namespace internal
                 default:
                   AssertThrow(false, ExcNotImplemented());
               }
-            values_dofs += (evaluate_hessian ? 3 : 2) * size_deg;
+            values_dofs += 3 * size_deg;
             values_quad += n_q_points;
             gradients_quad += dim * n_q_points;
           }
@@ -2153,7 +2153,7 @@ namespace internal
                     // grad xy
                     eval1.template gradients<0, true, false>(values_dofs,
                                                              scratch_data);
-                    eval1.template gradients<1, true, false>(scratch_data,
+                    eval2.template gradients<1, true, false>(scratch_data,
                                                              hessians_quad +
                                                                3 * n_q_points);
 
@@ -2302,7 +2302,7 @@ namespace internal
                 default:
                   Assert(false, ExcNotImplemented());
               }
-            values_dofs += (integrate_hessian ? 3 : 2) * size_deg;
+            values_dofs += 3 * size_deg;
             values_quad += n_q_points;
           }
       else
@@ -2383,7 +2383,7 @@ namespace internal
                 default:
                   AssertThrow(false, ExcNotImplemented());
               }
-            values_dofs += (integrate_hessian ? 3 : 2) * size_deg;
+            values_dofs += 3 * size_deg;
             values_quad += n_q_points;
             gradients_quad += dim * n_q_points;
           }
@@ -2400,8 +2400,12 @@ namespace internal
                     // grad xx
                     eval2.template values<1, false, false>(hessians_quad,
                                                            scratch_data);
-                    eval1.template hessians<0, false, false>(scratch_data,
-                                                             values_dofs);
+                    if (integrate_val || integrate_grad)
+                      eval1.template hessians<0, false, true>(scratch_data,
+                                                              values_dofs);
+                    else
+                      eval1.template hessians<0, false, false>(scratch_data,
+                                                               values_dofs);
 
                     // grad yy
                     eval2.template hessians<1, false, false>(hessians_quad +
@@ -2419,7 +2423,7 @@ namespace internal
                                                              2 * size_deg);
 
                     // grad xy
-                    eval1.template gradients<1, false, false>(hessians_quad +
+                    eval2.template gradients<1, false, false>(hessians_quad +
                                                                 3 * n_q_points,
                                                               scratch_data);
                     eval1.template gradients<0, false, true>(scratch_data,
@@ -2429,9 +2433,14 @@ namespace internal
                     eval2.template values<1, false, false>(hessians_quad +
                                                              4 * n_q_points,
                                                            scratch_data);
-                    eval1.template gradients<0, false, false>(scratch_data,
-                                                              values_dofs +
-                                                                size_deg);
+                    if (integrate_grad)
+                      eval1.template gradients<0, false, true>(scratch_data,
+                                                               values_dofs +
+                                                                 size_deg);
+                    else
+                      eval1.template gradients<0, false, false>(scratch_data,
+                                                                values_dofs +
+                                                                  size_deg);
 
                     // grad yz
                     eval2.template gradients<1, false, false>(hessians_quad +
@@ -2450,8 +2459,12 @@ namespace internal
                     eval1.template values<0, false, false>(
                       hessians_quad + n_q_points, values_dofs + 2 * size_deg);
                     // grad xy
-                    eval1.template gradients<0, false, false>(
-                      hessians_quad + 2 * n_q_points, values_dofs + size_deg);
+                    if (integrate_grad)
+                      eval1.template gradients<0, false, true>(
+                        hessians_quad + 2 * n_q_points, values_dofs + size_deg);
+                    else
+                      eval1.template gradients<0, false, false>(
+                        hessians_quad + 2 * n_q_points, values_dofs + size_deg);
                     break;
                   case 1:
                     values_dofs[2] = hessians_quad[0];
@@ -2496,7 +2509,7 @@ namespace internal
         data.data.front().fe_degree + 1,
         data.data.front().shape_data_on_face,
         data.dofs_per_component_on_cell,
-        (do_hessians ? 3 : 2) * data.dofs_per_component_on_face);
+        3 * data.dofs_per_component_on_face);
     }
 
     /**
