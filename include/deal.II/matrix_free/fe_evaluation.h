@@ -6958,10 +6958,8 @@ inline DEAL_II_ALWAYS_INLINE Tensor<1, dim, VectorizedArrayType>
   if (!is_face && this->cell_type == internal::MatrixFreeFunctions::cartesian)
     {
       for (unsigned int d = 0; d < dim; ++d)
-        {
-          grad_out[d] =
-            this->gradients_quad[d * nqp + q_point] * this->jacobian[0][d][d];
-        }
+        grad_out[d] =
+          this->gradients_quad[d * nqp + q_point] * this->jacobian[0][d][d];
     }
   // cell with general/affine Jacobian
   else
@@ -7014,7 +7012,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::get_laplacian(
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline void DEAL_II_ALWAYS_INLINE
-FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
+            FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
   submit_dof_value(const VectorizedArrayType val_in, const unsigned int dof)
 {
 #  ifdef DEBUG
@@ -7028,7 +7026,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline void DEAL_II_ALWAYS_INLINE
-FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::submit_value(
+            FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::submit_value(
   const VectorizedArrayType val_in,
   const unsigned int        q_point)
 {
@@ -7170,8 +7168,8 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
       // diagonal part
       for (unsigned int d = 0; d < dim; ++d)
         {
-          const auto                jac_d  = this->jacobian[0][d][d];
-          const VectorizedArrayType factor = jac_d * jac_d * JxW;
+          const auto                jac_d        = this->jacobian[0][d][d];
+          const VectorizedArrayType factor       = jac_d * jac_d * JxW;
           this->hessians_quad[d * nqp + q_point] = hessian_in[d][d] * factor;
         }
 
@@ -7416,7 +7414,7 @@ FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::operator=(
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE Tensor<2, dim, VectorizedArrayType>
-FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
+                             FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
   get_gradient(const unsigned int q_point) const
 {
   return BaseClass::get_gradient(q_point);
@@ -7426,7 +7424,7 @@ FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE VectorizedArrayType
-FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
+                             FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
   get_divergence(const unsigned int q_point) const
 {
 #  ifdef DEBUG
@@ -7471,7 +7469,7 @@ FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE SymmetricTensor<2, dim, VectorizedArrayType>
-FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
+                             FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
   get_symmetric_gradient(const unsigned int q_point) const
 {
   // copy from generic function into dim-specialization function
@@ -7538,7 +7536,7 @@ inline DEAL_II_ALWAYS_INLINE
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE Tensor<2, dim, VectorizedArrayType>
-FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
+                             FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
   get_hessian_diagonal(const unsigned int q_point) const
 {
   return BaseClass::get_hessian_diagonal(q_point);
@@ -7548,7 +7546,7 @@ FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::
 
 template <int dim, typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE Tensor<3, dim, VectorizedArrayType>
-FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::get_hessian(
+                             FEEvaluationAccess<dim, dim, Number, is_face, VectorizedArrayType>::get_hessian(
   const unsigned int q_point) const
 {
 #  ifdef DEBUG
@@ -7824,7 +7822,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::operator=(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE VectorizedArrayType
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_dof_value(
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_dof_value(
   const unsigned int dof) const
 {
   AssertIndexRange(dof, this->data->dofs_per_component_on_cell);
@@ -7835,7 +7833,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_dof_value(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE VectorizedArrayType
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_value(
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_value(
   const unsigned int q_point) const
 {
 #  ifdef DEBUG
@@ -7850,7 +7848,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_value(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE Tensor<1, 1, VectorizedArrayType>
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_gradient(
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_gradient(
   const unsigned int q_point) const
 {
   // could use the base class gradient, but that involves too many inefficient
@@ -7877,7 +7875,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_gradient(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE VectorizedArrayType
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_divergence(
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_divergence(
   const unsigned int q_point) const
 {
   return get_gradient(q_point)[0];
@@ -7887,7 +7885,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_divergence(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE VectorizedArrayType
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
   get_normal_derivative(const unsigned int q_point) const
 {
   return BaseClass::get_normal_derivative(q_point)[0];
@@ -7897,7 +7895,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE Tensor<2, 1, VectorizedArrayType>
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_hessian(
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_hessian(
   const unsigned int q_point) const
 {
   return BaseClass::get_hessian(q_point)[0];
@@ -7907,7 +7905,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_hessian(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE Tensor<1, 1, VectorizedArrayType>
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
   get_hessian_diagonal(const unsigned int q_point) const
 {
   return BaseClass::get_hessian_diagonal(q_point)[0];
@@ -7917,7 +7915,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE VectorizedArrayType
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_laplacian(
+                             FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_laplacian(
   const unsigned int q_point) const
 {
   return BaseClass::get_laplacian(q_point)[0];
@@ -7927,7 +7925,7 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::get_laplacian(
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
 inline DEAL_II_ALWAYS_INLINE void DEAL_II_ALWAYS_INLINE
-FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
+                                  FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
   submit_dof_value(const VectorizedArrayType val_in, const unsigned int dof)
 {
 #  ifdef DEBUG
