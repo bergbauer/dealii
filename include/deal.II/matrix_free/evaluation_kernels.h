@@ -1977,13 +1977,13 @@ namespace internal
 
       const AlignedVector<Number> &hessian0 =
         symmetric_evaluate ?
-          data.data.front().shape_gradients_eo :
+          data.data.front().shape_hessians_eo :
           (subface_index >= GeometryInfo<dim>::max_children_per_cell ?
              data.data.front().shape_hessians :
              data.data.front().hessians_within_subface[subface_index % 2]);
       const AlignedVector<Number> &hessian1 =
         symmetric_evaluate ?
-          data.data.front().shape_gradients_eo :
+          data.data.front().shape_hessians_eo :
           (subface_index >= GeometryInfo<dim>::max_children_per_cell ?
              data.data.front().shape_hessians :
              data.data.front().hessians_within_subface[subface_index / 2]);
@@ -2238,13 +2238,13 @@ namespace internal
 
       const AlignedVector<Number> &hessian0 =
         symmetric_evaluate ?
-          data.data.front().shape_gradients_eo :
+          data.data.front().shape_hessians_eo :
           (subface_index >= GeometryInfo<dim>::max_children_per_cell ?
              data.data.front().shape_hessians :
              data.data.front().hessians_within_subface[subface_index % 2]);
       const AlignedVector<Number> &hessian1 =
         symmetric_evaluate ?
-          data.data.front().shape_gradients_eo :
+          data.data.front().shape_hessians_eo :
           (subface_index >= GeometryInfo<dim>::max_children_per_cell ?
              data.data.front().shape_hessians :
              data.data.front().hessians_within_subface[subface_index / 2]);
@@ -2453,8 +2453,13 @@ namespace internal
                     break;
                   case 2:
                     // grad xx
-                    eval0.template hessians<0, false, false>(hessians_quad,
-                                                             values_dofs);
+                    if (integrate_val || integrate_grad)
+                      eval0.template hessians<0, false, true>(hessians_quad,
+                                                              values_dofs);
+                    else
+                      eval0.template hessians<0, false, false>(hessians_quad,
+                                                               values_dofs);
+
                     // grad yy
                     eval0.template values<0, false, false>(
                       hessians_quad + n_q_points, values_dofs + 2 * size_deg);
