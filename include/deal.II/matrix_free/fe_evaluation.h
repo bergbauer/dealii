@@ -7192,8 +7192,8 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
   // cell with general Jacobian, but constant within the cell
   else if (this->cell_type <= internal::MatrixFreeFunctions::affine)
     {
-      const Tensor<2, dim, VectorizedArrayType> jac = this->jacobian[0];
-      const VectorizedArrayType                 JxW =
+      const Tensor<2, dim, VectorizedArrayType> &jac = this->jacobian[0];
+      const VectorizedArrayType                  JxW =
         this->J_value[0] * this->quadrature_weights[q_point];
 
       // 1. tmp = hess(u) * J
@@ -9714,6 +9714,7 @@ FEFaceEvaluation<dim,
         values_array,
         this->begin_values(),
         this->begin_gradients(),
+        this->begin_hessians(),
         this->scratch_data,
         evaluation_flag & EvaluationFlags::values,
         evaluation_flag & EvaluationFlags::gradients,
@@ -9729,6 +9730,7 @@ FEFaceEvaluation<dim,
                 values_array,
                 this->begin_values(),
                 this->begin_gradients(),
+                this->begin_hessians(),
                 this->scratch_data,
                 evaluation_flag & EvaluationFlags::values,
                 evaluation_flag & EvaluationFlags::gradients,

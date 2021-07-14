@@ -2402,7 +2402,7 @@ namespace internal
                 scratch_data.data(),
                 true,
                 true,
-                update_flags_faces & update_jacobian_grads ? true : false,
+                update_flags_faces & update_jacobian_grads,
                 face_no,
                 GeometryInfo<dim>::max_children_per_cell,
                 faces[face].face_orientation > 8 ?
@@ -2547,8 +2547,7 @@ namespace internal
                              scratch_data.data(),
                              false,
                              true,
-                             update_flags_faces & update_jacobian_grads ? true :
-                                                                          false,
+                             update_flags_faces & update_jacobian_grads,
                              faces[face].exterior_face_no,
                              faces[face].subface_index,
                              faces[face].face_orientation < 8 ?
@@ -2583,6 +2582,7 @@ namespace internal
 
                       if (update_flags_faces & update_jacobian_grads)
                         {
+                          // TODO: reorder_face_derivative_indices
                           Tensor<3, dim, VectorizedDouble> jac_grad;
                           for (unsigned int d = 0; d < dim; ++d)
                             {
@@ -2857,20 +2857,22 @@ namespace internal
         // we manually use tasks here rather than parallel::apply_to_subranges
         // because we want exactly as many loops as we have threads - the
         // initialization of the loops with FEValues is expensive
-        std::size_t offset = 0;
-
-
-        ExtractCellHelper::mapping_q_query_fe_values<dim>(
-          offset,
-          std::min(cell_array.size(), offset + work_per_chunk),
-          *mapping_q,
-          tria,
-          cell_array,
-          jacobian_size,
-          preliminary_cell_type,
-          plain_quadrature_points,
-          jacobians_on_stencil);
-
+        std::size_t          offset = 0;
+        Threads::TaskGroup<> tasks;
+        for (unsigned int t = 0; t < MultithreadInfo::n_threads();
+             ++t, offset += work_per_chunk)
+          tasks += Threads::new_task(
+            &ExtractCellHelper::mapping_q_query_fe_values<dim>,
+            offset,
+            std::min(cell_array.size(), offset + work_per_chunk),
+            *mapping_q,
+            tria,
+            cell_array,
+            jacobian_size,
+            preliminary_cell_type,
+            plain_quadrature_points,
+            jacobians_on_stencil);
+        tasks.join_all();
         cell_data_index =
           ExtractCellHelper::mapping_q_find_compression(jacobian_size,
                                                         jacobians_on_stencil,
