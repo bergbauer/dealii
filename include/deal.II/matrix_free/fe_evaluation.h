@@ -892,7 +892,7 @@ public:
    * vector-valued case (n_components == dim).
    */
   void
-  submit_hessian(const hessian_type grad_in, const unsigned int q_point);
+  submit_hessian(const hessian_type hessian_in, const unsigned int q_point);
 
   /**
    * Return the Hessian of a finite element function at quadrature point
@@ -1856,6 +1856,7 @@ public:
   using number_type                       = Number;
   using value_type                        = VectorizedArrayType;
   using gradient_type                     = Tensor<1, 1, VectorizedArrayType>;
+  using hessian_type                      = Tensor<2, 1, VectorizedArrayType>;
   static constexpr unsigned int dimension = 1;
   using BaseClass =
     FEEvaluationBase<1, 1, Number, is_face, VectorizedArrayType>;
@@ -1940,6 +1941,12 @@ public:
   void
   submit_normal_derivative(const gradient_type grad_in,
                            const unsigned int  q_point);
+
+  /**
+   * @copydoc FEEvaluationBase<1,1,Number,is_face>::submit_hessian()
+   */
+  void
+  submit_hessian(const hessian_type hessian_in, const unsigned int q_point);
 
   /**
    * @copydoc FEEvaluationBase<1,1,Number,is_face>::get_hessian()
@@ -8045,6 +8052,17 @@ FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::
   BaseClass::submit_normal_derivative(grad_in, q_point);
 }
 
+
+template <typename Number, bool is_face, typename VectorizedArrayType>
+inline DEAL_II_ALWAYS_INLINE void
+FEEvaluationAccess<1, 1, Number, is_face, VectorizedArrayType>::submit_hessian(
+  const Tensor<2, 1, VectorizedArrayType> hessian_in,
+  const unsigned int                      q_point)
+{
+  Tensor<1, 1, Tensor<2, 1, VectorizedArrayType>> hessian;
+  hessian[0] = hessian_in;
+  BaseClass::submit_hessian(hessian, q_point);
+}
 
 
 template <typename Number, bool is_face, typename VectorizedArrayType>
