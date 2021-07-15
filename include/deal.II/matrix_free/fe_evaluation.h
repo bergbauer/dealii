@@ -6540,7 +6540,7 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
             for (unsigned int comp = 0; comp < n_components; comp++)
               {
                 hessians_quad[(comp * hdim + dim + off_dia) * nqp + q_point] =
-                  hessian_in[comp][d][e] * factor;
+                  2.0 * hessian_in[comp][d][e] * factor;
 
                 off_dia += 1;
               }
@@ -6596,7 +6596,7 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
                     const auto jac_ie = jac[i][e];
 
                     hessians_quad[(comp * hdim + dim + off_dia) * nqp +
-                                  q_point] += jac_ie * tmp[i][d];
+                                  q_point] += 2.0 * jac_ie * tmp[i][d];
                   }
 
                 off_dia += 1;
@@ -6656,7 +6656,7 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
                     const auto jac_ie = jac[i][e];
 
                     hessians_quad[(comp * hdim + dim + off_dia) * nqp +
-                                  q_point] += jac_ie * tmp[i][d];
+                                  q_point] += 2.0 * jac_ie * tmp[i][d];
                   }
 
                 off_dia += 1;
@@ -7191,7 +7191,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
             const VectorizedArrayType factor = jac_d * jac_e * JxW;
 
             this->hessians_quad[(dim + off_dia) * nqp + q_point] =
-              hessian_in[d][e] * factor;
+              2.0 * hessian_in[d][e] * factor;
 
             off_dia += 1;
           }
@@ -7243,7 +7243,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
                 const auto jac_ie = jac[i][e];
 
                 this->hessians_quad[(dim + off_dia) * nqp + q_point] +=
-                  jac_ie * tmp[i][d];
+                  2.0 * jac_ie * tmp[i][d];
               }
 
             off_dia += 1;
@@ -7303,7 +7303,7 @@ FEEvaluationAccess<dim, 1, Number, is_face, VectorizedArrayType>::
                 const auto jac_ie = jac[i][e];
 
                 this->hessians_quad[(dim + off_dia) * nqp + q_point] +=
-                  jac_ie * tmp[i][d];
+                  2.0 * jac_ie * tmp[i][d];
               }
 
             off_dia += 1;
@@ -8961,6 +8961,7 @@ namespace internal
     const unsigned int,
     const unsigned int,
     const internal::MatrixFreeFunctions::DoFInfo *,
+    const VectorizedArrayType *,
     const VectorizedArrayType *,
     const VectorizedArrayType *,
     const VectorizedArrayType *,

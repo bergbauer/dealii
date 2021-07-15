@@ -2044,7 +2044,7 @@ namespace internal
             values_dofs += 3 * size_deg;
             values_quad += n_q_points;
           }
-      else
+      else if (evaluate_grad)
         for (unsigned int c = 0; c < n_components; ++c)
           {
             switch (dim)
@@ -2281,7 +2281,7 @@ namespace internal
 
       const auto values_dofs_first = values_dofs;
 
-      if (integrate_grad == false)
+      if (integrate_val && !integrate_grad)
         for (unsigned int c = 0; c < n_components; ++c)
           {
             switch (dim)
@@ -2305,7 +2305,7 @@ namespace internal
             values_dofs += 3 * size_deg;
             values_quad += n_q_points;
           }
-      else
+      else if (integrate_grad)
         for (unsigned int c = 0; c < n_components; ++c)
           {
             switch (dim)
@@ -2473,6 +2473,10 @@ namespace internal
                     break;
                   case 1:
                     values_dofs[2] = hessians_quad[0];
+                    if (!integrate_val)
+                      values_dofs[0] = 0;
+                    if (!integrate_grad)
+                      values_dofs[1] = 0;
                     break;
                   default:
                     AssertThrow(false, ExcNotImplemented());
@@ -3757,10 +3761,11 @@ namespace internal
               }
 
             // case 4: contiguous indices without interleaving
-            else if (n_face_orientations > 1 ||
-                     dof_info.index_storage_variants[dof_access_index][cell] ==
-                       MatrixFreeFunctions::DoFInfo::IndexStorageVariants::
-                         contiguous)
+            else if ((n_face_orientations > 1 ||
+                      dof_info.index_storage_variants[dof_access_index][cell] ==
+                        MatrixFreeFunctions::DoFInfo::IndexStorageVariants::
+                          contiguous) &&
+                     !do_hessians)
               {
                 const unsigned int *indices =
                   &dof_info.dof_indices_contiguous[dof_access_index]
