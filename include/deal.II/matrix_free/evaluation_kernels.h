@@ -2804,7 +2804,7 @@ namespace internal
             unsigned int off_dia = 0;
             for (unsigned int d = 0; d < dim; ++d)
               {
-                for (unsigned int e = 0; e < d; ++d)
+                for (unsigned int e = 0; e < d; ++e)
                   {
                     if (integrate)
                       for (unsigned int q = 0; q < n_q_points; ++q)
