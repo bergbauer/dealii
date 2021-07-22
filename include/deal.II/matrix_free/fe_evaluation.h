@@ -5757,17 +5757,10 @@ inline DEAL_II_ALWAYS_INLINE Tensor<1, n_components_, VectorizedArrayType>
   const std::size_t                            nqp = this->n_quadrature_points;
   Tensor<1, n_components, VectorizedArrayType> grad_out;
 
-  if (this->cell_type == internal::MatrixFreeFunctions::cartesian &&
-      this->matrix_info->get_mapping_info()
-        .reference_cell_types[this->get_quadrature_index()]
-                             [this->get_active_quadrature_index()]
-        .is_hyper_cube())
-    {
-      for (unsigned int comp = 0; comp < n_components; comp++)
-        grad_out[comp] =
-          gradients_quad[(comp * dim + dim - 1) * nqp + q_point] *
-          (this->normal_x_jacobian[0][dim - 1]);
-    }
+  if (this->cell_type == internal::MatrixFreeFunctions::cartesian)
+    for (unsigned int comp = 0; comp < n_components; comp++)
+      grad_out[comp] = gradients_quad[(comp * dim + dim - 1) * nqp + q_point] *
+                       (this->normal_x_jacobian[0][dim - 1]);
   else
     {
       const std::size_t index =

@@ -293,7 +293,6 @@ namespace internal
           auto &shape_gradients   = univariate_shape_data.shape_gradients;
           auto &shape_gradients_face =
             univariate_shape_data.shape_gradients_face;
-          auto &shape_hessians_face = univariate_shape_data.shape_hessians_face;
 
           const unsigned int n_dofs = fe.n_dofs_per_cell();
 
@@ -365,12 +364,6 @@ namespace internal
                                              dim,
                                              n_dofs * n_q_points_face_max});
 
-                shape_hessians_face.reinit({quad_face.size(),
-                                            n_max_face_orientations,
-                                            dim,
-                                            dim,
-                                            n_dofs * n_q_points_face_max});
-
                 for (unsigned int f = 0; f < quad_face.size(); ++f)
                   {
                     const unsigned int n_face_orientations =
@@ -406,14 +399,6 @@ namespace internal
                               for (int d = 0; d < dim; ++d)
                                 shape_gradients_face(
                                   f, o, d, i * n_q_points_face + q) = grad[d];
-
-                              const auto hessian = fe.shape_grad_grad(i, point);
-
-                              for (int d = 0; d < dim; ++d)
-                                for (int e = 0; e < dim; ++e)
-                                  shape_hessians_face(
-                                    f, o, d, e, i * n_q_points_face + q) =
-                                    hessian[d][e];
                             }
                       }
                   }
