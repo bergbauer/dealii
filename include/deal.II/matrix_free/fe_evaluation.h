@@ -449,6 +449,12 @@ protected:
   bool is_interior_face;
 
   /**
+   * Flag holding information whether a cell is actually a cell neighbor
+   * associated with a local face number of the actual cell.
+   */
+  bool is_cell_neighbor;
+
+  /**
    * Stores the index an FEFaceEvaluation object is currently pointing into
    * (interior face, exterior face, data associated with cell).
    */
@@ -3527,6 +3533,7 @@ inline FEEvaluationBaseData<dim, Number, is_face, VectorizedArrayType>::
   , quadrature_weights(descriptor->quadrature_weights.begin())
   , cell(numbers::invalid_unsigned_int)
   , is_interior_face(is_interior_face)
+  , is_cell_neighbor(false)
   , dof_access_index(
       is_face ?
         (is_interior_face ?
@@ -3577,6 +3584,7 @@ inline FEEvaluationBaseData<dim, Number, is_face, VectorizedArrayType>::
   , cell(0)
   , cell_type(internal::MatrixFreeFunctions::general)
   , is_interior_face(true)
+  , is_cell_neighbor(false)
   , dof_access_index(internal::MatrixFreeFunctions::DoFInfo::dof_access_cell)
 {
   Assert(other == nullptr || other->mapped_geometry.get() != nullptr,
@@ -3628,6 +3636,7 @@ inline FEEvaluationBaseData<dim, Number, is_face, VectorizedArrayType>::
   , cell(numbers::invalid_unsigned_int)
   , cell_type(internal::MatrixFreeFunctions::general)
   , is_interior_face(other.is_interior_face)
+  , is_cell_neighbor(other.is_cell_neighbor)
   , dof_access_index(other.dof_access_index)
 {
   // Create deep copy of mapped geometry for use in parallel...
@@ -3964,10 +3973,11 @@ FEEvaluationBaseData<dim, Number, is_face, VectorizedArrayType>::
   for (unsigned int i = 0; i < v_len; ++i)
     cells[i] = numbers::invalid_unsigned_int;
 
-  if (is_face &&
-      this->dof_access_index ==
-        internal::MatrixFreeFunctions::DoFInfo::dof_access_cell &&
-      this->is_interior_face == false)
+  if ((is_face &&
+       this->dof_access_index ==
+         internal::MatrixFreeFunctions::DoFInfo::dof_access_cell &&
+       this->is_interior_face == false) ||
+      is_cell_neighbor)
     {
       // cell-based face-loop: plus face
       for (unsigned int i = 0; i < v_len; ++i)
@@ -4929,7 +4939,8 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
       !(is_face &&
         this->dof_access_index ==
           internal::MatrixFreeFunctions::DoFInfo::dof_access_cell &&
-        this->is_interior_face == false))
+        this->is_interior_face == false) &&
+      (this->is_cell_neighbor == false))
     {
       const unsigned int dof_index =
         dof_indices_cont[this->cell * VectorizedArrayType::size()] +
@@ -4963,9 +4974,10 @@ FEEvaluationBase<dim, n_components_, Number, is_face, VectorizedArrayType>::
     this->dof_info->n_vectorization_lanes_filled[ind][this->cell];
 
   const bool is_ecl =
-    this->dof_access_index ==
-      internal::MatrixFreeFunctions::DoFInfo::dof_access_cell &&
-    this->is_interior_face == false;
+    (this->dof_access_index ==
+       internal::MatrixFreeFunctions::DoFInfo::dof_access_cell &&
+     this->is_interior_face == false) ||
+    (is_face == false && this->is_cell_neighbor);
 
   if (vectors_sm[0] != nullptr)
     {
