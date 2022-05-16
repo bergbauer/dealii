@@ -35,6 +35,7 @@ SET(_src
   mapping_info_inst2.cc
   mapping_info_inst3.cc
   matrix_free.cc
+  matrix_free_fe_point.cc
   shape_info.cc
   task_info.cc
   vector_data_exchange.cc
@@ -47,6 +48,7 @@ SET(_inst
   fe_point_evaluation.inst.in
   mapping_info.inst.in
   matrix_free.inst.in
+  matrix_free_fe_point.inst.in
   shape_info.inst.in
   )
 
