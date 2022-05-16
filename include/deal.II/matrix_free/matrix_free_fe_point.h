@@ -514,7 +514,8 @@ public:
   /**
    * Copy constructor, calls copy_from
    */
-  MatrixFreeFEPoint(const MatrixFreeFEPoint<dim, Number, VectorizedArrayType> &other);
+  MatrixFreeFEPoint(
+    const MatrixFreeFEPoint<dim, Number, VectorizedArrayType> &other);
 
   /**
    * Destructor.
@@ -594,8 +595,8 @@ public:
    * should not be needed very often.
    */
   void
-  copy_from(
-    const MatrixFreeFEPoint<dim, Number, VectorizedArrayType> &matrix_free_base);
+  copy_from(const MatrixFreeFEPoint<dim, Number, VectorizedArrayType>
+              &matrix_free_base);
 
   /**
    * Refreshes the geometry data stored in the MappingInfo fields when the
