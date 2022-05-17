@@ -107,12 +107,41 @@ template <int dim, typename Number, typename VectorizedArrayType>
 template <typename MappingType>
 void
 MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
+  const MappingType &                 mapping,
+  const DoFHandler<dim> &             dof_handler,
+  const std::vector<Quadrature<dim>> &cell_quadratures,
+  const AdditionalData &              additional_data)
+{
+  std::vector<const DoFHandler<dim, dim> *> dof_handler_vector;
+  dof_handlers.push_back(&dof_handler);
+
+  std::vector<IndexSet> locally_owned_sets =
+    internal::MatrixFreeImplementation::extract_locally_owned_index_sets(
+      dof_handlers, additional_data.mg_level);
+
+  internal_reinit(std::make_shared<hp::MappingCollection<dim>>(mapping),
+                  dof_handler_vector,
+                  std::vector<IndexSet>(),
+                  cell_quadratures,
+                  additional_data);
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+template <typename MappingType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
   const MappingType &                         mapping,
   const std::vector<const DoFHandler<dim> *> &dof_handler,
   const std::vector<Quadrature<dim>> &        cell_quadratures,
   const AdditionalData &                      additional_data)
 {
-  internal_reinit(mapping,
+  std::vector<IndexSet> locally_owned_sets =
+    internal::MatrixFreeImplementation::extract_locally_owned_index_sets(
+      dof_handlers, additional_data.mg_level);
+
+  internal_reinit(std::make_shared<hp::MappingCollection<dim>>(mapping),
                   dof_handler,
                   std::vector<IndexSet>(),
                   cell_quadratures,
