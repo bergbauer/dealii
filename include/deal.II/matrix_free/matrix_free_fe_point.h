@@ -625,80 +625,6 @@ public:
 
   //@}
 
-  /**
-   * This class defines the type of data access for face integrals in loop ()
-   * that is passed on to the `update_ghost_values` and `compress` functions
-   * of the parallel vectors, with the purpose of being able to reduce the
-   * amount of data that must be exchanged. The data exchange is a real
-   * bottleneck in particular for high-degree DG methods, therefore a more
-   * restrictive way of exchange is clearly beneficial. Note that this
-   * selection applies to FEFaceEvaluation objects assigned to the exterior
-   * side of cells accessing `FaceToCellTopology::exterior_cells` only; all
-   * <i>interior</i> objects are available in any case.
-   */
-  enum class DataAccessOnFaces
-  {
-    /**
-     * The loop does not involve any FEFaceEvaluation access into neighbors,
-     * as is the case with only boundary integrals (but no interior face
-     * integrals) or when doing mass matrices in a MatrixFree::cell_loop()
-     * like setup.
-     */
-    none,
-
-    /**
-     * The loop does only involve FEFaceEvaluation access into neighbors by
-     * function values, such as FEFaceEvaluation::gather_evaluate() with
-     * argument EvaluationFlags::values, but no access to shape function
-     * derivatives (which typically need to access more data). For FiniteElement
-     * types where only some of the shape functions have support on a face, such
-     * as an FE_DGQ element with Lagrange polynomials with nodes on the element
-     * surface, the data exchange is reduced from `(k+1)^dim` to
-     * `(k+1)^(dim-1)`.
-     */
-    values,
-
-    /**
-     * Same as above. To be used if data has to be accessed from exterior faces
-     * if FEFaceEvaluation was reinitialized by providing the cell batch number
-     * and a face number. This configuration is useful in the context of
-     * cell-centric loops.
-     *
-     * @pre AdditionalData::hold_all_faces_to_owned_cells has to enabled.
-     */
-    values_all_faces,
-
-    /**
-     * The loop does involve FEFaceEvaluation access into neighbors by
-     * function values and gradients, but no second derivatives, such as
-     * FEFaceEvaluation::gather_evaluate() with EvaluationFlags::values and
-     * EvaluationFlags::gradients set. For FiniteElement types where only some
-     * of the shape functions have non-zero value and first derivative on a
-     * face, such as an FE_DGQHermite element, the data exchange is reduced,
-     * e.g. from `(k+1)^dim` to `2(k+1)^(dim-1)`. Note that for bases that do
-     * not have this special property, the full neighboring data is sent anyway.
-     */
-    gradients,
-
-    /**
-     * Same as above. To be used if data has to be accessed from exterior faces
-     * if FEFaceEvaluation was reinitialized by providing the cell batch number
-     * and a face number. This configuration is useful in the context of
-     * cell-centric loops.
-     *
-     * @pre AdditionalData::hold_all_faces_to_owned_cells has to enabled.
-     */
-    gradients_all_faces,
-
-    /**
-     * General setup where the user does not want to make a restriction. This
-     * is typically more expensive than the other options, but also the most
-     * conservative one because the full data of elements behind the faces to
-     * be computed locally will be exchanged.
-     */
-    unspecified
-  };
-
 
   /**
    * In the hp-adaptive case, a subrange of cells as computed during the cell
@@ -758,15 +684,6 @@ public:
   template <typename T>
   void
   initialize_cell_data_vector(AlignedVector<T> &vec) const;
-
-  /**
-   * Initialize function for a vector with each entry associated with a face
-   * batch (face data). For reading and writing the vector use:
-   * FEEvaluationBase::read_face_data() and FEEvaluationBase::write_face_data().
-   */
-  template <typename T>
-  void
-  initialize_face_data_vector(AlignedVector<T> &vec) const;
 
   /**
    * Initialize function for a general serial non-block vector.
@@ -834,18 +751,6 @@ public:
   get_ghost_set(const unsigned int dof_handler_index = 0) const;
 
   /**
-   * Return a list of all degrees of freedom that are constrained. The list
-   * is returned in MPI-local index space for the locally owned range of the
-   * vector, not in global MPI index space that spans all MPI processors. To
-   * get numbers in global index space, call
-   * <tt>get_vector_partitioner()->local_to_global</tt> on an entry of the
-   * vector. In addition, it only returns the indices for degrees of freedom
-   * that are owned locally, not for ghosts.
-   */
-  const std::vector<unsigned int> &
-  get_constrained_dofs(const unsigned int dof_handler_index = 0) const;
-
-  /**
    * Computes a renumbering of degrees of freedom that better fits with the
    * data layout in MatrixFree according to the given layout of data. Note that
    * this function does not re-arrange the information stored in this class,
@@ -896,12 +801,6 @@ public:
   n_physical_cells() const;
 
   /**
-   * @deprecated Use n_cell_batches() instead.
-   */
-  DEAL_II_DEPRECATED unsigned int
-  n_macro_cells() const;
-
-  /**
    * Return the number of cell batches that this structure works on. The
    * batches are formed by application of vectorization over several cells in
    * general. The cell range in @p cell_loop runs from zero to
@@ -923,73 +822,10 @@ public:
   n_ghost_cell_batches() const;
 
   /**
-   * Return the number of interior face batches that this structure works on.
-   * The batches are formed by application of vectorization over several faces
-   * in general. The face range in @p loop runs from zero to
-   * n_inner_face_batches() (exclusive), so this is the appropriate size if
-   * you want to store arrays of data for all interior faces to be worked on.
-   * Note that it returns 0 unless mapping_update_flags_inner_faces is set
-   * to a value different from  UpdateFlags::update_default.
-   */
-  unsigned int
-  n_inner_face_batches() const;
-
-  /**
-   * Return the number of boundary face batches that this structure works on.
-   * The batches are formed by application of vectorization over several faces
-   * in general. The face range in @p loop runs from n_inner_face_batches() to
-   * n_inner_face_batches()+n_boundary_face_batches() (exclusive), so if you
-   * need to store arrays that hold data for all boundary faces but not the
-   * interior ones, this number gives the appropriate size.
-   * Note that it returns 0 unless mapping_update_flags_boundary_faces is set
-   * to a value different from UpdateFlags::update_default.
-   */
-  unsigned int
-  n_boundary_face_batches() const;
-
-  /**
-   * Return the number of faces that are not processed locally but belong to
-   * locally owned faces.
-   */
-  unsigned int
-  n_ghost_inner_face_batches() const;
-
-  /**
-   * In order to apply different operators to different parts of the boundary,
-   * this method can be used to query the boundary id of a given face in the
-   * faces' own sorting by lanes in a VectorizedArray. Only valid for an index
-   * indicating a boundary face.
-   */
-  types::boundary_id
-  get_boundary_id(const unsigned int face_batch_index) const;
-
-  /**
-   * Return the boundary ids for the faces within a cell, using the cells'
-   * sorting by lanes in the VectorizedArray.
-   */
-  std::array<types::boundary_id, VectorizedArrayType::size()>
-  get_faces_by_cells_boundary_id(const unsigned int cell_batch_index,
-                                 const unsigned int face_number) const;
-
-  /**
    * Return the DoFHandler with the index as given to the respective
    * `std::vector` argument in the reinit() function.
    */
   const DoFHandler<dim> &
-  get_dof_handler(const unsigned int dof_handler_index = 0) const;
-
-  /**
-   * Return the DoFHandler with the index as given to the respective
-   * `std::vector` argument in the reinit() function. Note that if you want to
-   * call this function with a template parameter different than the default
-   * one, you will need to use the `template` before the function call, i.e.,
-   * you will have something like `matrix_free.template
-   * get_dof_handler<hp::DoFHandler<dim>>()`.
-   *
-   * @deprecated Use the non-templated equivalent of this function.
-   */
-  template <typename DoFHandlerType>
-  DEAL_II_DEPRECATED const DoFHandlerType &
   get_dof_handler(const unsigned int dof_handler_index = 0) const;
 
   /**
@@ -1019,34 +855,6 @@ public:
                            const unsigned int lane_index) const;
 
   /**
-   * Return the cell iterator in deal.II speak to an interior/exterior cell of
-   * a face in a pair of a face batch and lane index. The second element of
-   * the pair is the face number so that the face iterator can be accessed:
-   * `pair.first->face(pair.second);`
-   *
-   * Note that the face iterators in deal.II go through cells differently to
-   * what the face/boundary loop of this class does. This is because several
-   * faces are worked on together (vectorization), and since faces with neighbor
-   * cells on different MPI processors need to be accessed at a certain time
-   * when accessing remote data and overlapping communication with computation.
-   */
-  std::pair<typename DoFHandler<dim>::cell_iterator, unsigned int>
-  get_face_iterator(const unsigned int face_batch_index,
-                    const unsigned int lane_index,
-                    const bool         interior     = true,
-                    const unsigned int fe_component = 0) const;
-
-  /**
-   * @copydoc MatrixFree::get_cell_iterator()
-   *
-   * @deprecated Use get_cell_iterator() instead.
-   */
-  DEAL_II_DEPRECATED typename DoFHandler<dim>::active_cell_iterator
-  get_hp_cell_iterator(const unsigned int cell_batch_index,
-                       const unsigned int lane_index,
-                       const unsigned int dof_handler_index = 0) const;
-
-  /**
    * Since this class uses vectorized data types with usually more than one
    * value in the data field, a situation might occur when some components of
    * the vector type do not correspond to an actual cell in the mesh. When
@@ -1062,12 +870,6 @@ public:
   at_irregular_cell(const unsigned int cell_batch_index) const;
 
   /**
-   * @deprecated Use n_active_entries_per_cell_batch() instead.
-   */
-  DEAL_II_DEPRECATED unsigned int
-  n_components_filled(const unsigned int cell_batch_number) const;
-
-  /**
    * This query returns how many cells among the `VectorizedArrayType::size()`
    * many cells within a cell batch to actual cells in the mesh, rather than
    * being present for padding reasons. For most given cell batches in
@@ -1078,62 +880,6 @@ public:
    */
   unsigned int
   n_active_entries_per_cell_batch(const unsigned int cell_batch_index) const;
-
-  /**
-   * Use this function to find out how many faces over the length of
-   * vectorization data types correspond to real faces (both interior and
-   * boundary faces, as those use the same indexing but with different ranges)
-   * in the mesh. For most given indices in n_inner_faces_batches() and
-   * n_boundary_face_batches(), this is just @p vectorization_length many, but
-   * there might be one or a few meshes (where the numbers do not add up)
-   * where there are less such lanes filled.
-   */
-  unsigned int
-  n_active_entries_per_face_batch(const unsigned int face_batch_index) const;
-
-  /**
-   * Return the number of degrees of freedom per cell for a given hp-index.
-   */
-  unsigned int
-  get_dofs_per_cell(const unsigned int dof_handler_index  = 0,
-                    const unsigned int hp_active_fe_index = 0) const;
-
-  /**
-   * Return the number of quadrature points per cell for a given hp-index.
-   */
-  unsigned int
-  get_n_q_points(const unsigned int quad_index         = 0,
-                 const unsigned int hp_active_fe_index = 0) const;
-
-  /**
-   * Return the number of degrees of freedom on each face of the cell for
-   * given hp-index.
-   */
-  unsigned int
-  get_dofs_per_face(const unsigned int dof_handler_index  = 0,
-                    const unsigned int hp_active_fe_index = 0) const;
-
-  /**
-   * Return the number of quadrature points on each face of the cell for
-   * given hp-index.
-   */
-  unsigned int
-  get_n_q_points_face(const unsigned int quad_index         = 0,
-                      const unsigned int hp_active_fe_index = 0) const;
-
-  /**
-   * Return the quadrature rule for given hp-index.
-   */
-  const Quadrature<dim> &
-  get_quadrature(const unsigned int quad_index         = 0,
-                 const unsigned int hp_active_fe_index = 0) const;
-
-  /**
-   * Return the quadrature rule for given hp-index.
-   */
-  const Quadrature<dim - 1> &
-  get_face_quadrature(const unsigned int quad_index         = 0,
-                      const unsigned int hp_active_fe_index = 0) const;
 
   /**
    * Return the category the current batch range of cells was assigned to.
@@ -1161,13 +907,6 @@ public:
    */
   unsigned int
   get_cell_category(const unsigned int cell_batch_index) const;
-
-  /**
-   * Return the category of the cells on the two sides of the current batch of
-   * faces.
-   */
-  std::pair<unsigned int, unsigned int>
-  get_face_category(const unsigned int face_batch_index) const;
 
   /**
    * Queries whether or not the indexation has been set.
@@ -1238,96 +977,6 @@ public:
   const internal::MatrixFreeFunctions::DoFInfo &
   get_dof_info(const unsigned int dof_handler_index_component = 0) const;
 
-  /**
-   * Return the number of weights in the constraint pool.
-   */
-  unsigned int
-  n_constraint_pool_entries() const;
-
-  /**
-   * Return a pointer to the first number in the constraint pool data with
-   * index @p pool_index (to be used together with @p constraint_pool_end()).
-   */
-  const Number *
-  constraint_pool_begin(const unsigned int pool_index) const;
-
-  /**
-   * Return a pointer to one past the last number in the constraint pool data
-   * with index @p pool_index (to be used together with @p
-   * constraint_pool_begin()).
-   */
-  const Number *
-  constraint_pool_end(const unsigned int pool_index) const;
-
-  /**
-   * Return the unit cell information for given hp-index.
-   */
-  const internal::MatrixFreeFunctions::ShapeInfo<VectorizedArrayType> &
-  get_shape_info(const unsigned int dof_handler_index_component = 0,
-                 const unsigned int quad_index                  = 0,
-                 const unsigned int fe_base_element             = 0,
-                 const unsigned int hp_active_fe_index          = 0,
-                 const unsigned int hp_active_quad_index        = 0) const;
-
-  /**
-   * Return the connectivity information of a face.
-   */
-  const internal::MatrixFreeFunctions::FaceToCellTopology<
-    VectorizedArrayType::size()> &
-  get_face_info(const unsigned int face_batch_index) const;
-
-
-  /**
-   * Return the table that translates a triple of the macro cell number,
-   * the index of a face within a cell and the index within the cell batch of
-   * vectorization into the index within the faces array.
-   */
-  const Table<3, unsigned int> &
-  get_cell_and_face_to_plain_faces() const;
-
-  /**
-   * Obtains a scratch data object for internal use. Make sure to release it
-   * afterwards by passing the pointer you obtain from this object to the
-   * release_scratch_data() function. This interface is used by FEEvaluation
-   * objects for storing their data structures.
-   *
-   * The organization of the internal data structure is a thread-local storage
-   * of a list of vectors. Multiple threads will each get a separate storage
-   * field and separate vectors, ensuring thread safety. The mechanism to
-   * acquire and release objects is similar to the mechanisms used for the
-   * local contributions of WorkStream, see
-   * @ref workstream_paper "the WorkStream paper".
-   */
-  AlignedVector<VectorizedArrayType> *
-  acquire_scratch_data() const;
-
-  /**
-   * Makes the object of the scratchpad available again.
-   */
-  void
-  release_scratch_data(const AlignedVector<VectorizedArrayType> *memory) const;
-
-  /**
-   * Obtains a scratch data object for internal use. Make sure to release it
-   * afterwards by passing the pointer you obtain from this object to the
-   * release_scratch_data_non_threadsafe() function. Note that, as opposed to
-   * acquire_scratch_data(), this method can only be called by a single thread
-   * at a time, but opposed to the acquire_scratch_data() it is also possible
-   * that the thread releasing the scratch data can be different than the one
-   * that acquired it.
-   */
-  AlignedVector<Number> *
-  acquire_scratch_data_non_threadsafe() const;
-
-  /**
-   * Makes the object of the scratch data available again.
-   */
-  void
-  release_scratch_data_non_threadsafe(
-    const AlignedVector<Number> *memory) const;
-
-  //@}
-
 private:
   /**
    * This is the actual reinit function that sets up the indices for the
@@ -1376,31 +1025,11 @@ private:
   std::vector<internal::MatrixFreeFunctions::DoFInfo> dof_info;
 
   /**
-   * Contains the weights for constraints stored in DoFInfo. Filled into a
-   * separate field since several vector components might share similar
-   * weights, which reduces memory consumption. Moreover, it obviates template
-   * arguments on DoFInfo and keeps it a plain field of indices only.
-   */
-  std::vector<Number> constraint_pool_data;
-
-  /**
-   * Contains an indicator to the start of the ith index in the constraint
-   * pool data.
-   */
-  std::vector<unsigned int> constraint_pool_row_index;
-
-  /**
    * Holds information on transformation of cells from reference cell to real
    * cell that is needed for evaluating integrals.
    */
   internal::MatrixFreeFunctions::MappingInfo<dim, Number, VectorizedArrayType>
     mapping_info;
-
-  /**
-   * Contains shape value information on the unit cell.
-   */
-  Table<4, internal::MatrixFreeFunctions::ShapeInfo<VectorizedArrayType>>
-    shape_info;
 
   /**
    * Describes how the cells are gone through. With the cell level (first
@@ -1427,13 +1056,6 @@ private:
   internal::MatrixFreeFunctions::TaskInfo task_info;
 
   /**
-   * Vector holding face information. Only initialized if
-   * build_face_info=true.
-   */
-  internal::MatrixFreeFunctions::FaceInfo<VectorizedArrayType::size()>
-    face_info;
-
-  /**
    * Stores whether indices have been initialized.
    */
   bool indices_are_initialized;
@@ -1442,29 +1064,6 @@ private:
    * Stores whether indices have been initialized.
    */
   bool mapping_is_initialized;
-
-  /**
-   * Scratchpad memory for use in evaluation. We allow more than one
-   * evaluation object to attach to this field (this, the outer
-   * std::vector), so we need to keep tracked of whether a certain data
-   * field is already used (first part of pair) and keep a list of
-   * objects.
-   */
-  mutable Threads::ThreadLocalStorage<
-    std::list<std::pair<bool, AlignedVector<VectorizedArrayType>>>>
-    scratch_pad;
-
-  /**
-   * Scratchpad memory for use in evaluation and other contexts, non-thread
-   * safe variant.
-   */
-  mutable std::list<std::pair<bool, AlignedVector<Number>>>
-    scratch_pad_non_threadsafe;
-
-  /**
-   * Stored the level of the mesh to be worked on.
-   */
-  unsigned int mg_level;
 };
 
 
