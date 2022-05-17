@@ -534,11 +534,12 @@ public:
    * not allowed. In that case, use the initialization function with
    * several DoFHandler arguments.
    */
-  template <typename QuadratureType, typename number2, typename MappingType>
+  template <typename MappingType>
   void
-  reinit(const MappingType &               mapping,
-         const DoFHandler<dim> &           dof_handler,
-         const AdditionalData &            additional_data = AdditionalData());
+  reinit(const MappingType &                 mapping,
+         const DoFHandler<dim> &             dof_handler,
+         const std::vector<Quadrature<dim>> &cell_quadratures,
+         const AdditionalData &additional_data = AdditionalData());
 
 
   /**
@@ -562,10 +563,11 @@ public:
    * can be sets independently from the number of DoFHandlers, when several
    * elements are always integrated with the same quadrature formula.
    */
-  template <typename QuadratureType, typename number2, typename MappingType>
+  template <typename MappingType>
   void
-  reinit(const MappingType &                                    mapping,
-         const std::vector<const DoFHandler<dim> *> &           dof_handler,
+  reinit(const MappingType &                         mapping,
+         const std::vector<const DoFHandler<dim> *> &dof_handler,
+         const std::vector<Quadrature<dim>> &        cell_quadratures,
          const AdditionalData &additional_data = AdditionalData());
 
 
@@ -949,11 +951,11 @@ private:
    * DoFHandler case.
    */
   void
-  internal_reinit(
-    const std::shared_ptr<hp::MappingCollection<dim>> &    mapping,
-    const std::vector<const DoFHandler<dim, dim> *> &      dof_handlers,
-    const std::vector<IndexSet> &                          locally_owned_set,
-    const AdditionalData &                                 additional_data);
+  internal_reinit(const std::shared_ptr<hp::MappingCollection<dim>> &mapping,
+                  const std::vector<const DoFHandler<dim, dim> *> &dof_handlers,
+                  const std::vector<IndexSet> &       locally_owned_set,
+                  const std::vector<Quadrature<dim>> &cell_quadratures,
+                  const AdditionalData &              additional_data);
 
   /**
    * Initializes the fields in DoFInfo together with the constraint pool that
@@ -962,9 +964,8 @@ private:
    * consequently only need to be stored once).
    */
   void
-  initialize_indices(
-    const std::vector<IndexSet> &                          locally_owned_set,
-    const AdditionalData &                                 additional_data);
+  initialize_indices(const std::vector<IndexSet> &locally_owned_set,
+                     const AdditionalData &       additional_data);
 
   /**
    * Initializes the DoFHandlers based on a DoFHandler<dim> argument.

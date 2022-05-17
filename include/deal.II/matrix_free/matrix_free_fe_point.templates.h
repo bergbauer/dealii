@@ -101,6 +101,42 @@ MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::clear()
   mapping_is_initialized  = false;
 }
 
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+template <typename MappingType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
+  const MappingType &                         mapping,
+  const std::vector<const DoFHandler<dim> *> &dof_handler,
+  const std::vector<Quadrature<dim>> &        cell_quadratures,
+  const AdditionalData &                      additional_data)
+{
+  internal_reinit(mapping,
+                  dof_handler,
+                  std::vector<IndexSet>(),
+                  cell_quadratures,
+                  additional_data);
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::internal_reinit(
+  const std::shared_ptr<hp::MappingCollection<dim>> &mapping,
+  const std::vector<const DoFHandler<dim, dim> *> &  dof_handlers,
+  const std::vector<IndexSet> &                      locally_owned_set,
+  const std::vector<Quadrature<dim>> &               cell_quadratures,
+  const AdditionalData &                             additional_data)
+{
+  (void)mapping;
+  (void)dof_handlers;
+  (void)locally_owned_set;
+  (void)cell_quadratures;
+  (void)additional_data;
+}
+
 DEAL_II_NAMESPACE_CLOSE
 
 #endif
