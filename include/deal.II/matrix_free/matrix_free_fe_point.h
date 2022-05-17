@@ -43,7 +43,7 @@
 
 #include <deal.II/matrix_free/dof_info.h>
 #include <deal.II/matrix_free/mapping_info.h>
-#include <deal.II/matrix_free/matrix_free.h>
+#include <deal.II/matrix_free/matrix_free_functions_internal.h>
 #include <deal.II/matrix_free/shape_info.h>
 #include <deal.II/matrix_free/task_info.h>
 #include <deal.II/matrix_free/type_traits.h>
@@ -1034,6 +1034,51 @@ private:
 /*----------------------- Inline functions ----------------------------------*/
 
 #ifndef DOXYGEN
+
+template <int dim, typename Number, typename VectorizedArrayType>
+template <typename MappingType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
+  const MappingType &                 mapping,
+  const DoFHandler<dim> &             dof_handler,
+  const std::vector<Quadrature<dim>> &cell_quadratures,
+  const AdditionalData &              additional_data)
+{
+  std::vector<const DoFHandler<dim, dim> *> dof_handler_vec;
+  dof_handler_vec.push_back(&dof_handler);
+
+  std::vector<IndexSet> locally_owned_sets =
+    internal::MatrixFreeImplementation::extract_locally_owned_index_sets(
+      dof_handler_vec, additional_data.mg_level);
+
+  internal_reinit(std::make_shared<hp::MappingCollection<dim>>(mapping),
+                  dof_handler_vec,
+                  std::vector<IndexSet>(),
+                  cell_quadratures,
+                  additional_data);
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+template <typename MappingType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
+  const MappingType &                         mapping,
+  const std::vector<const DoFHandler<dim> *> &dof_handler,
+  const std::vector<Quadrature<dim>> &        cell_quadratures,
+  const AdditionalData &                      additional_data)
+{
+  std::vector<IndexSet> locally_owned_sets =
+    internal::MatrixFreeImplementation::extract_locally_owned_index_sets(
+      dof_handlers, additional_data.mg_level);
+
+  internal_reinit(std::make_shared<hp::MappingCollection<dim>>(mapping),
+                  dof_handler,
+                  std::vector<IndexSet>(),
+                  cell_quadratures,
+                  additional_data);
+}
 
 
 

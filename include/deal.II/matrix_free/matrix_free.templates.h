@@ -42,6 +42,7 @@
 #include <deal.II/matrix_free/face_setup_internal.h>
 #include <deal.II/matrix_free/hanging_nodes_internal.h>
 #include <deal.II/matrix_free/matrix_free.h>
+#include <deal.II/matrix_free/matrix_free_functions_internal.h>
 
 #ifdef DEAL_II_WITH_TBB
 #  include <deal.II/base/parallel.h>
@@ -844,30 +845,6 @@ MatrixFree<dim, Number, VectorizedArrayType>::is_supported(
 {
   return internal::MatrixFreeFunctions::ShapeInfo<double>::is_supported(fe);
 }
-
-
-
-namespace internal
-{
-  namespace MatrixFreeFunctions
-  {
-    // steps through all children and adds the active cells recursively
-    template <typename InIterator>
-    void
-    resolve_cell(const InIterator &                                  cell,
-                 std::vector<std::pair<unsigned int, unsigned int>> &cell_its)
-    {
-      if (cell->has_children())
-        for (unsigned int child = 0; child < cell->n_children(); ++child)
-          resolve_cell(cell->child(child), cell_its);
-      else if (cell->is_locally_owned())
-        {
-          Assert(cell->is_active(), ExcInternalError());
-          cell_its.emplace_back(cell->level(), cell->index());
-        }
-    }
-  } // namespace MatrixFreeFunctions
-} // namespace internal
 
 
 

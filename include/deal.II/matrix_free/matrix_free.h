@@ -43,6 +43,7 @@
 
 #include <deal.II/matrix_free/dof_info.h>
 #include <deal.II/matrix_free/mapping_info.h>
+#include <deal.II/matrix_free/matrix_free_functions_internal.h>
 #include <deal.II/matrix_free/shape_info.h>
 #include <deal.II/matrix_free/task_info.h>
 #include <deal.II/matrix_free/type_traits.h>
@@ -2996,30 +2997,6 @@ MatrixFree<dim, Number, VectorizedArrayType>::
 
 
 // ------------------------------ reinit functions ---------------------------
-
-namespace internal
-{
-  namespace MatrixFreeImplementation
-  {
-    template <int dim, int spacedim>
-    inline std::vector<IndexSet>
-    extract_locally_owned_index_sets(
-      const std::vector<const ::dealii::DoFHandler<dim, spacedim> *> &dofh,
-      const unsigned int                                              level)
-    {
-      std::vector<IndexSet> locally_owned_set;
-      locally_owned_set.reserve(dofh.size());
-      for (unsigned int j = 0; j < dofh.size(); ++j)
-        if (level == numbers::invalid_unsigned_int)
-          locally_owned_set.push_back(dofh[j]->locally_owned_dofs());
-        else
-          locally_owned_set.push_back(dofh[j]->locally_owned_mg_dofs(level));
-      return locally_owned_set;
-    }
-  } // namespace MatrixFreeImplementation
-} // namespace internal
-
-
 
 template <int dim, typename Number, typename VectorizedArrayType>
 template <typename QuadratureType, typename number2>

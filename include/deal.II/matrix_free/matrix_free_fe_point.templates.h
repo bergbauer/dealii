@@ -104,66 +104,71 @@ MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::clear()
 
 
 template <int dim, typename Number, typename VectorizedArrayType>
-template <typename MappingType>
-void
-MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
-  const MappingType &                 mapping,
-  const DoFHandler<dim> &             dof_handler,
-  const std::vector<Quadrature<dim>> &cell_quadratures,
-  const AdditionalData &              additional_data)
-{
-  std::vector<const DoFHandler<dim, dim> *> dof_handler_vector;
-  dof_handlers.push_back(&dof_handler);
-
-  std::vector<IndexSet> locally_owned_sets =
-    internal::MatrixFreeImplementation::extract_locally_owned_index_sets(
-      dof_handlers, additional_data.mg_level);
-
-  internal_reinit(std::make_shared<hp::MappingCollection<dim>>(mapping),
-                  dof_handler_vector,
-                  std::vector<IndexSet>(),
-                  cell_quadratures,
-                  additional_data);
-}
-
-
-
-template <int dim, typename Number, typename VectorizedArrayType>
-template <typename MappingType>
-void
-MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::reinit(
-  const MappingType &                         mapping,
-  const std::vector<const DoFHandler<dim> *> &dof_handler,
-  const std::vector<Quadrature<dim>> &        cell_quadratures,
-  const AdditionalData &                      additional_data)
-{
-  std::vector<IndexSet> locally_owned_sets =
-    internal::MatrixFreeImplementation::extract_locally_owned_index_sets(
-      dof_handlers, additional_data.mg_level);
-
-  internal_reinit(std::make_shared<hp::MappingCollection<dim>>(mapping),
-                  dof_handler,
-                  std::vector<IndexSet>(),
-                  cell_quadratures,
-                  additional_data);
-}
-
-
-
-template <int dim, typename Number, typename VectorizedArrayType>
 void
 MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::internal_reinit(
   const std::shared_ptr<hp::MappingCollection<dim>> &mapping,
-  const std::vector<const DoFHandler<dim, dim> *> &  dof_handlers,
+  const std::vector<const DoFHandler<dim, dim> *> &  dof_handlers_in,
   const std::vector<IndexSet> &                      locally_owned_set,
   const std::vector<Quadrature<dim>> &               cell_quadratures,
   const AdditionalData &                             additional_data)
 {
   (void)mapping;
-  (void)dof_handlers;
   (void)locally_owned_set;
   (void)cell_quadratures;
   (void)additional_data;
+
+  initialize_dof_handlers(dof_handlers_in, additional_data);
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::initialize_dof_handlers(
+  const std::vector<const DoFHandler<dim, dim> *> &dof_handlers_in,
+  const AdditionalData &                           additional_data)
+{
+  cell_level_index.clear();
+  dof_handlers.resize(dof_handlers_in.size());
+  for (const auto &dof_handler : dof_handlers_in)
+    dof_handlers.push_back(dof_handler);
+
+  dof_info.resize(dof_handlers.size());
+  for (unsigned int no = 0; no < dof_handlers.size(); ++no)
+    dof_info[no].vectorization_length = VectorizedArrayType::size();
+
+  const Triangulation<dim> &tria  = dof_handlers[0]->get_triangulation();
+  const unsigned int        level = additional_data.mg_level;
+  if (level == numbers::invalid_unsigned_int)
+    {
+      cell_level_index.reserve(tria.n_active_cells());
+
+      // Go through cells on zeroth level and then successively step down into
+      // children. This gives a z-ordering of the cells, which is beneficial
+      // when setting up neighboring relations between cells for thread
+      // parallelization
+      for (const auto &cell : tria.cell_iterators_on_level(0))
+        internal::MatrixFreeFunctions::resolve_cell(cell, cell_level_index);
+
+      Assert(task_info.n_procs > 1 ||
+               cell_level_index.size() == tria.n_active_cells(),
+             ExcInternalError());
+    }
+  else
+    {
+      AssertIndexRange(level, tria.n_global_levels());
+      if (level < tria.n_levels())
+        {
+          cell_level_index.reserve(tria.n_cells(level));
+          for (const auto &cell : tria.cell_iterators_on_level(level))
+            if (cell->is_locally_owned_on_level())
+              cell_level_index.emplace_back(cell->level(), cell->index());
+        }
+    }
+
+  // All these are cells local to this processor. Therefore, set
+  // cell_level_index_end_local to the size of cell_level_index.
+  cell_level_index_end_local = cell_level_index.size();
 }
 
 DEAL_II_NAMESPACE_CLOSE
