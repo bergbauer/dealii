@@ -56,7 +56,6 @@ MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::MatrixFreeFEPoint()
   : Subscriptor()
   , indices_are_initialized(false)
   , mapping_is_initialized(false)
-  , mg_level(numbers::invalid_unsigned_int)
 {}
 
 
@@ -67,6 +66,39 @@ MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::MatrixFreeFEPoint(
   : Subscriptor()
 {
   copy_from(other);
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::copy_from(
+  const MatrixFreeFEPoint<dim, Number, VectorizedArrayType> &v)
+{
+  clear();
+  dof_handlers               = v.dof_handlers;
+  dof_info                   = v.dof_info;
+  mapping_info               = v.mapping_info;
+  cell_level_index           = v.cell_level_index;
+  cell_level_index_end_local = v.cell_level_index_end_local;
+  task_info                  = v.task_info;
+  indices_are_initialized    = v.indices_are_initialized;
+  mapping_is_initialized     = v.mapping_is_initialized;
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+void
+MatrixFreeFEPoint<dim, Number, VectorizedArrayType>::clear()
+{
+  dof_info.clear();
+  mapping_info.clear();
+  cell_level_index.clear();
+  task_info.clear();
+  dof_handlers.clear();
+  indices_are_initialized = false;
+  mapping_is_initialized  = false;
 }
 
 DEAL_II_NAMESPACE_CLOSE
