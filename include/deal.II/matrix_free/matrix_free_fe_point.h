@@ -538,8 +538,6 @@ public:
   void
   reinit(const MappingType &               mapping,
          const DoFHandler<dim> &           dof_handler,
-         const AffineConstraints<number2> &constraint,
-         const QuadratureType &            quad,
          const AdditionalData &            additional_data = AdditionalData());
 
 
@@ -568,24 +566,6 @@ public:
   void
   reinit(const MappingType &                                    mapping,
          const std::vector<const DoFHandler<dim> *> &           dof_handler,
-         const std::vector<const AffineConstraints<number2> *> &constraint,
-         const std::vector<QuadratureType> &                    quad,
-         const AdditionalData &additional_data = AdditionalData());
-
-
-  /**
-   * Initializes the data structures. Same as before, but now the index set
-   * description of the locally owned range of degrees of freedom is taken
-   * from the DoFHandler. Moreover, only a single quadrature formula is used,
-   * as might be necessary when several components in a vector-valued problem
-   * are integrated together based on the same quadrature formula.
-   */
-  template <typename QuadratureType, typename number2, typename MappingType>
-  void
-  reinit(const MappingType &                                    mapping,
-         const std::vector<const DoFHandler<dim> *> &           dof_handler,
-         const std::vector<const AffineConstraints<number2> *> &constraint,
-         const QuadratureType &                                 quad,
          const AdditionalData &additional_data = AdditionalData());
 
 
@@ -749,20 +729,6 @@ public:
    */
   const IndexSet &
   get_ghost_set(const unsigned int dof_handler_index = 0) const;
-
-  /**
-   * Computes a renumbering of degrees of freedom that better fits with the
-   * data layout in MatrixFree according to the given layout of data. Note that
-   * this function does not re-arrange the information stored in this class,
-   * but rather creates a renumbering for consumption of
-   * DoFHandler::renumber_dofs. To have any effect a MatrixFree object must be
-   * set up again using the renumbered DoFHandler and AffineConstraints. Note
-   * that if a DoFHandler calls DoFHandler::renumber_dofs, all information in
-   * MatrixFree becomes invalid.
-   */
-  void
-  renumber_dofs(std::vector<types::global_dof_index> &renumbering,
-                const unsigned int                    dof_handler_index = 0);
 
   //@}
 
@@ -982,14 +948,11 @@ private:
    * This is the actual reinit function that sets up the indices for the
    * DoFHandler case.
    */
-  template <typename number2, int q_dim>
   void
   internal_reinit(
     const std::shared_ptr<hp::MappingCollection<dim>> &    mapping,
     const std::vector<const DoFHandler<dim, dim> *> &      dof_handlers,
-    const std::vector<const AffineConstraints<number2> *> &constraint,
     const std::vector<IndexSet> &                          locally_owned_set,
-    const std::vector<hp::QCollection<q_dim>> &            quad,
     const AdditionalData &                                 additional_data);
 
   /**
@@ -998,10 +961,8 @@ private:
    * because several DoFInfo classes can have the same weights which
    * consequently only need to be stored once).
    */
-  template <typename number2>
   void
   initialize_indices(
-    const std::vector<const AffineConstraints<number2> *> &constraint,
     const std::vector<IndexSet> &                          locally_owned_set,
     const AdditionalData &                                 additional_data);
 
