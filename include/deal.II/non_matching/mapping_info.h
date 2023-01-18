@@ -65,10 +65,32 @@ namespace NonMatching
            const ArrayView<const Point<dim>> &unit_points);
 
     /**
+     * Reinitialize the mapping information for the incoming vector of cells and
+     * corresponding vector of unit points.
+     */
+    void
+    reinit_cells(
+      const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
+                                                 &cell_iterator_vector,
+      const std::vector<std::vector<Point<dim>>> &unit_points_vector);
+
+    /**
+     * Reinitialize the mapping information for all faces of the incoming vector
+     * of cells and corresponding vector of unit points.
+     */
+    void
+    reinit_faces(
+      const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
+        cell_iterator_vector,
+      const std::vector<std::vector<std::vector<Point<dim>>>>
+        &unit_points_vector);
+
+    /**
      * Getter function for current unit points.
      */
     const std::vector<Point<dim>> &
-    get_unit_points() const;
+    get_unit_points(const unsigned int active_cell_index,
+                    const unsigned int face_number) const;
 
     /**
      * Getter function for computed mapping data. This function accesses
@@ -77,7 +99,8 @@ namespace NonMatching
     const dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
                                                                        spacedim>
       &
-      get_mapping_data() const;
+      get_mapping_data(const unsigned int active_cell_index,
+                       const unsigned int face_number) const;
 
     /**
      * Getter function for underlying mapping.
@@ -91,7 +114,12 @@ namespace NonMatching
     UpdateFlags
     get_update_flags() const;
 
-  private:
+    using MappingData =
+      dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
+                                                                   spacedim>;
+    using FaceData = std::vector<MappingData>;
+    using CellData = std::vector<FaceData>;
+
     /**
      * Compute the mapping related data for the given @p mapping,
      * @p cell and @p unit_points that is required by the FEPointEvaluation
@@ -100,12 +128,16 @@ namespace NonMatching
     void
     compute_mapping_data_for_generic_points(
       const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-      const ArrayView<const Point<dim>> &                         unit_points);
+      const ArrayView<const Point<dim>>                          &unit_points,
+      MappingData                                                &mapping_data);
 
     /**
      * The reference points specified at reinit().
      */
-    std::vector<Point<dim>> unit_points;
+    using UnitPoints = std::vector<Point<dim>>;
+    using FaceVector = std::vector<UnitPoints>;
+    using CellVector = std::vector<FaceVector>;
+    CellVector unit_points;
 
     /**
      * A pointer to the underlying mapping.
@@ -126,8 +158,13 @@ namespace NonMatching
      * The internal data container for mapping information. The implementation
      * is subject to future changes.
      */
-    dealii::internal::FEValuesImplementation::MappingRelatedData<dim, spacedim>
-      mapping_data;
+    CellData mapping_data;
+
+    /**
+     * A map from the active_cell_index of a CellAccessor to the index where the
+     * mapping is stores in the CellData vector.
+     */
+    std::map<unsigned int, unsigned int> cell_index_to_mapping_info_cell_id;
   };
 
   // ----------------------- template functions ----------------------
@@ -157,20 +194,119 @@ namespace NonMatching
   void
   MappingInfo<dim, spacedim>::reinit(
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-    const ArrayView<const Point<dim>> &                         unit_points)
+    const ArrayView<const Point<dim>>                          &unit_points_in)
   {
-    this->unit_points =
-      std::vector<Point<dim>>(unit_points.begin(), unit_points.end());
-    compute_mapping_data_for_generic_points(cell, unit_points);
+    FaceVector dummy(1);
+    unit_points.resize(1, dummy);
+    unit_points[0][0] =
+      std::vector<Point<dim>>(unit_points_in.begin(), unit_points_in.end());
+
+    FaceData dummy_2(1);
+    mapping_data.resize(1, dummy_2);
+    compute_mapping_data_for_generic_points(cell,
+                                            unit_points_in,
+                                            mapping_data[0][0]);
+  }
+
+
+  template <int dim, int spacedim>
+  void
+  MappingInfo<dim, spacedim>::reinit_cells(
+    const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
+                                               &cell_vector,
+    const std::vector<std::vector<Point<dim>>> &unit_points_vector)
+  {
+    Assert(cell_vector.size() == unit_points_vector.size(),
+           ExcDimensionMismatch(cell_vector.size(), unit_points_vector.size()));
+
+    const unsigned int n_cells = cell_vector.size();
+
+    FaceVector dummy(1);
+    unit_points.resize(n_cells, dummy);
+    FaceData dummy_2(1);
+    mapping_data.resize(n_cells, dummy_2);
+
+    for (unsigned int i = 0; i < n_cells; ++i)
+      {
+        unit_points[i][0] =
+          std::vector<Point<dim>>(unit_points_vector[i].begin(),
+                                  unit_points_vector[i].end());
+
+        compute_mapping_data_for_generic_points(cell_vector[i],
+                                                unit_points[i][0],
+                                                mapping_data[i][0]);
+
+        cell_index_to_mapping_info_cell_id.insert(
+          {cell_vector[i]->active_cell_index(), i});
+      }
+  }
+
+
+  template <int dim, int spacedim>
+  void
+  MappingInfo<dim, spacedim>::reinit_faces(
+    const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
+      cell_iterator_vector,
+    const std::vector<std::vector<std::vector<Point<dim>>>> &unit_points_vector)
+  {
+    Assert(cell_iterator_vector.size() == unit_points_vector.size(),
+           ExcDimensionMismatch(cell_iterator_vector.size(),
+                                unit_points_vector.size()));
+
+    const unsigned int n_cells = cell_iterator_vector.size();
+
+    unit_points.resize(n_cells);
+    mapping_data.resize(n_cells);
+
+    for (unsigned int i = 0; i < n_cells; ++i)
+      {
+        const auto &cell = cell_iterator_vector[i];
+
+        Assert(unit_points_vector[i].size() == cell->n_faces(),
+               ExcDimensionMismatch(unit_points_vector[i].size(),
+                                    cell->n_faces()));
+
+        cell_index_to_mapping_info_cell_id.insert(
+          {cell->active_cell_index(), i});
+
+        unit_points[i].resize(cell->n_faces());
+        mapping_data[i].resize(cell->n_faces());
+        for (const auto &f : cell->face_indices())
+          {
+            unit_points[i][f] =
+              std::vector<Point<dim>>(unit_points_vector[i][f].begin(),
+                                      unit_points_vector[i][f].end());
+
+            compute_mapping_data_for_generic_points(cell,
+                                                    unit_points[i][f],
+                                                    mapping_data[i][f]);
+          }
+      }
   }
 
 
 
   template <int dim, int spacedim>
   const std::vector<Point<dim>> &
-  MappingInfo<dim, spacedim>::get_unit_points() const
+  MappingInfo<dim, spacedim>::get_unit_points(
+    const unsigned int active_cell_index,
+    const unsigned int face_number) const
   {
-    return unit_points;
+    if (active_cell_index == numbers::invalid_unsigned_int &&
+        face_number == numbers::invalid_unsigned_int)
+      return unit_points[0][0];
+    else if (face_number == numbers::invalid_unsigned_int)
+      return unit_points
+        [cell_index_to_mapping_info_cell_id.find(active_cell_index)->second][0];
+    else if (active_cell_index != numbers::invalid_unsigned_int)
+      return unit_points[cell_index_to_mapping_info_cell_id
+                           .find(active_cell_index)
+                           ->second][face_number];
+    else
+      AssertThrow(
+        false,
+        ExcMessage(
+          "active_cell_index has to be specified if face number is specified"));
   }
 
 
@@ -178,9 +314,25 @@ namespace NonMatching
   template <int dim, int spacedim>
   const dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
                                                                      spacedim> &
-  MappingInfo<dim, spacedim>::get_mapping_data() const
+  MappingInfo<dim, spacedim>::get_mapping_data(
+    const unsigned int active_cell_index,
+    const unsigned int face_number) const
   {
-    return mapping_data;
+    if (active_cell_index == numbers::invalid_unsigned_int &&
+        face_number == numbers::invalid_unsigned_int)
+      return mapping_data[0][0];
+    else if (face_number == numbers::invalid_unsigned_int)
+      return mapping_data
+        [cell_index_to_mapping_info_cell_id.find(active_cell_index)->second][0];
+    else if (active_cell_index != numbers::invalid_unsigned_int)
+      return mapping_data[cell_index_to_mapping_info_cell_id
+                            .find(active_cell_index)
+                            ->second][face_number];
+    else
+      AssertThrow(
+        false,
+        ExcMessage(
+          "active_cell_index has to be specified if face number is specified"));
   }
 
 
@@ -207,7 +359,8 @@ namespace NonMatching
   void
   MappingInfo<dim, spacedim>::compute_mapping_data_for_generic_points(
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-    const ArrayView<const Point<dim>> &                         unit_points)
+    const ArrayView<const Point<dim>>                          &unit_points,
+    MappingData                                                &mapping_data)
   {
     if (const MappingQ<dim, spacedim> *mapping_q =
           dynamic_cast<const MappingQ<dim, spacedim> *>(&(*mapping)))
