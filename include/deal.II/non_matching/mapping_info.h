@@ -45,6 +45,10 @@ namespace NonMatching
   class MappingInfo : public Subscriptor
   {
   public:
+    using MappingData =
+      dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
+                                                                   spacedim>;
+
     /**
      * Constructor.
      *
@@ -70,8 +74,9 @@ namespace NonMatching
      */
     void
     reinit_cells(
+      const unsigned int n_active_cells,
       const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
-                                                 &cell_iterator_vector,
+        &                                         cell_iterator_vector,
       const std::vector<std::vector<Point<dim>>> &unit_points_vector);
 
     /**
@@ -80,6 +85,7 @@ namespace NonMatching
      */
     void
     reinit_faces(
+      const unsigned int n_active_cells,
       const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
         cell_iterator_vector,
       const std::vector<std::vector<std::vector<Point<dim>>>>
@@ -96,11 +102,9 @@ namespace NonMatching
      * Getter function for computed mapping data. This function accesses
      * internal data and is therefore not a stable interface.
      */
-    const dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
-                                                                       spacedim>
-      &
-      get_mapping_data(const unsigned int active_cell_index,
-                       const unsigned int face_number) const;
+    const MappingData &
+    get_mapping_data(const unsigned int active_cell_index,
+                     const unsigned int face_number) const;
 
     /**
      * Getter function for underlying mapping.
@@ -114,11 +118,16 @@ namespace NonMatching
     UpdateFlags
     get_update_flags() const;
 
-    using MappingData =
-      dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
-                                                                   spacedim>;
-    using FaceData = std::vector<MappingData>;
-    using CellData = std::vector<FaceData>;
+  private:
+    enum class State
+    {
+      none,
+      single_cell,
+      cell_vector,
+      faces_on_cells_in_vector
+    };
+
+    State state;
 
     /**
      * Compute the mapping related data for the given @p mapping,
@@ -128,16 +137,14 @@ namespace NonMatching
     void
     compute_mapping_data_for_generic_points(
       const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-      const ArrayView<const Point<dim>>                          &unit_points,
-      MappingData                                                &mapping_data);
+      const ArrayView<const Point<dim>> &                         unit_points,
+      MappingData &                                               mapping_data);
 
     /**
      * The reference points specified at reinit().
      */
     using UnitPoints = std::vector<Point<dim>>;
-    using FaceVector = std::vector<UnitPoints>;
-    using CellVector = std::vector<FaceVector>;
-    CellVector unit_points;
+    std::vector<UnitPoints> unit_points;
 
     /**
      * A pointer to the underlying mapping.
@@ -158,13 +165,15 @@ namespace NonMatching
      * The internal data container for mapping information. The implementation
      * is subject to future changes.
      */
-    CellData mapping_data;
+    std::vector<MappingData> mapping_data;
+
+    std::vector<unsigned int> cell_index_offset;
 
     /**
      * A map from the active_cell_index of a CellAccessor to the index where the
      * mapping is stores in the CellData vector.
      */
-    std::map<unsigned int, unsigned int> cell_index_to_mapping_info_cell_id;
+    std::vector<unsigned int> cell_index_to_mapping_info_cell_id;
   };
 
   // ----------------------- template functions ----------------------
@@ -194,26 +203,27 @@ namespace NonMatching
   void
   MappingInfo<dim, spacedim>::reinit(
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-    const ArrayView<const Point<dim>>                          &unit_points_in)
+    const ArrayView<const Point<dim>> &                         unit_points_in)
   {
-    FaceVector dummy(1);
-    unit_points.resize(1, dummy);
-    unit_points[0][0] =
+    unit_points.resize(1);
+    unit_points[0] =
       std::vector<Point<dim>>(unit_points_in.begin(), unit_points_in.end());
 
-    FaceData dummy_2(1);
-    mapping_data.resize(1, dummy_2);
+    mapping_data.resize(1);
     compute_mapping_data_for_generic_points(cell,
                                             unit_points_in,
-                                            mapping_data[0][0]);
+                                            mapping_data[0]);
+
+    state = State::single_cell;
   }
 
 
   template <int dim, int spacedim>
   void
   MappingInfo<dim, spacedim>::reinit_cells(
+    const unsigned int n_active_cells,
     const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
-                                               &cell_vector,
+      &                                         cell_vector,
     const std::vector<std::vector<Point<dim>>> &unit_points_vector)
   {
     Assert(cell_vector.size() == unit_points_vector.size(),
@@ -221,30 +231,32 @@ namespace NonMatching
 
     const unsigned int n_cells = cell_vector.size();
 
-    FaceVector dummy(1);
-    unit_points.resize(n_cells, dummy);
-    FaceData dummy_2(1);
-    mapping_data.resize(n_cells, dummy_2);
+    unit_points.resize(n_cells);
+    mapping_data.resize(n_cells);
 
+    cell_index_to_mapping_info_cell_id.resize(n_active_cells,
+                                              numbers::invalid_unsigned_int);
     for (unsigned int i = 0; i < n_cells; ++i)
       {
-        unit_points[i][0] =
-          std::vector<Point<dim>>(unit_points_vector[i].begin(),
-                                  unit_points_vector[i].end());
+        unit_points[i] = std::vector<Point<dim>>(unit_points_vector[i].begin(),
+                                                 unit_points_vector[i].end());
 
         compute_mapping_data_for_generic_points(cell_vector[i],
-                                                unit_points[i][0],
-                                                mapping_data[i][0]);
+                                                unit_points[i],
+                                                mapping_data[i]);
 
-        cell_index_to_mapping_info_cell_id.insert(
-          {cell_vector[i]->active_cell_index(), i});
+        // compress indices
+        cell_index_to_mapping_info_cell_id[cell_vector[i]
+                                             ->active_cell_index()] = i;
       }
+    state = State::cell_vector;
   }
 
 
   template <int dim, int spacedim>
   void
   MappingInfo<dim, spacedim>::reinit_faces(
+    const unsigned int n_active_cells,
     const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
       cell_iterator_vector,
     const std::vector<std::vector<std::vector<Point<dim>>>> &unit_points_vector)
@@ -255,9 +267,29 @@ namespace NonMatching
 
     const unsigned int n_cells = cell_iterator_vector.size();
 
-    unit_points.resize(n_cells);
-    mapping_data.resize(n_cells);
+    // compress indices
+    cell_index_to_mapping_info_cell_id.resize(n_active_cells,
+                                              numbers::invalid_unsigned_int);
+    for (unsigned int i = 0; i < n_cells; ++i)
+      {
+        const auto &cell = cell_iterator_vector[i];
+        cell_index_to_mapping_info_cell_id[cell->active_cell_index()] = i;
+      }
 
+    // fill cell index offset vector
+    cell_index_offset.resize(n_cells);
+    unsigned int n_faces = 0;
+    for (const auto &cell : cell_iterator_vector)
+      {
+        cell_index_offset
+          [cell_index_to_mapping_info_cell_id[cell->active_cell_index()]] =
+            n_faces;
+        n_faces += cell->n_faces();
+      }
+
+    // fill unit points and mapping data for every face of all cells
+    unit_points.resize(n_faces);
+    mapping_data.resize(n_faces);
     for (unsigned int i = 0; i < n_cells; ++i)
       {
         const auto &cell = cell_iterator_vector[i];
@@ -266,22 +298,22 @@ namespace NonMatching
                ExcDimensionMismatch(unit_points_vector[i].size(),
                                     cell->n_faces()));
 
-        cell_index_to_mapping_info_cell_id.insert(
-          {cell->active_cell_index(), i});
-
-        unit_points[i].resize(cell->n_faces());
-        mapping_data[i].resize(cell->n_faces());
         for (const auto &f : cell->face_indices())
           {
-            unit_points[i][f] =
+            const unsigned int current_face_index = cell_index_offset[i] + f;
+
+            unit_points[current_face_index] =
               std::vector<Point<dim>>(unit_points_vector[i][f].begin(),
                                       unit_points_vector[i][f].end());
 
-            compute_mapping_data_for_generic_points(cell,
-                                                    unit_points[i][f],
-                                                    mapping_data[i][f]);
+            compute_mapping_data_for_generic_points(
+              cell,
+              unit_points[current_face_index],
+              mapping_data[current_face_index]);
           }
       }
+
+    state = State::faces_on_cells_in_vector;
   }
 
 
@@ -294,14 +326,42 @@ namespace NonMatching
   {
     if (active_cell_index == numbers::invalid_unsigned_int &&
         face_number == numbers::invalid_unsigned_int)
-      return unit_points[0][0];
+      {
+        Assert(state == State::single_cell,
+               ExcMessage(
+                 "This mapping info is not reinitialized for a single cell"));
+        return unit_points[0];
+      }
     else if (face_number == numbers::invalid_unsigned_int)
-      return unit_points
-        [cell_index_to_mapping_info_cell_id.find(active_cell_index)->second][0];
+      {
+        Assert(state == State::cell_vector,
+               ExcMessage(
+                 "This mapping info is not reinitialized for a cell vector"));
+        Assert(cell_index_to_mapping_info_cell_id[active_cell_index] !=
+                 numbers::invalid_unsigned_int,
+               ExcMessage(
+                 "Mapping info object was not initialized for this active cell "
+                 "index"));
+        return unit_points
+          [cell_index_to_mapping_info_cell_id[active_cell_index]];
+      }
     else if (active_cell_index != numbers::invalid_unsigned_int)
-      return unit_points[cell_index_to_mapping_info_cell_id
-                           .find(active_cell_index)
-                           ->second][face_number];
+      {
+        Assert(
+          state == State::faces_on_cells_in_vector,
+          ExcMessage(
+            "This mapping info is not reinitialized for faces on cells in a "
+            "vector"));
+        Assert(
+          cell_index_to_mapping_info_cell_id[active_cell_index] !=
+            numbers::invalid_unsigned_int,
+          ExcMessage(
+            "Mapping info object was not initialized for this active cell index"
+            " and corresponding face numbers"));
+        return unit_points[cell_index_offset[cell_index_to_mapping_info_cell_id
+                                               [active_cell_index]] +
+                           face_number];
+      }
     else
       AssertThrow(
         false,
@@ -312,22 +372,49 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
-  const dealii::internal::FEValuesImplementation::MappingRelatedData<dim,
-                                                                     spacedim> &
+  const typename MappingInfo<dim, spacedim>::MappingData &
   MappingInfo<dim, spacedim>::get_mapping_data(
     const unsigned int active_cell_index,
     const unsigned int face_number) const
   {
     if (active_cell_index == numbers::invalid_unsigned_int &&
         face_number == numbers::invalid_unsigned_int)
-      return mapping_data[0][0];
+      {
+        Assert(state == State::single_cell,
+               ExcMessage(
+                 "This mapping info is not reinitialized for a single cell"));
+        return mapping_data[0];
+      }
     else if (face_number == numbers::invalid_unsigned_int)
-      return mapping_data
-        [cell_index_to_mapping_info_cell_id.find(active_cell_index)->second][0];
+      {
+        Assert(state == State::cell_vector,
+               ExcMessage(
+                 "This mapping info is not reinitialized for a cell vector"));
+        Assert(cell_index_to_mapping_info_cell_id[active_cell_index] !=
+                 numbers::invalid_unsigned_int,
+               ExcMessage(
+                 "Mapping info object was not initialized for this active cell "
+                 "index"));
+        return mapping_data
+          [cell_index_to_mapping_info_cell_id[active_cell_index]];
+      }
     else if (active_cell_index != numbers::invalid_unsigned_int)
-      return mapping_data[cell_index_to_mapping_info_cell_id
-                            .find(active_cell_index)
-                            ->second][face_number];
+      {
+        Assert(
+          state == State::faces_on_cells_in_vector,
+          ExcMessage(
+            "This mapping info is not reinitialized for faces on cells in a "
+            "vector"));
+        Assert(
+          cell_index_to_mapping_info_cell_id[active_cell_index] !=
+            numbers::invalid_unsigned_int,
+          ExcMessage(
+            "Mapping info object was not initialized for this active cell index"
+            " and corresponding face numbers"));
+        return mapping_data[cell_index_offset[cell_index_to_mapping_info_cell_id
+                                                [active_cell_index]] +
+                            face_number];
+      }
     else
       AssertThrow(
         false,
@@ -359,8 +446,8 @@ namespace NonMatching
   void
   MappingInfo<dim, spacedim>::compute_mapping_data_for_generic_points(
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-    const ArrayView<const Point<dim>>                          &unit_points,
-    MappingData                                                &mapping_data)
+    const ArrayView<const Point<dim>> &                         unit_points,
+    MappingData &                                               mapping_data)
   {
     if (const MappingQ<dim, spacedim> *mapping_q =
           dynamic_cast<const MappingQ<dim, spacedim> *>(&(*mapping)))

@@ -908,7 +908,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 template <int n_components, int dim, int spacedim, typename Number>
 void
 FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
-  const ArrayView<const Number>          &solution_values,
+  const ArrayView<const Number> &         solution_values,
   const EvaluationFlags::EvaluationFlags &evaluation_flag)
 {
   const bool precomputed_mapping = mapping_info_on_the_fly.get() == nullptr;
