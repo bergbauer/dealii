@@ -475,14 +475,14 @@ public:
    * the cell in the MappingInfo object.
    */
   void
-  reinit(const unsigned int active_cell_index);
+  reinit(const unsigned int cell_index);
 
   /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
    * the face in the MappingInfo object.
    */
   void
-  reinit(const unsigned int active_cell_index, const unsigned int face_number);
+  reinit(const unsigned int cell_index, const unsigned int face_number);
 
   /**
    * This function interpolates the finite element solution, represented by
@@ -885,9 +885,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 template <int n_components, int dim, int spacedim, typename Number>
 void
 FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
-  const unsigned int active_cell_index)
+  const unsigned int cell_index)
 {
-  current_cell_index  = active_cell_index;
+  current_cell_index  = cell_index;
   current_face_number = numbers::invalid_unsigned_int;
 }
 
@@ -896,10 +896,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 template <int n_components, int dim, int spacedim, typename Number>
 void
 FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
-  const unsigned int active_cell_index,
+  const unsigned int cell_index,
   const unsigned int face_number)
 {
-  current_cell_index  = active_cell_index;
+  current_cell_index  = cell_index;
   current_face_number = face_number;
 }
 
@@ -987,12 +987,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
                     Number>::set_gradient(val_and_grad.second,
                                           j,
                                           unit_gradients[i + j]);
+                  const auto &mapping_data =
+                    mapping_info->get_mapping_data(current_cell_index,
+                                                   current_face_number);
                   gradients[i + j] = apply_transformation(
-                    mapping_info
-                      ->get_mapping_data(current_cell_index,
-                                         current_face_number)
-                      .inverse_jacobians[i + j]
-                      .transpose(),
+                    mapping_data.inverse_jacobians[i + j].transpose(),
                     unit_gradients[i + j]);
                 }
             }
@@ -1130,11 +1129,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate(
           if (integration_flags & EvaluationFlags::gradients)
             for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
               {
+                const auto &mapping_data =
+                  mapping_info->get_mapping_data(current_cell_index,
+                                                 current_face_number);
                 gradients[i + j] =
-                  apply_transformation(mapping_info
-                                         ->get_mapping_data(current_cell_index,
-                                                            current_face_number)
-                                         .inverse_jacobians[i + j],
+                  apply_transformation(mapping_data.inverse_jacobians[i + j],
                                        gradients[i + j]);
                 internal::FEPointEvaluation::
                   EvaluatorTypeTraits<dim, n_components, Number>::get_gradient(
@@ -1297,12 +1296,10 @@ inline DerivativeForm<1, dim, spacedim>
 FEPointEvaluation<n_components, dim, spacedim, Number>::jacobian(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index,
-                   mapping_info
-                     ->get_mapping_data(current_cell_index, current_face_number)
-                     .jacobians.size());
-  return mapping_info->get_mapping_data(current_cell_index, current_face_number)
-    .jacobians[point_index];
+  const auto &mapping_data =
+    mapping_info->get_mapping_data(current_cell_index, current_face_number);
+  AssertIndexRange(point_index, mapping_data.jacobians.size());
+  return mapping_data.jacobians[point_index];
 }
 
 
@@ -1312,12 +1309,10 @@ inline DerivativeForm<1, spacedim, dim>
 FEPointEvaluation<n_components, dim, spacedim, Number>::inverse_jacobian(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index,
-                   mapping_info
-                     ->get_mapping_data(current_cell_index, current_face_number)
-                     .inverse_jacobians.size());
-  return mapping_info->get_mapping_data(current_cell_index, current_face_number)
-    .inverse_jacobians[point_index];
+  const auto &mapping_data =
+    mapping_info->get_mapping_data(current_cell_index, current_face_number);
+  AssertIndexRange(point_index, mapping_data.inverse_jacobians.size());
+  return mapping_data.inverse_jacobians[point_index];
 }
 
 
@@ -1327,12 +1322,10 @@ inline Point<spacedim>
 FEPointEvaluation<n_components, dim, spacedim, Number>::real_point(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index,
-                   mapping_info
-                     ->get_mapping_data(current_cell_index, current_face_number)
-                     .quadrature_points.size());
-  return mapping_info->get_mapping_data(current_cell_index, current_face_number)
-    .quadrature_points[point_index];
+  const auto &mapping_data =
+    mapping_info->get_mapping_data(current_cell_index, current_face_number);
+  AssertIndexRange(point_index, mapping_data.quadrature_points.size());
+  return mapping_data.quadrature_points[point_index];
 }
 
 

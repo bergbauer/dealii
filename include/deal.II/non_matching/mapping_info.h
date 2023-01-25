@@ -95,7 +95,7 @@ namespace NonMatching
      * Getter function for current unit points.
      */
     const std::vector<Point<dim>> &
-    get_unit_points(const unsigned int active_cell_index,
+    get_unit_points(const unsigned int cell_index,
                     const unsigned int face_number) const;
 
     /**
@@ -103,7 +103,7 @@ namespace NonMatching
      * internal data and is therefore not a stable interface.
      */
     const MappingData &
-    get_mapping_data(const unsigned int active_cell_index,
+    get_mapping_data(const unsigned int cell_index,
                      const unsigned int face_number) const;
 
     /**
@@ -170,7 +170,7 @@ namespace NonMatching
     std::vector<unsigned int> cell_index_offset;
 
     /**
-     * A map from the active_cell_index of a CellAccessor to the index where the
+     * A map from the cell_index of a CellAccessor to the index where the
      * mapping is stores in the CellData vector.
      */
     std::vector<unsigned int> cell_index_to_mapping_info_cell_id;
@@ -246,8 +246,7 @@ namespace NonMatching
                                                 mapping_data[i]);
 
         // compress indices
-        cell_index_to_mapping_info_cell_id[cell_vector[i]
-                                             ->active_cell_index()] = i;
+        cell_index_to_mapping_info_cell_id[cell_vector[i]->index()] = i;
       }
     state = State::cell_vector;
   }
@@ -273,7 +272,7 @@ namespace NonMatching
     for (unsigned int i = 0; i < n_cells; ++i)
       {
         const auto &cell = cell_iterator_vector[i];
-        cell_index_to_mapping_info_cell_id[cell->active_cell_index()] = i;
+        cell_index_to_mapping_info_cell_id[cell->index()] = i;
       }
 
     // fill cell index offset vector
@@ -281,9 +280,8 @@ namespace NonMatching
     unsigned int n_faces = 0;
     for (const auto &cell : cell_iterator_vector)
       {
-        cell_index_offset
-          [cell_index_to_mapping_info_cell_id[cell->active_cell_index()]] =
-            n_faces;
+        cell_index_offset[cell_index_to_mapping_info_cell_id[cell->index()]] =
+          n_faces;
         n_faces += cell->n_faces();
       }
 
@@ -321,10 +319,10 @@ namespace NonMatching
   template <int dim, int spacedim>
   const std::vector<Point<dim>> &
   MappingInfo<dim, spacedim>::get_unit_points(
-    const unsigned int active_cell_index,
+    const unsigned int cell_index,
     const unsigned int face_number) const
   {
-    if (active_cell_index == numbers::invalid_unsigned_int &&
+    if (cell_index == numbers::invalid_unsigned_int &&
         face_number == numbers::invalid_unsigned_int)
       {
         Assert(state == State::single_cell,
@@ -337,15 +335,14 @@ namespace NonMatching
         Assert(state == State::cell_vector,
                ExcMessage(
                  "This mapping info is not reinitialized for a cell vector"));
-        Assert(cell_index_to_mapping_info_cell_id[active_cell_index] !=
+        Assert(cell_index_to_mapping_info_cell_id[cell_index] !=
                  numbers::invalid_unsigned_int,
                ExcMessage(
                  "Mapping info object was not initialized for this active cell "
                  "index"));
-        return unit_points
-          [cell_index_to_mapping_info_cell_id[active_cell_index]];
+        return unit_points[cell_index_to_mapping_info_cell_id[cell_index]];
       }
-    else if (active_cell_index != numbers::invalid_unsigned_int)
+    else if (cell_index != numbers::invalid_unsigned_int)
       {
         Assert(
           state == State::faces_on_cells_in_vector,
@@ -353,20 +350,20 @@ namespace NonMatching
             "This mapping info is not reinitialized for faces on cells in a "
             "vector"));
         Assert(
-          cell_index_to_mapping_info_cell_id[active_cell_index] !=
+          cell_index_to_mapping_info_cell_id[cell_index] !=
             numbers::invalid_unsigned_int,
           ExcMessage(
             "Mapping info object was not initialized for this active cell index"
             " and corresponding face numbers"));
-        return unit_points[cell_index_offset[cell_index_to_mapping_info_cell_id
-                                               [active_cell_index]] +
-                           face_number];
+        return unit_points
+          [cell_index_offset[cell_index_to_mapping_info_cell_id[cell_index]] +
+           face_number];
       }
     else
       AssertThrow(
         false,
         ExcMessage(
-          "active_cell_index has to be specified if face number is specified"));
+          "cell_index has to be specified if face number is specified"));
   }
 
 
@@ -374,10 +371,10 @@ namespace NonMatching
   template <int dim, int spacedim>
   const typename MappingInfo<dim, spacedim>::MappingData &
   MappingInfo<dim, spacedim>::get_mapping_data(
-    const unsigned int active_cell_index,
+    const unsigned int cell_index,
     const unsigned int face_number) const
   {
-    if (active_cell_index == numbers::invalid_unsigned_int &&
+    if (cell_index == numbers::invalid_unsigned_int &&
         face_number == numbers::invalid_unsigned_int)
       {
         Assert(state == State::single_cell,
@@ -390,15 +387,14 @@ namespace NonMatching
         Assert(state == State::cell_vector,
                ExcMessage(
                  "This mapping info is not reinitialized for a cell vector"));
-        Assert(cell_index_to_mapping_info_cell_id[active_cell_index] !=
+        Assert(cell_index_to_mapping_info_cell_id[cell_index] !=
                  numbers::invalid_unsigned_int,
                ExcMessage(
                  "Mapping info object was not initialized for this active cell "
                  "index"));
-        return mapping_data
-          [cell_index_to_mapping_info_cell_id[active_cell_index]];
+        return mapping_data[cell_index_to_mapping_info_cell_id[cell_index]];
       }
-    else if (active_cell_index != numbers::invalid_unsigned_int)
+    else if (cell_index != numbers::invalid_unsigned_int)
       {
         Assert(
           state == State::faces_on_cells_in_vector,
@@ -406,20 +402,20 @@ namespace NonMatching
             "This mapping info is not reinitialized for faces on cells in a "
             "vector"));
         Assert(
-          cell_index_to_mapping_info_cell_id[active_cell_index] !=
+          cell_index_to_mapping_info_cell_id[cell_index] !=
             numbers::invalid_unsigned_int,
           ExcMessage(
             "Mapping info object was not initialized for this active cell index"
             " and corresponding face numbers"));
-        return mapping_data[cell_index_offset[cell_index_to_mapping_info_cell_id
-                                                [active_cell_index]] +
-                            face_number];
+        return mapping_data
+          [cell_index_offset[cell_index_to_mapping_info_cell_id[cell_index]] +
+           face_number];
       }
     else
       AssertThrow(
         false,
         ExcMessage(
-          "active_cell_index has to be specified if face number is specified"));
+          "cell_index has to be specified if face number is specified"));
   }
 
 
