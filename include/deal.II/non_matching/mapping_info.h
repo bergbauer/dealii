@@ -72,11 +72,11 @@ namespace NonMatching
      * Reinitialize the mapping information for the incoming vector of cells and
      * corresponding vector of unit points.
      */
+    template <typename Iterator>
     void
     reinit_cells(
-      const unsigned int n_active_cells,
-      const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
-        &                                         cell_iterator_vector,
+      const unsigned int                          n_unfiltered_cells,
+      const IteratorRange<Iterator> &             cell_iterator_range,
       const std::vector<std::vector<Point<dim>>> &unit_points_vector);
 
     template <typename Iterator>
@@ -89,13 +89,12 @@ namespace NonMatching
      * Reinitialize the mapping information for all faces of the incoming vector
      * of cells and corresponding vector of unit points.
      */
+    template <typename Iterator>
     void
-    reinit_faces(
-      const unsigned int n_active_cells,
-      const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
-        cell_iterator_vector,
-      const std::vector<std::vector<std::vector<Point<dim>>>>
-        &unit_points_vector);
+    reinit_faces(const unsigned int             n_unfiltered_cells,
+                 const IteratorRange<Iterator> &cell_iterator_range,
+                 const std::vector<std::vector<std::vector<Point<dim>>>>
+                   &unit_points_vector);
 
     template <typename Iterator>
     void
@@ -233,35 +232,39 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
+  template <typename Iterator>
   void
   MappingInfo<dim, spacedim>::reinit_cells(
-    const unsigned int n_active_cells,
-    const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
-      &                                         cell_vector,
+    const unsigned int                          n_unfiltered_cells,
+    const IteratorRange<Iterator> &             cell_iterator_range,
     const std::vector<std::vector<Point<dim>>> &unit_points_vector)
   {
-    Assert(cell_vector.size() == unit_points_vector.size(),
-           ExcDimensionMismatch(cell_vector.size(), unit_points_vector.size()));
+    const unsigned int n_cells =
+      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
 
-    const unsigned int n_cells = cell_vector.size();
+    Assert(n_cells == unit_points_vector.size(),
+           ExcDimensionMismatch(n_cells, unit_points_vector.size()));
 
     unit_points.resize(n_cells);
     mapping_data.resize(n_cells);
 
-    cell_index_to_mapping_info_cell_id.resize(n_active_cells,
+    cell_index_to_mapping_info_cell_id.resize(n_unfiltered_cells,
                                               numbers::invalid_unsigned_int);
-    for (unsigned int i = 0; i < n_cells; ++i)
+    unsigned int cell_index = 0;
+    for (const auto &cell : cell_iterator_range)
       {
-        unit_points[i] = std::vector<Point<dim>>(unit_points_vector[i].begin(),
-                                                 unit_points_vector[i].end());
+        unit_points[cell_index] = unit_points_vector[cell_index];
 
-        compute_mapping_data_for_generic_points(cell_vector[i],
-                                                unit_points[i],
-                                                mapping_data[i]);
+        compute_mapping_data_for_generic_points(cell,
+                                                unit_points[cell_index],
+                                                mapping_data[cell_index]);
 
         // compress indices
-        cell_index_to_mapping_info_cell_id[cell_vector[i]->index()] = i;
+        cell_index_to_mapping_info_cell_id[cell->index()] = cell_index;
+
+        ++cell_index;
       }
+
     state = State::cell_vector;
   }
 
@@ -297,32 +300,33 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
+  template <typename Iterator>
   void
   MappingInfo<dim, spacedim>::reinit_faces(
-    const unsigned int n_active_cells,
-    const std::vector<typename Triangulation<dim, spacedim>::cell_iterator>
-      cell_iterator_vector,
+    const unsigned int             n_unfiltered_cells,
+    const IteratorRange<Iterator> &cell_iterator_range,
     const std::vector<std::vector<std::vector<Point<dim>>>> &unit_points_vector)
   {
-    Assert(cell_iterator_vector.size() == unit_points_vector.size(),
-           ExcDimensionMismatch(cell_iterator_vector.size(),
-                                unit_points_vector.size()));
+    const unsigned int n_cells =
+      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
 
-    const unsigned int n_cells = cell_iterator_vector.size();
+    Assert(n_cells == unit_points_vector.size(),
+           ExcDimensionMismatch(n_cells, unit_points_vector.size()));
 
     // compress indices
-    cell_index_to_mapping_info_cell_id.resize(n_active_cells,
+    cell_index_to_mapping_info_cell_id.resize(n_unfiltered_cells,
                                               numbers::invalid_unsigned_int);
-    for (unsigned int i = 0; i < n_cells; ++i)
+    unsigned int cell_index = 0;
+    for (const auto &cell : cell_iterator_range)
       {
-        const auto &cell = cell_iterator_vector[i];
-        cell_index_to_mapping_info_cell_id[cell->index()] = i;
+        cell_index_to_mapping_info_cell_id[cell->index()] = cell_index;
+        ++cell_index;
       }
 
     // fill cell index offset vector
     cell_index_offset.resize(n_cells);
     unsigned int n_faces = 0;
-    for (const auto &cell : cell_iterator_vector)
+    for (const auto &cell : cell_iterator_range)
       {
         cell_index_offset[cell_index_to_mapping_info_cell_id[cell->index()]] =
           n_faces;
@@ -332,27 +336,28 @@ namespace NonMatching
     // fill unit points and mapping data for every face of all cells
     unit_points.resize(n_faces);
     mapping_data.resize(n_faces);
-    for (unsigned int i = 0; i < n_cells; ++i)
+    cell_index = 0;
+    for (const auto &cell : cell_iterator_range)
       {
-        const auto &cell = cell_iterator_vector[i];
-
-        Assert(unit_points_vector[i].size() == cell->n_faces(),
-               ExcDimensionMismatch(unit_points_vector[i].size(),
+        Assert(unit_points_vector[cell_index].size() == cell->n_faces(),
+               ExcDimensionMismatch(unit_points_vector[cell_index].size(),
                                     cell->n_faces()));
 
         for (const auto &f : cell->face_indices())
           {
-            const unsigned int current_face_index = cell_index_offset[i] + f;
+            const unsigned int current_face_index =
+              cell_index_offset[cell_index] + f;
 
             unit_points[current_face_index] =
-              std::vector<Point<dim>>(unit_points_vector[i][f].begin(),
-                                      unit_points_vector[i][f].end());
+              std::vector<Point<dim>>(unit_points_vector[cell_index][f].begin(),
+                                      unit_points_vector[cell_index][f].end());
 
             compute_mapping_data_for_generic_points(
               cell,
               unit_points[current_face_index],
               mapping_data[current_face_index]);
           }
+        ++cell_index;
       }
 
     state = State::faces_on_cells_in_vector;
