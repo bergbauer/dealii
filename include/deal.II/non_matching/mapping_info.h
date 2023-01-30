@@ -105,7 +105,7 @@ namespace NonMatching
     /**
      * Getter function for current unit points.
      */
-    const std::vector<Point<dim>> &
+    const std::vector<Point<dim>>
     get_unit_points(
       const unsigned int cell_index  = numbers::invalid_unsigned_int,
       const unsigned int face_number = numbers::invalid_unsigned_int) const;
@@ -156,8 +156,9 @@ namespace NonMatching
     /**
      * The reference points specified at reinit().
      */
-    using UnitPoints = std::vector<Point<dim>>;
-    std::vector<UnitPoints> unit_points;
+    std::vector<Point<dim>> unit_points;
+
+    std::vector<unsigned int> unit_points_index;
 
     /**
      * A pointer to the underlying mapping.
@@ -218,8 +219,7 @@ namespace NonMatching
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
     const ArrayView<const Point<dim>> &                         unit_points_in)
   {
-    unit_points.resize(1);
-    unit_points[0] =
+    unit_points =
       std::vector<Point<dim>>(unit_points_in.begin(), unit_points_in.end());
 
     mapping_data.resize(1);
@@ -245,18 +245,36 @@ namespace NonMatching
     Assert(n_cells == unit_points_vector.size(),
            ExcDimensionMismatch(n_cells, unit_points_vector.size()));
 
-    unit_points.resize(n_cells);
+    // fill unit points index offset vector
+    unit_points_index.resize(n_cells + 1);
+    unsigned int cell_index    = 0;
+    unsigned int n_unit_points = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        unit_points_index[cell_index] = n_unit_points;
+        n_unit_points += unit_points_vector[cell_index].size();
+
+        ++cell_index;
+      }
+    unit_points_index[n_cells] = n_unit_points;
+
+    unit_points.resize(n_unit_points);
     mapping_data.resize(n_cells);
 
     cell_index_to_mapping_info_cell_id.resize(n_unfiltered_cells,
                                               numbers::invalid_unsigned_int);
-    unsigned int cell_index = 0;
+    cell_index = 0;
     for (const auto &cell : cell_iterator_range)
       {
-        unit_points[cell_index] = unit_points_vector[cell_index];
+        auto it = unit_points.begin() + unit_points_index[cell_index];
+        for (const auto &unit_point : unit_points_vector[cell_index])
+          {
+            *it = unit_point;
+            ++it;
+          }
 
         compute_mapping_data_for_generic_points(cell,
-                                                unit_points[cell_index],
+                                                unit_points_vector[cell_index],
                                                 mapping_data[cell_index]);
 
         // compress indices
@@ -333,8 +351,27 @@ namespace NonMatching
         n_faces += cell->n_faces();
       }
 
+    // fill unit points index offset vector
+    unit_points_index.resize(n_faces + 1);
+    cell_index                 = 0;
+    unsigned int n_unit_points = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        for (const auto &f : cell->face_indices())
+          {
+            const unsigned int current_face_index =
+              cell_index_offset[cell_index] + f;
+
+            unit_points_index[current_face_index] = n_unit_points;
+            n_unit_points += unit_points_vector[cell_index][f].size();
+          }
+
+        ++cell_index;
+      }
+    unit_points_index[n_faces] = n_unit_points;
+
     // fill unit points and mapping data for every face of all cells
-    unit_points.resize(n_faces);
+    unit_points.resize(n_unit_points);
     mapping_data.resize(n_faces);
     cell_index = 0;
     for (const auto &cell : cell_iterator_range)
@@ -348,13 +385,17 @@ namespace NonMatching
             const unsigned int current_face_index =
               cell_index_offset[cell_index] + f;
 
-            unit_points[current_face_index] =
-              std::vector<Point<dim>>(unit_points_vector[cell_index][f].begin(),
-                                      unit_points_vector[cell_index][f].end());
+            auto it =
+              unit_points.begin() + unit_points_index[current_face_index];
+            for (const auto &unit_point : unit_points_vector[cell_index][f])
+              {
+                *it = unit_point;
+                ++it;
+              }
 
             compute_mapping_data_for_generic_points(
               cell,
-              unit_points[current_face_index],
+              unit_points_vector[cell_index][f],
               mapping_data[current_face_index]);
           }
         ++cell_index;
@@ -420,7 +461,7 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
-  const std::vector<Point<dim>> &
+  const std::vector<Point<dim>>
   MappingInfo<dim, spacedim>::get_unit_points(
     const unsigned int cell_index,
     const unsigned int face_number) const
@@ -431,7 +472,7 @@ namespace NonMatching
         Assert(state == State::single_cell,
                ExcMessage(
                  "This mapping info is not reinitialized for a single cell"));
-        return unit_points[0];
+        return unit_points;
       }
     else if (face_number == numbers::invalid_unsigned_int)
       {
@@ -443,7 +484,14 @@ namespace NonMatching
                ExcMessage(
                  "Mapping info object was not initialized for this active cell "
                  "index"));
-        return unit_points[cell_index_to_mapping_info_cell_id[cell_index]];
+        auto it_begin =
+          unit_points.begin() +
+          unit_points_index[cell_index_to_mapping_info_cell_id[cell_index]];
+        auto it_end =
+          unit_points.begin() +
+          unit_points_index[cell_index_to_mapping_info_cell_id[cell_index] + 1];
+        std::vector<Point<dim>> cell_unit_points(it_begin, it_end);
+        return cell_unit_points;
       }
     else if (cell_index != numbers::invalid_unsigned_int)
       {
@@ -458,9 +506,15 @@ namespace NonMatching
           ExcMessage(
             "Mapping info object was not initialized for this active cell index"
             " and corresponding face numbers"));
-        return unit_points
-          [cell_index_offset[cell_index_to_mapping_info_cell_id[cell_index]] +
-           face_number];
+        const unsigned int current_face_index =
+          cell_index_offset[cell_index_to_mapping_info_cell_id[cell_index]] +
+          face_number;
+        auto it_begin =
+          unit_points.begin() + unit_points_index[current_face_index];
+        auto it_end =
+          unit_points.begin() + unit_points_index[current_face_index + 1];
+        std::vector<Point<dim>> face_unit_points(it_begin, it_end);
+        return face_unit_points;
       }
     else
       AssertThrow(
