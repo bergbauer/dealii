@@ -75,15 +75,9 @@ namespace NonMatching
     template <typename Iterator>
     void
     reinit_cells(
-      const unsigned int                          n_unfiltered_cells,
       const IteratorRange<Iterator> &             cell_iterator_range,
-      const std::vector<std::vector<Point<dim>>> &unit_points_vector);
-
-    template <typename Iterator>
-    void
-    reinit_cells(
-      const IteratorRange<Iterator> &             cell_iterator_range,
-      const std::vector<std::vector<Point<dim>>> &unit_points_vector);
+      const std::vector<std::vector<Point<dim>>> &unit_points_vector,
+      const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
     /**
      * Reinitialize the mapping information for all faces of the incoming vector
@@ -91,16 +85,11 @@ namespace NonMatching
      */
     template <typename Iterator>
     void
-    reinit_faces(const unsigned int             n_unfiltered_cells,
-                 const IteratorRange<Iterator> &cell_iterator_range,
-                 const std::vector<std::vector<std::vector<Point<dim>>>>
-                   &unit_points_vector);
-
-    template <typename Iterator>
-    void
-    reinit_faces(const IteratorRange<Iterator> &cell_iterator_range,
-                 const std::vector<std::vector<std::vector<Point<dim>>>>
-                   &unit_points_vector);
+    reinit_faces(
+      const IteratorRange<Iterator> &cell_iterator_range,
+      const std::vector<std::vector<std::vector<Point<dim>>>>
+        &                unit_points_vector,
+      const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
     /**
      * Getter function for current unit points.
@@ -158,6 +147,9 @@ namespace NonMatching
      */
     std::vector<Point<dim>> unit_points;
 
+    /**
+     * Offset to point to the first unit point of a cell/face
+     */
     std::vector<unsigned int> unit_points_index;
 
     /**
@@ -181,13 +173,22 @@ namespace NonMatching
      */
     std::vector<MappingData> mapping_data;
 
+    /**
+     * Offset to point to the first element of a cell in internal data
+     * containers.
+     */
     std::vector<unsigned int> cell_index_offset;
 
     /**
-     * A map from the cell_index of a CellAccessor to the index where the
-     * mapping is stores in the CellData vector.
+     * A vector that converts the cell index to a compressed cell index for e.g.
+     * a filtered IteratorRange.
      */
-    std::vector<unsigned int> cell_index_to_mapping_info_cell_id;
+    std::vector<unsigned int> cell_index_to_compressed_cell_index;
+
+    /**
+     * A bool that determines weather cell index compression should be done.
+     */
+    bool do_cell_index_compression;
   };
 
   // ----------------------- template functions ----------------------
@@ -235,10 +236,13 @@ namespace NonMatching
   template <typename Iterator>
   void
   MappingInfo<dim, spacedim>::reinit_cells(
-    const unsigned int                          n_unfiltered_cells,
     const IteratorRange<Iterator> &             cell_iterator_range,
-    const std::vector<std::vector<Point<dim>>> &unit_points_vector)
+    const std::vector<std::vector<Point<dim>>> &unit_points_vector,
+    const unsigned int                          n_unfiltered_cells)
   {
+    do_cell_index_compression =
+      n_unfiltered_cells != numbers::invalid_unsigned_int;
+
     const unsigned int n_cells =
       std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
 
@@ -261,8 +265,9 @@ namespace NonMatching
     unit_points.resize(n_unit_points);
     mapping_data.resize(n_cells);
 
-    cell_index_to_mapping_info_cell_id.resize(n_unfiltered_cells,
-                                              numbers::invalid_unsigned_int);
+    if (do_cell_index_compression)
+      cell_index_to_compressed_cell_index.resize(n_unfiltered_cells,
+                                                 numbers::invalid_unsigned_int);
     cell_index = 0;
     for (const auto &cell : cell_iterator_range)
       {
@@ -277,8 +282,8 @@ namespace NonMatching
                                                 unit_points_vector[cell_index],
                                                 mapping_data[cell_index]);
 
-        // compress indices
-        cell_index_to_mapping_info_cell_id[cell->index()] = cell_index;
+        if (do_cell_index_compression)
+          cell_index_to_compressed_cell_index[cell->index()] = cell_index;
 
         ++cell_index;
       }
@@ -286,69 +291,34 @@ namespace NonMatching
     state = State::cell_vector;
   }
 
-
-  template <int dim, int spacedim>
-  template <typename Iterator>
-  void
-  MappingInfo<dim, spacedim>::reinit_cells(
-    const IteratorRange<Iterator> &             cell_iterator_range,
-    const std::vector<std::vector<Point<dim>>> &unit_points_vector)
-  {
-    const unsigned int n_cells =
-      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
-
-    Assert(n_cells == unit_points_vector.size(),
-           ExcDimensionMismatch(n_cells, unit_points_vector.size()));
-
-    unit_points.resize(n_cells);
-    mapping_data.resize(n_cells);
-
-    unsigned int cell_index = 0;
-    for (const auto &cell : cell_iterator_range)
-      {
-        unit_points[cell_index] = unit_points_vector[cell_index];
-
-        compute_mapping_data_for_generic_points(cell,
-                                                unit_points[cell_index],
-                                                mapping_data[cell_index]);
-        ++cell_index;
-      }
-    state = State::cell_vector;
-  }
 
 
   template <int dim, int spacedim>
   template <typename Iterator>
   void
   MappingInfo<dim, spacedim>::reinit_faces(
-    const unsigned int             n_unfiltered_cells,
     const IteratorRange<Iterator> &cell_iterator_range,
-    const std::vector<std::vector<std::vector<Point<dim>>>> &unit_points_vector)
+    const std::vector<std::vector<std::vector<Point<dim>>>> &unit_points_vector,
+    const unsigned int                                       n_unfiltered_cells)
   {
+    do_cell_index_compression =
+      n_unfiltered_cells != numbers::invalid_unsigned_int;
+
     const unsigned int n_cells =
       std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
 
     Assert(n_cells == unit_points_vector.size(),
            ExcDimensionMismatch(n_cells, unit_points_vector.size()));
 
-    // compress indices
-    cell_index_to_mapping_info_cell_id.resize(n_unfiltered_cells,
-                                              numbers::invalid_unsigned_int);
+    // fill cell index offset vector
+    cell_index_offset.resize(n_cells);
+    unsigned int n_faces    = 0;
     unsigned int cell_index = 0;
     for (const auto &cell : cell_iterator_range)
       {
-        cell_index_to_mapping_info_cell_id[cell->index()] = cell_index;
-        ++cell_index;
-      }
-
-    // fill cell index offset vector
-    cell_index_offset.resize(n_cells);
-    unsigned int n_faces = 0;
-    for (const auto &cell : cell_iterator_range)
-      {
-        cell_index_offset[cell_index_to_mapping_info_cell_id[cell->index()]] =
-          n_faces;
+        cell_index_offset[cell_index] = n_faces;
         n_faces += cell->n_faces();
+        ++cell_index;
       }
 
     // fill unit points index offset vector
@@ -369,6 +339,11 @@ namespace NonMatching
         ++cell_index;
       }
     unit_points_index[n_faces] = n_unit_points;
+
+    // compress indices
+    if (do_cell_index_compression)
+      cell_index_to_compressed_cell_index.resize(n_unfiltered_cells,
+                                                 numbers::invalid_unsigned_int);
 
     // fill unit points and mapping data for every face of all cells
     unit_points.resize(n_unit_points);
@@ -398,60 +373,9 @@ namespace NonMatching
               unit_points_vector[cell_index][f],
               mapping_data[current_face_index]);
           }
-        ++cell_index;
-      }
+        if (do_cell_index_compression)
+          cell_index_to_compressed_cell_index[cell->index()] = cell_index;
 
-    state = State::faces_on_cells_in_vector;
-  }
-
-
-  template <int dim, int spacedim>
-  template <typename Iterator>
-  void
-  MappingInfo<dim, spacedim>::reinit_faces(
-    const IteratorRange<Iterator> &cell_iterator_range,
-    const std::vector<std::vector<std::vector<Point<dim>>>> &unit_points_vector)
-  {
-    const unsigned int n_cells =
-      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
-
-    Assert(n_cells == unit_points_vector.size(),
-           ExcDimensionMismatch(n_cells, unit_points_vector.size()));
-
-    // fill cell index offset vector
-    cell_index_offset.resize(n_cells);
-    unsigned int n_faces    = 0;
-    unsigned int cell_index = 0;
-    for (const auto &cell : cell_iterator_range)
-      {
-        cell_index_offset[cell_index] = n_faces;
-        n_faces += cell->n_faces();
-        ++cell_index;
-      }
-
-    // fill unit points and mapping data for every face of all cells
-    unit_points.resize(n_faces);
-    mapping_data.resize(n_faces);
-
-    cell_index = 0;
-    for (const auto &cell : cell_iterator_range)
-      {
-        Assert(unit_points_vector[cell_index].size() == cell->n_faces(),
-               ExcDimensionMismatch(unit_points_vector[cell_index].size(),
-                                    cell->n_faces()));
-
-        for (const auto &f : cell->face_indices())
-          {
-            const unsigned int current_face_index =
-              cell_index_offset[cell_index] + f;
-
-            unit_points[current_face_index] = unit_points_vector[cell_index][f];
-
-            compute_mapping_data_for_generic_points(
-              cell,
-              unit_points[current_face_index],
-              mapping_data[current_face_index]);
-          }
         ++cell_index;
       }
 
@@ -479,19 +403,29 @@ namespace NonMatching
         Assert(state == State::cell_vector,
                ExcMessage(
                  "This mapping info is not reinitialized for a cell vector"));
-        Assert(cell_index_to_mapping_info_cell_id[cell_index] !=
+        Assert(cell_index_to_compressed_cell_index[cell_index] !=
                  numbers::invalid_unsigned_int,
                ExcMessage(
                  "Mapping info object was not initialized for this active cell "
                  "index"));
-        auto it_begin =
-          unit_points.begin() +
-          unit_points_index[cell_index_to_mapping_info_cell_id[cell_index]];
-        auto it_end =
-          unit_points.begin() +
-          unit_points_index[cell_index_to_mapping_info_cell_id[cell_index] + 1];
-        std::vector<Point<dim>> cell_unit_points(it_begin, it_end);
-        return cell_unit_points;
+        if (do_cell_index_compression)
+          {
+            auto it_begin = unit_points.begin() +
+                            unit_points_index
+                              [cell_index_to_compressed_cell_index[cell_index]];
+            auto it_end =
+              unit_points.begin() +
+              unit_points_index
+                [cell_index_to_compressed_cell_index[cell_index] + 1];
+            return std::vector<Point<dim>>(it_begin, it_end);
+          }
+        else
+          {
+            auto it_begin = unit_points.begin() + unit_points_index[cell_index];
+            auto it_end =
+              unit_points.begin() + unit_points_index[cell_index + 1];
+            return std::vector<Point<dim>>(it_begin, it_end);
+          }
       }
     else if (cell_index != numbers::invalid_unsigned_int)
       {
@@ -501,20 +435,33 @@ namespace NonMatching
             "This mapping info is not reinitialized for faces on cells in a "
             "vector"));
         Assert(
-          cell_index_to_mapping_info_cell_id[cell_index] !=
+          cell_index_to_compressed_cell_index[cell_index] !=
             numbers::invalid_unsigned_int,
           ExcMessage(
             "Mapping info object was not initialized for this active cell index"
             " and corresponding face numbers"));
-        const unsigned int current_face_index =
-          cell_index_offset[cell_index_to_mapping_info_cell_id[cell_index]] +
-          face_number;
-        auto it_begin =
-          unit_points.begin() + unit_points_index[current_face_index];
-        auto it_end =
-          unit_points.begin() + unit_points_index[current_face_index + 1];
-        std::vector<Point<dim>> face_unit_points(it_begin, it_end);
-        return face_unit_points;
+        if (do_cell_index_compression)
+          {
+            const unsigned int current_face_index =
+              cell_index_offset
+                [cell_index_to_compressed_cell_index[cell_index]] +
+              face_number;
+            auto it_begin =
+              unit_points.begin() + unit_points_index[current_face_index];
+            auto it_end =
+              unit_points.begin() + unit_points_index[current_face_index + 1];
+            return std::vector<Point<dim>>(it_begin, it_end);
+          }
+        else
+          {
+            const unsigned int current_face_index =
+              cell_index_offset[cell_index] + face_number;
+            auto it_begin =
+              unit_points.begin() + unit_points_index[current_face_index];
+            auto it_end =
+              unit_points.begin() + unit_points_index[current_face_index + 1];
+            return std::vector<Point<dim>>(it_begin, it_end);
+          }
       }
     else
       AssertThrow(
@@ -544,12 +491,15 @@ namespace NonMatching
         Assert(state == State::cell_vector,
                ExcMessage(
                  "This mapping info is not reinitialized for a cell vector"));
-        Assert(cell_index_to_mapping_info_cell_id[cell_index] !=
+        Assert(cell_index_to_compressed_cell_index[cell_index] !=
                  numbers::invalid_unsigned_int,
                ExcMessage(
                  "Mapping info object was not initialized for this active cell "
                  "index"));
-        return mapping_data[cell_index_to_mapping_info_cell_id[cell_index]];
+        if (do_cell_index_compression)
+          return mapping_data[cell_index_to_compressed_cell_index[cell_index]];
+        else
+          return mapping_data[cell_index];
       }
     else if (cell_index != numbers::invalid_unsigned_int)
       {
@@ -559,14 +509,18 @@ namespace NonMatching
             "This mapping info is not reinitialized for faces on cells in a "
             "vector"));
         Assert(
-          cell_index_to_mapping_info_cell_id[cell_index] !=
+          cell_index_to_compressed_cell_index[cell_index] !=
             numbers::invalid_unsigned_int,
           ExcMessage(
             "Mapping info object was not initialized for this active cell index"
             " and corresponding face numbers"));
-        return mapping_data
-          [cell_index_offset[cell_index_to_mapping_info_cell_id[cell_index]] +
-           face_number];
+        if (do_cell_index_compression)
+          return mapping_data
+            [cell_index_offset
+               [cell_index_to_compressed_cell_index[cell_index]] +
+             face_number];
+        else
+          return mapping_data[cell_index_offset[cell_index] + face_number];
       }
     else
       AssertThrow(
