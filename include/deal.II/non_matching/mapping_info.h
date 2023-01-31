@@ -283,7 +283,8 @@ namespace NonMatching
                                                 mapping_data[cell_index]);
 
         if (do_cell_index_compression)
-          cell_index_to_compressed_cell_index[cell->index()] = cell_index;
+          cell_index_to_compressed_cell_index[cell->active_cell_index()] =
+            cell_index;
 
         ++cell_index;
       }
@@ -374,7 +375,8 @@ namespace NonMatching
               mapping_data[current_face_index]);
           }
         if (do_cell_index_compression)
-          cell_index_to_compressed_cell_index[cell->index()] = cell_index;
+          cell_index_to_compressed_cell_index[cell->active_cell_index()] =
+            cell_index;
 
         ++cell_index;
       }
@@ -403,13 +405,14 @@ namespace NonMatching
         Assert(state == State::cell_vector,
                ExcMessage(
                  "This mapping info is not reinitialized for a cell vector"));
-        Assert(cell_index_to_compressed_cell_index[cell_index] !=
-                 numbers::invalid_unsigned_int,
-               ExcMessage(
-                 "Mapping info object was not initialized for this active cell "
-                 "index"));
         if (do_cell_index_compression)
           {
+            Assert(
+              cell_index_to_compressed_cell_index[cell_index] !=
+                numbers::invalid_unsigned_int,
+              ExcMessage(
+                "Mapping info object was not initialized for this active cell "
+                "index"));
             auto it_begin = unit_points.begin() +
                             unit_points_index
                               [cell_index_to_compressed_cell_index[cell_index]];
@@ -434,14 +437,14 @@ namespace NonMatching
           ExcMessage(
             "This mapping info is not reinitialized for faces on cells in a "
             "vector"));
-        Assert(
-          cell_index_to_compressed_cell_index[cell_index] !=
-            numbers::invalid_unsigned_int,
-          ExcMessage(
-            "Mapping info object was not initialized for this active cell index"
-            " and corresponding face numbers"));
         if (do_cell_index_compression)
           {
+            Assert(
+              cell_index_to_compressed_cell_index[cell_index] !=
+                numbers::invalid_unsigned_int,
+              ExcMessage(
+                "Mapping info object was not initialized for this active cell index"
+                " and corresponding face numbers"));
             const unsigned int current_face_index =
               cell_index_offset
                 [cell_index_to_compressed_cell_index[cell_index]] +
@@ -491,13 +494,17 @@ namespace NonMatching
         Assert(state == State::cell_vector,
                ExcMessage(
                  "This mapping info is not reinitialized for a cell vector"));
-        Assert(cell_index_to_compressed_cell_index[cell_index] !=
-                 numbers::invalid_unsigned_int,
-               ExcMessage(
-                 "Mapping info object was not initialized for this active cell "
-                 "index"));
         if (do_cell_index_compression)
-          return mapping_data[cell_index_to_compressed_cell_index[cell_index]];
+          {
+            Assert(
+              cell_index_to_compressed_cell_index[cell_index] !=
+                numbers::invalid_unsigned_int,
+              ExcMessage(
+                "Mapping info object was not initialized for this active cell "
+                "index"));
+            return mapping_data
+              [cell_index_to_compressed_cell_index[cell_index]];
+          }
         else
           return mapping_data[cell_index];
       }
@@ -508,17 +515,19 @@ namespace NonMatching
           ExcMessage(
             "This mapping info is not reinitialized for faces on cells in a "
             "vector"));
-        Assert(
-          cell_index_to_compressed_cell_index[cell_index] !=
-            numbers::invalid_unsigned_int,
-          ExcMessage(
-            "Mapping info object was not initialized for this active cell index"
-            " and corresponding face numbers"));
         if (do_cell_index_compression)
-          return mapping_data
-            [cell_index_offset
-               [cell_index_to_compressed_cell_index[cell_index]] +
-             face_number];
+          {
+            Assert(
+              cell_index_to_compressed_cell_index[cell_index] !=
+                numbers::invalid_unsigned_int,
+              ExcMessage(
+                "Mapping info object was not initialized for this active cell index"
+                " and corresponding face numbers"));
+            return mapping_data
+              [cell_index_offset
+                 [cell_index_to_compressed_cell_index[cell_index]] +
+               face_number];
+          }
         else
           return mapping_data[cell_index_offset[cell_index] + face_number];
       }
