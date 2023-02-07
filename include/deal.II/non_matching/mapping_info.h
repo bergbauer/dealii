@@ -26,6 +26,7 @@
 
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_update_flags.h>
+#include <deal.II/fe/mapping.h>
 #include <deal.II/fe/mapping_cartesian.h>
 #include <deal.II/fe/mapping_q.h>
 #include <deal.II/fe/mapping_related_data.h>
@@ -68,6 +69,10 @@ namespace NonMatching
     reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
            const ArrayView<const Point<dim>> &unit_points);
 
+    void
+    reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+           const Quadrature<dim> &quadrature);
+
     /**
      * Reinitialize the mapping information for the incoming vector of cells and
      * corresponding vector of unit points.
@@ -77,6 +82,20 @@ namespace NonMatching
     reinit_cells(
       const IteratorRange<Iterator> &             cell_iterator_range,
       const std::vector<std::vector<Point<dim>>> &unit_points_vector,
+      const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
+
+    template <typename Iterator>
+    void
+    reinit_cells(
+      const IteratorRange<Iterator> &     cell_iterator_range,
+      const std::vector<Quadrature<dim>> &quadrature_vector,
+      const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
+
+    template <typename Iterator>
+    void
+    reinit_surface(
+      const IteratorRange<Iterator> &                    cell_iterator_range,
+      const std::vector<ImmersedSurfaceQuadrature<dim>> &quadrature_vector,
       const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
     /**
@@ -142,6 +161,19 @@ namespace NonMatching
       const ArrayView<const Point<dim>> &                         unit_points,
       MappingData &                                               mapping_data);
 
+    void
+    compute_mapping_data_for_immersed_surface_quadrature(
+      const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+      const ImmersedSurfaceQuadrature<dim> &                      quadrature,
+      MappingData &                                               mapping_data);
+
+    void
+    compute_mapping_data_for_face_quadrature(
+      const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+      const unsigned int                                          face_no,
+      const Quadrature<dim - 1> &                                 quadrature,
+      MappingData &                                               mapping_data);
+
     /**
      * The reference points specified at reinit().
      */
@@ -202,8 +234,12 @@ namespace NonMatching
   {
     update_flags_mapping = update_default;
     // translate update flags
-    if (update_flags & update_jacobians)
+    if (update_flags & update_jacobians || update_flags & update_JxW_values)
       update_flags_mapping |= update_jacobians;
+    if (update_flags & update_JxW_values)
+      update_flags_mapping |= update_JxW_values;
+    if (update_flags & update_normal_vectors)
+      update_flags_mapping |= update_normal_vectors;
     if (update_flags & update_gradients ||
         update_flags & update_inverse_jacobians)
       update_flags_mapping |= update_inverse_jacobians;
@@ -229,6 +265,25 @@ namespace NonMatching
                                             mapping_data[0]);
 
     state = State::single_cell;
+  }
+
+
+  template <int dim, int spacedim>
+  void
+  MappingInfo<dim, spacedim>::reinit(
+    const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+    const Quadrature<dim> &                                     quadrature)
+  {
+    const auto &points  = quadrature.get_points();
+    const auto &weights = quadrature.get_weights();
+
+    reinit(cell, points);
+
+    if (update_flags_mapping & update_JxW_values)
+      for (unsigned int q = 0; q < points.size(); ++q)
+        mapping_data[0].JxW_values[q] =
+          determinant(Tensor<2, dim>(mapping_data[0].jacobians[q])) *
+          weights[q];
   }
 
 
@@ -281,6 +336,108 @@ namespace NonMatching
         compute_mapping_data_for_generic_points(cell,
                                                 unit_points_vector[cell_index],
                                                 mapping_data[cell_index]);
+
+        if (do_cell_index_compression)
+          cell_index_to_compressed_cell_index[cell->active_cell_index()] =
+            cell_index;
+
+        ++cell_index;
+      }
+
+    state = State::cell_vector;
+  }
+
+
+
+  template <int dim, int spacedim>
+  template <typename Iterator>
+  void
+  MappingInfo<dim, spacedim>::reinit_cells(
+    const IteratorRange<Iterator> &     cell_iterator_range,
+    const std::vector<Quadrature<dim>> &quadrature_vector,
+    const unsigned int                  n_unfiltered_cells)
+  {
+    const unsigned int n_cells =
+      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
+
+    Assert(n_cells == quadrature_vector.size(),
+           ExcDimensionMismatch(n_cells, quadrature_vector.size()));
+
+    std::vector<std::vector<Point<dim>>> unit_points_vector(n_cells);
+    for (unsigned int cell_index = 0; cell_index < n_cells; ++cell_index)
+      unit_points_vector[cell_index] = std::vector<Point<dim>>(
+        quadrature_vector[cell_index].get_points().begin(),
+        quadrature_vector[cell_index].get_points().end());
+
+    reinit_cells(cell_iterator_range, unit_points_vector, n_unfiltered_cells);
+
+    if (update_flags_mapping & update_JxW_values)
+      for (unsigned int cell_index = 0; cell_index < n_cells; ++cell_index)
+        {
+          const auto &weights = quadrature_vector[cell_index].get_weights();
+          for (unsigned int q = 0; q < weights.size(); ++q)
+            mapping_data[cell_index].JxW_values[q] =
+              determinant(
+                Tensor<2, dim>(mapping_data[cell_index].jacobians[q])) *
+              weights[q];
+        }
+  }
+
+
+
+  template <int dim, int spacedim>
+  template <typename Iterator>
+  void
+  MappingInfo<dim, spacedim>::reinit_surface(
+    const IteratorRange<Iterator> &                    cell_iterator_range,
+    const std::vector<ImmersedSurfaceQuadrature<dim>> &quadrature_vector,
+    const unsigned int                                 n_unfiltered_cells)
+  {
+    do_cell_index_compression =
+      n_unfiltered_cells != numbers::invalid_unsigned_int;
+
+    if (update_flags_mapping & (update_JxW_values | update_normal_vectors))
+      update_flags_mapping |= update_covariant_transformation;
+
+    const unsigned int n_cells =
+      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
+
+    Assert(n_cells == quadrature_vector.size(),
+           ExcDimensionMismatch(n_cells, quadrature_vector.size()));
+
+    // fill unit points index offset vector
+    unit_points_index.resize(n_cells + 1);
+    unsigned int cell_index    = 0;
+    unsigned int n_unit_points = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        unit_points_index[cell_index] = n_unit_points;
+        n_unit_points += quadrature_vector[cell_index].get_points().size();
+
+        ++cell_index;
+      }
+    unit_points_index[n_cells] = n_unit_points;
+
+    unit_points.resize(n_unit_points);
+    mapping_data.resize(n_cells);
+
+    if (do_cell_index_compression)
+      cell_index_to_compressed_cell_index.resize(n_unfiltered_cells,
+                                                 numbers::invalid_unsigned_int);
+    cell_index = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        const auto &quadrature = quadrature_vector[cell_index];
+
+        auto it = unit_points.begin() + unit_points_index[cell_index];
+        for (const auto &unit_point : quadrature.get_points())
+          {
+            *it = unit_point;
+            ++it;
+          }
+
+        compute_mapping_data_for_immersed_surface_quadrature(
+          cell, quadrature, mapping_data[cell_index]);
 
         if (do_cell_index_compression)
           cell_index_to_compressed_cell_index[cell->active_cell_index()] =
@@ -601,6 +758,51 @@ namespace NonMatching
           for (unsigned int q = 0; q < unit_points.size(); ++q)
             mapping_data.quadrature_points[q] = fe_values.quadrature_point(q);
       }
+  }
+
+
+
+  template <int dim, int spacedim>
+  void
+  MappingInfo<dim, spacedim>::
+    compute_mapping_data_for_immersed_surface_quadrature(
+      const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+      const ImmersedSurfaceQuadrature<dim> &                      quadrature,
+      MappingData &                                               mapping_data)
+  {
+    mapping_data.initialize(quadrature.get_points().size(),
+                            update_flags_mapping);
+
+    auto internal_mapping_data =
+      mapping->get_data(update_flags_mapping, quadrature);
+
+    mapping->fill_fe_immersed_surface_values(cell,
+                                             quadrature,
+                                             *internal_mapping_data,
+                                             mapping_data);
+  }
+
+
+
+  template <int dim, int spacedim>
+  void
+  MappingInfo<dim, spacedim>::compute_mapping_data_for_face_quadrature(
+    const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+    const unsigned int                                          face_no,
+    const Quadrature<dim - 1> &                                 quadrature,
+    MappingData &                                               mapping_data)
+  {
+    mapping_data.initialize(quadrature.get_points().size(),
+                            update_flags_mapping);
+
+    auto internal_mapping_data =
+      mapping->get_data(update_flags_mapping, quadrature);
+
+    mapping->fill_fe_face_values(cell,
+                                 face_no,
+                                 hp::QCollection<dim - 1>(quadrature),
+                                 *internal_mapping_data,
+                                 mapping_data);
   }
 } // namespace NonMatching
 

@@ -599,6 +599,12 @@ public:
   DerivativeForm<1, spacedim, dim>
   inverse_jacobian(const unsigned int point_index) const;
 
+  Number
+  JxW(const unsigned int point_index) const;
+
+  Tensor<1, spacedim>
+  normal_vector(const unsigned int point_index) const;
+
   /**
    * Return the position in real coordinates of the given point index among
    * the points passed to reinit().
@@ -612,6 +618,8 @@ public:
    */
   Point<dim>
   unit_point(const unsigned int point_index) const;
+
+  unsigned int n_q_points;
 
 private:
   /**
@@ -873,11 +881,12 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
   this->unit_points =
     std::vector<Point<dim>>(unit_points.begin(), unit_points.end());
 
+  n_q_points = unit_points.size();
+
   if (update_flags & update_values)
-    values.resize(unit_points.size(), numbers::signaling_nan<value_type>());
+    values.resize(n_q_points, numbers::signaling_nan<value_type>());
   if (update_flags & update_gradients)
-    gradients.resize(unit_points.size(),
-                     numbers::signaling_nan<gradient_type>());
+    gradients.resize(n_q_points, numbers::signaling_nan<gradient_type>());
 }
 
 
@@ -889,6 +898,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 {
   current_cell_index  = cell_index;
   current_face_number = numbers::invalid_unsigned_int;
+
+  n_q_points =
+    mapping_info->get_unit_points(current_cell_index, current_face_number)
+      .size();
 }
 
 
@@ -901,6 +914,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 {
   current_cell_index  = cell_index;
   current_face_number = face_number;
+
+  n_q_points =
+    mapping_info->get_unit_points(current_cell_index, current_face_number)
+      .size();
 }
 
 
@@ -1313,6 +1330,31 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::inverse_jacobian(
     mapping_info->get_mapping_data(current_cell_index, current_face_number);
   AssertIndexRange(point_index, mapping_data.inverse_jacobians.size());
   return mapping_data.inverse_jacobians[point_index];
+}
+
+
+
+template <int n_components, int dim, int spacedim, typename Number>
+inline Number
+FEPointEvaluation<n_components, dim, spacedim, Number>::JxW(
+  const unsigned int point_index) const
+{
+  const auto &mapping_data =
+    mapping_info->get_mapping_data(current_cell_index, current_face_number);
+  AssertIndexRange(point_index, mapping_data.JxW_values.size());
+  return mapping_data.JxW_values[point_index];
+}
+
+
+template <int n_components, int dim, int spacedim, typename Number>
+inline Tensor<1, spacedim>
+FEPointEvaluation<n_components, dim, spacedim, Number>::normal_vector(
+  const unsigned int point_index) const
+{
+  const auto &mapping_data =
+    mapping_info->get_mapping_data(current_cell_index, current_face_number);
+  AssertIndexRange(point_index, mapping_data.normal_vectors.size());
+  return mapping_data.normal_vectors[point_index];
 }
 
 
