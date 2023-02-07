@@ -110,6 +110,13 @@ namespace NonMatching
         &                unit_points_vector,
       const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
+    template <typename Iterator>
+    void
+    reinit_faces(
+      const IteratorRange<Iterator> &                      cell_iterator_range,
+      const std::vector<std::vector<Quadrature<dim - 1>>> &quadrature_vector,
+      const unsigned int                                   n_unfiltered_cells);
+
     /**
      * Getter function for current unit points.
      */
@@ -544,6 +551,109 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
+  template <typename Iterator>
+  void
+  MappingInfo<dim, spacedim>::reinit_faces(
+    const IteratorRange<Iterator> &                      cell_iterator_range,
+    const std::vector<std::vector<Quadrature<dim - 1>>> &quadrature_vector,
+    const unsigned int                                   n_unfiltered_cells)
+  {
+    do_cell_index_compression =
+      n_unfiltered_cells != numbers::invalid_unsigned_int;
+
+    const unsigned int n_cells =
+      std::distance(cell_iterator_range.begin(), cell_iterator_range.end());
+
+    Assert(n_cells == quadrature_vector.size(),
+           ExcDimensionMismatch(n_cells, quadrature_vector.size()));
+
+    // fill cell index offset vector
+    cell_index_offset.resize(n_cells);
+    unsigned int n_faces    = 0;
+    unsigned int cell_index = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        cell_index_offset[cell_index] = n_faces;
+        n_faces += cell->n_faces();
+        ++cell_index;
+      }
+
+    // fill unit points index offset vector
+    unit_points_index.resize(n_faces + 1);
+    cell_index                 = 0;
+    unsigned int n_unit_points = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        for (const auto &f : cell->face_indices())
+          {
+            const unsigned int current_face_index =
+              cell_index_offset[cell_index] + f;
+
+            unit_points_index[current_face_index] = n_unit_points;
+            n_unit_points +=
+              quadrature_vector[cell_index][f].get_points().size();
+          }
+
+        ++cell_index;
+      }
+    unit_points_index[n_faces] = n_unit_points;
+
+    // compress indices
+    if (do_cell_index_compression)
+      cell_index_to_compressed_cell_index.resize(n_unfiltered_cells,
+                                                 numbers::invalid_unsigned_int);
+
+    // fill unit points and mapping data for every face of all cells
+    unit_points.resize(n_unit_points);
+    mapping_data.resize(n_faces);
+    cell_index = 0;
+    QProjector<dim> q_projector;
+    for (const auto &cell : cell_iterator_range)
+      {
+        const auto &quadratures_on_faces = quadrature_vector[cell_index];
+
+        Assert(quadratures_on_faces.size() == cell->n_faces(),
+               ExcDimensionMismatch(quadratures_on_faces.size(),
+                                    cell->n_faces()));
+
+        for (const auto &f : cell->face_indices())
+          {
+            const auto &quadrature_on_face = quadratures_on_faces[f];
+
+            const auto quadrature_on_cell =
+              q_projector.project_to_face(cell->reference_cell(),
+                                          quadrature_on_face,
+                                          f);
+
+            const auto &unit_points_on_cell = quadrature_on_cell.get_points();
+
+            const unsigned int current_face_index =
+              cell_index_offset[cell_index] + f;
+
+            auto it =
+              unit_points.begin() + unit_points_index[current_face_index];
+            for (const auto &unit_point : unit_points_on_cell)
+              {
+                *it = unit_point;
+                ++it;
+              }
+
+            compute_mapping_data_for_face_quadrature(
+              cell, f, quadrature_on_face, mapping_data[current_face_index]);
+          }
+        if (do_cell_index_compression)
+          cell_index_to_compressed_cell_index[cell->active_cell_index()] =
+            cell_index;
+
+        ++cell_index;
+      }
+
+    state = State::faces_on_cells_in_vector;
+  }
+
+
+
+  template <int dim, int spacedim>
   const std::vector<Point<dim>>
   MappingInfo<dim, spacedim>::get_unit_points(
     const unsigned int cell_index,
@@ -770,6 +880,9 @@ namespace NonMatching
       const ImmersedSurfaceQuadrature<dim> &                      quadrature,
       MappingData &                                               mapping_data)
   {
+    update_flags_mapping |=
+      mapping->requires_update_flags(update_flags_mapping);
+
     mapping_data.initialize(quadrature.get_points().size(),
                             update_flags_mapping);
 
@@ -792,11 +905,15 @@ namespace NonMatching
     const Quadrature<dim - 1> &                                 quadrature,
     MappingData &                                               mapping_data)
   {
+    update_flags_mapping |=
+      mapping->requires_update_flags(update_flags_mapping);
+
     mapping_data.initialize(quadrature.get_points().size(),
                             update_flags_mapping);
 
     auto internal_mapping_data =
-      mapping->get_data(update_flags_mapping, quadrature);
+      mapping->get_face_data(update_flags_mapping,
+                             hp::QCollection<dim - 1>(quadrature));
 
     mapping->fill_fe_face_values(cell,
                                  face_no,
