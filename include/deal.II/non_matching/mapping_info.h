@@ -115,7 +115,7 @@ namespace NonMatching
     reinit_faces(
       const IteratorRange<Iterator> &                      cell_iterator_range,
       const std::vector<std::vector<Quadrature<dim - 1>>> &quadrature_vector,
-      const unsigned int                                   n_unfiltered_cells);
+      const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
     /**
      * Getter function for current unit points.
