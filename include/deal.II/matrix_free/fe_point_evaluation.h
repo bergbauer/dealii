@@ -599,9 +599,19 @@ public:
   DerivativeForm<1, spacedim, dim>
   inverse_jacobian(const unsigned int point_index) const;
 
+  /**
+   * Return the Jacobian determinant multiplied by the quadrature weight. This
+   * class or the MappingInfo object passed to this function needs to be
+   * constructed with UpdateFlags containing `update_JxW_values`.
+   */
   Number
   JxW(const unsigned int point_index) const;
 
+  /**
+   * Return the normal vector. This class or the MappingInfo object passed to
+   * this function needs to be constructed with UpdateFlags containing
+   * `update_normal_vectors`.
+   */
   Tensor<1, spacedim>
   normal_vector(const unsigned int point_index) const;
 
@@ -619,6 +629,9 @@ public:
   Point<dim>
   unit_point(const unsigned int point_index) const;
 
+  /**
+   * Number of quadrature points of the current cell/face.
+   */
   unsigned int n_q_points;
 
 private:

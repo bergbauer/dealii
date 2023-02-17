@@ -69,6 +69,10 @@ namespace NonMatching
     reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
            const ArrayView<const Point<dim>> &unit_points);
 
+    /**
+     * Reinitialize the mapping information for the incoming cell and
+     * quadrature.
+     */
     void
     reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
            const Quadrature<dim> &quadrature);
@@ -84,6 +88,10 @@ namespace NonMatching
       const std::vector<std::vector<Point<dim>>> &unit_points_vector,
       const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
+    /**
+     * Reinitialize the mapping information for the incoming vector of cells and
+     * corresponding vector of quadratures.
+     */
     template <typename Iterator>
     void
     reinit_cells(
@@ -91,6 +99,10 @@ namespace NonMatching
       const std::vector<Quadrature<dim>> &quadrature_vector,
       const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
+    /**
+     * Reinitialize the mapping information for the incoming vector of cells and
+     * corresponding vector of ImmersedSurfaceQuadrature.
+     */
     template <typename Iterator>
     void
     reinit_surface(
@@ -110,6 +122,10 @@ namespace NonMatching
         &                unit_points_vector,
       const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
+    /**
+     * Reinitialize the mapping information for all faces of the incoming vector
+     * of cells and corresponding vector of quadratures.
+     */
     template <typename Iterator>
     void
     reinit_faces(
@@ -147,6 +163,9 @@ namespace NonMatching
     get_update_flags() const;
 
   private:
+    /**
+     * Enum class for reinitialized states.
+     */
     enum class State
     {
       none,
@@ -155,6 +174,9 @@ namespace NonMatching
       faces_on_cells_in_vector
     };
 
+    /**
+     * Enum class that stores the current reinitialized state.
+     */
     State state;
 
     /**
@@ -168,12 +190,22 @@ namespace NonMatching
       const ArrayView<const Point<dim>> &                         unit_points,
       MappingData &                                               mapping_data);
 
+    /**
+     * Compute the mapping related data for the given @p mapping,
+     * @p cell and @p quadrature that is required by the FEPointEvaluation
+     * class.
+     */
     void
     compute_mapping_data_for_immersed_surface_quadrature(
       const typename Triangulation<dim, spacedim>::cell_iterator &cell,
       const ImmersedSurfaceQuadrature<dim> &                      quadrature,
       MappingData &                                               mapping_data);
 
+    /**
+     * Compute the mapping related data for the given @p mapping, @p cell,
+     * @p face_no and @p quadrature that is required by the FEPointEvaluation
+     * class.
+     */
     void
     compute_mapping_data_for_face_quadrature(
       const typename Triangulation<dim, spacedim>::cell_iterator &cell,
