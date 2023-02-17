@@ -57,7 +57,7 @@ namespace NonMatching
   class FEImmersedSurfaceValues;
   template <int dim, int spacedim>
   class MappingInfo;
-}
+} // namespace NonMatching
 
 
 /**
