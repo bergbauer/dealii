@@ -712,10 +712,11 @@ namespace NonMatching
               ExcMessage(
                 "Mapping info object was not initialized for this active cell "
                 "index"));
-            auto it_begin = unit_points.begin() +
-                            unit_points_index
-                              [cell_index_to_compressed_cell_index[cell_index]];
-            auto it_end =
+            const auto it_begin =
+              unit_points.begin() +
+              unit_points_index
+                [cell_index_to_compressed_cell_index[cell_index]];
+            const auto it_end =
               unit_points.begin() +
               unit_points_index
                 [cell_index_to_compressed_cell_index[cell_index] + 1];
@@ -723,8 +724,9 @@ namespace NonMatching
           }
         else
           {
-            auto it_begin = unit_points.begin() + unit_points_index[cell_index];
-            auto it_end =
+            const auto it_begin =
+              unit_points.begin() + unit_points_index[cell_index];
+            const auto it_end =
               unit_points.begin() + unit_points_index[cell_index + 1];
             return std::vector<Point<dim>>(it_begin, it_end);
           }
@@ -748,9 +750,9 @@ namespace NonMatching
               cell_index_offset
                 [cell_index_to_compressed_cell_index[cell_index]] +
               face_number;
-            auto it_begin =
+            const auto it_begin =
               unit_points.begin() + unit_points_index[current_face_index];
-            auto it_end =
+            const auto it_end =
               unit_points.begin() + unit_points_index[current_face_index + 1];
             return std::vector<Point<dim>>(it_begin, it_end);
           }
@@ -758,9 +760,9 @@ namespace NonMatching
           {
             const unsigned int current_face_index =
               cell_index_offset[cell_index] + face_number;
-            auto it_begin =
+            const auto it_begin =
               unit_points.begin() + unit_points_index[current_face_index];
-            auto it_end =
+            const auto it_end =
               unit_points.begin() + unit_points_index[current_face_index + 1];
             return std::vector<Point<dim>>(it_begin, it_end);
           }
