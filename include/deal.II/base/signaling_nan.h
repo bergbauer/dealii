@@ -82,6 +82,17 @@ namespace numbers
       };
 
 
+      template <typename T>
+      struct NaNInitializer<VectorizedArray<T>>
+      {
+        static VectorizedArray<T>
+        invalid_element()
+        {
+          return make_vectorized_array(NaNInitializer<T>::invalid_element());
+        }
+      };
+
+
       /**
        * A specialization of the general NaNInitializer class that provides a
        * function that returns a Tensor<1,dim> value whose components are
