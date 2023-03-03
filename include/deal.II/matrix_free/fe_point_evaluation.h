@@ -629,7 +629,7 @@ public:
    * given point index. Prerequisite: This class needs to be constructed with
    * UpdateFlags containing `update_jacobian`.
    */
-  DerivativeForm<1, dim, spacedim>
+  DerivativeForm<1, dim, spacedim, VectorizedArrayType>
   jacobian(const unsigned int point_index) const;
 
   /**
@@ -638,7 +638,7 @@ public:
    * constructed with UpdateFlags containing `update_inverse_jacobian` or
    * `update_gradients`.
    */
-  DerivativeForm<1, spacedim, dim>
+  DerivativeForm<1, spacedim, dim, VectorizedArrayType>
   inverse_jacobian(const unsigned int point_index) const;
 
   /**
@@ -661,14 +661,14 @@ public:
    * Return the position in real coordinates of the given point index among
    * the points passed to reinit().
    */
-  Point<spacedim>
+  Point<spacedim, VectorizedArrayType>
   real_point(const unsigned int point_index) const;
 
   /**
    * Return the position in unit/reference coordinates of the given point
    * index, i.e., the respective point passed to the reinit() function.
    */
-  Point<dim>
+  Point<dim, VectorizedArrayType>
   unit_point(const unsigned int point_index) const;
 
   unsigned int n_filled_lanes_last_batch;
@@ -1007,6 +1007,14 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
     }
   else
     AssertThrow(false, ExcNotImplemented());
+
+  unit_points =
+    mapping_info->get_unit_points(current_cell_index, current_face_number);
+
+  if (update_flags & update_values)
+    values.resize(n_q_points, numbers::signaling_nan<value_type>());
+  if (update_flags & update_gradients)
+    gradients.resize(n_q_points, numbers::signaling_nan<gradient_type>());
 }
 
 
@@ -1041,6 +1049,14 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
     }
   else
     AssertThrow(false, ExcNotImplemented());
+
+  unit_points =
+    mapping_info->get_unit_points(current_cell_index, current_face_number);
+
+  if (update_flags & update_values)
+    values.resize(n_q_points, numbers::signaling_nan<value_type>());
+  if (update_flags & update_gradients)
+    gradients.resize(n_q_points, numbers::signaling_nan<gradient_type>());
 }
 
 
@@ -1631,14 +1647,37 @@ template <int n_components,
           int spacedim,
           typename Number,
           typename VectorizedArrayType>
-inline DerivativeForm<1, dim, spacedim>
+inline DerivativeForm<1, dim, spacedim, VectorizedArrayType>
 FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   jacobian(const unsigned int point_index) const
 {
   const auto &mapping_data =
     mapping_info->get_mapping_data(current_cell_index, current_face_number);
-  AssertIndexRange(point_index, mapping_data.jacobians.size());
-  return mapping_data.jacobians[point_index];
+
+  if constexpr (std::is_same_v<VectorizedArrayType, Number>)
+    {
+      AssertIndexRange(point_index, mapping_data.jacobians.size());
+
+      DerivativeForm<1, dim, spacedim, Number> jacobian;
+      for (unsigned int d = 0; d < dim; ++d)
+        for (unsigned int s = 0; s < spacedim; ++s)
+          jacobian[d][s] = mapping_data.jacobians[point_index][d][s];
+      return jacobian;
+    }
+  else if constexpr (std::is_same_v<VectorizedArrayType,
+                                    VectorizedArray<Number>>)
+    {
+      const auto n_lanes = VectorizedArray<Number>::size();
+      DerivativeForm<1, dim, spacedim, VectorizedArrayType> vectorized_jacobian;
+      for (unsigned int v = 0; v < n_lanes && point_index * n_lanes + v <
+                                                mapping_data.JxW_values.size();
+           ++v)
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int s = 0; s < spacedim; ++s)
+            vectorized_jacobian[d][s][v] =
+              mapping_data.jacobians[point_index * n_lanes + v][d][s];
+      return vectorized_jacobian;
+    }
 }
 
 
@@ -1648,14 +1687,33 @@ template <int n_components,
           int spacedim,
           typename Number,
           typename VectorizedArrayType>
-inline DerivativeForm<1, spacedim, dim>
+inline DerivativeForm<1, spacedim, dim, VectorizedArrayType>
 FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   inverse_jacobian(const unsigned int point_index) const
 {
   const auto &mapping_data =
     mapping_info->get_mapping_data(current_cell_index, current_face_number);
-  AssertIndexRange(point_index, mapping_data.inverse_jacobians.size());
-  return mapping_data.inverse_jacobians[point_index];
+
+  if constexpr (std::is_same_v<VectorizedArrayType, Number>)
+    {
+      AssertIndexRange(point_index, mapping_data.jacobians.size());
+      return mapping_data.inverse_jacobians[point_index];
+    }
+  else if constexpr (std::is_same_v<VectorizedArrayType,
+                                    VectorizedArray<Number>>)
+    {
+      const auto n_lanes = VectorizedArray<Number>::size();
+      DerivativeForm<1, dim, spacedim, VectorizedArrayType>
+        vectorized_inverse_jacobian;
+      for (unsigned int v = 0; v < n_lanes && point_index * n_lanes + v <
+                                                mapping_data.JxW_values.size();
+           ++v)
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int s = 0; s < spacedim; ++s)
+            vectorized_inverse_jacobian[d][s][v] =
+              mapping_data.inverse_jacobians[point_index * n_lanes + v][d][s];
+      return vectorized_inverse_jacobian;
+    }
 }
 
 
@@ -1680,8 +1738,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   else if constexpr (std::is_same_v<VectorizedArrayType,
                                     VectorizedArray<Number>>)
     {
-      const auto              n_lanes = VectorizedArray<Number>::size();
-      VectorizedArray<Number> vectorized_JxW;
+      const auto              n_lanes        = VectorizedArray<Number>::size();
+      VectorizedArray<Number> vectorized_JxW = 0;
       for (unsigned int v = 0; v < n_lanes && point_index * n_lanes + v <
                                                 mapping_data.JxW_values.size();
            ++v)
@@ -1717,9 +1775,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
            v < n_lanes &&
            point_index * n_lanes + v < mapping_data.normal_vectors.size();
            ++v)
-        for (unsigned int d = 0; d < spacedim; ++d)
-          vectorized_normal_vectors[d][v] =
-            mapping_data.normal_vectors[point_index * n_lanes + v][d];
+        for (unsigned int s = 0; s < spacedim; ++s)
+          vectorized_normal_vectors[s][v] =
+            mapping_data.normal_vectors[point_index * n_lanes + v][s];
       return vectorized_normal_vectors;
     }
 }
@@ -1731,14 +1789,32 @@ template <int n_components,
           int spacedim,
           typename Number,
           typename VectorizedArrayType>
-inline Point<spacedim>
+inline Point<spacedim, VectorizedArrayType>
 FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   real_point(const unsigned int point_index) const
 {
   const auto &mapping_data =
     mapping_info->get_mapping_data(current_cell_index, current_face_number);
-  AssertIndexRange(point_index, mapping_data.quadrature_points.size());
-  return mapping_data.quadrature_points[point_index];
+
+  if constexpr (std::is_same_v<VectorizedArrayType, Number>)
+    {
+      AssertIndexRange(point_index, mapping_data.quadrature_points.size());
+      return mapping_data.quadrature_points[point_index];
+    }
+  else if constexpr (std::is_same_v<VectorizedArrayType,
+                                    VectorizedArray<Number>>)
+    {
+      const auto n_lanes = VectorizedArray<Number>::size();
+      Point<spacedim, VectorizedArrayType> vectorized_real_point;
+      for (unsigned int v = 0;
+           v < n_lanes &&
+           point_index * n_lanes + v < mapping_data.normal_vectors.size();
+           ++v)
+        for (unsigned int s = 0; s < spacedim; ++s)
+          vectorized_real_point[s][v] =
+            mapping_data.normal_vectors[point_index * n_lanes + v][s];
+      return vectorized_real_point;
+    }
 }
 
 
@@ -1748,12 +1824,28 @@ template <int n_components,
           int spacedim,
           typename Number,
           typename VectorizedArrayType>
-inline Point<dim>
+inline Point<dim, VectorizedArrayType>
 FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   unit_point(const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, unit_points.size());
-  return unit_points[point_index];
+  if constexpr (std::is_same_v<VectorizedArrayType, Number>)
+    {
+      AssertIndexRange(point_index, unit_points.size());
+      return unit_points[point_index];
+    }
+  else if constexpr (std::is_same_v<VectorizedArrayType,
+                                    VectorizedArray<Number>>)
+    {
+      const auto n_lanes = VectorizedArray<Number>::size();
+      Point<spacedim, VectorizedArrayType> vectorized_unit_point;
+      for (unsigned int v = 0;
+           v < n_lanes && point_index * n_lanes + v < unit_points.size();
+           ++v)
+        for (unsigned int d = 0; d < dim; ++d)
+          vectorized_unit_point[d][v] =
+            unit_points[point_index * n_lanes + v][d];
+      return vectorized_unit_point;
+    }
 }
 
 DEAL_II_NAMESPACE_CLOSE
