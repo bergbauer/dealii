@@ -53,81 +53,6 @@ namespace internal
       using value_type = Tensor<1, n_components, VectorizedArrayType>;
       using gradient_type =
         Tensor<1, n_components, Tensor<1, dim, VectorizedArrayType>>;
-
-      static void
-      read_value(const Number       vector_entry,
-                 const unsigned int component,
-                 value_type &       result)
-      {
-        AssertIndexRange(component, n_components);
-        result[component] = vector_entry;
-      }
-
-      static void
-      write_value(Number &           vector_entry,
-                  const unsigned int component,
-                  const value_type & result)
-      {
-        AssertIndexRange(component, n_components);
-        vector_entry = result[component];
-      }
-
-      static void
-      set_gradient(
-        const Tensor<1, dim, Tensor<1, n_components, VectorizedArray<Number>>>
-          &                value,
-        const unsigned int vector_lane,
-        gradient_type &    result)
-      {
-        for (unsigned int i = 0; i < n_components; ++i)
-          for (unsigned int d = 0; d < dim; ++d)
-            result[i][d] = value[d][i][vector_lane];
-      }
-
-      static void
-      get_gradient(
-        Tensor<1, dim, Tensor<1, n_components, VectorizedArray<Number>>> &value,
-        const unsigned int   vector_lane,
-        const gradient_type &result)
-      {
-        for (unsigned int i = 0; i < n_components; ++i)
-          for (unsigned int d = 0; d < dim; ++d)
-            value[d][i][vector_lane] = result[i][d];
-      }
-
-      static void
-      set_value(const Tensor<1, n_components, VectorizedArray<Number>> &value,
-                const unsigned int vector_lane,
-                value_type &       result)
-      {
-        for (unsigned int i = 0; i < n_components; ++i)
-          result[i] = value[i][vector_lane];
-      }
-
-      static void
-      get_value(Tensor<1, n_components, VectorizedArray<Number>> &value,
-                const unsigned int                                vector_lane,
-                const value_type &                                result)
-      {
-        for (unsigned int i = 0; i < n_components; ++i)
-          value[i][vector_lane] = result[i];
-      }
-
-      template <typename Number2>
-      static Number2 &
-      access(Tensor<1, n_components, Number2> &value,
-             const unsigned int                component)
-      {
-        return value[component];
-      }
-
-      template <typename Number2>
-      static const Number2 &
-      access(const Tensor<1, n_components, Number2> &value,
-             const unsigned int                      component)
-      {
-        return value[component];
-      }
     };
 
     template <int dim, int n_components, typename Number>
@@ -217,70 +142,6 @@ namespace internal
     {
       using value_type    = VectorizedArrayType;
       using gradient_type = Tensor<1, dim, VectorizedArrayType>;
-
-      static void
-      read_value(const Number vector_entry,
-                 const unsigned int,
-                 value_type &result)
-      {
-        result = vector_entry;
-      }
-
-      static void
-      write_value(Number &vector_entry,
-                  const unsigned int,
-                  const value_type &result)
-      {
-        vector_entry = result;
-      }
-
-      static void
-      set_gradient(const Tensor<1, dim, VectorizedArray<Number>> &value,
-                   const unsigned int                             vector_lane,
-                   gradient_type &                                result)
-      {
-        for (unsigned int d = 0; d < dim; ++d)
-          result[d] = value[d][vector_lane];
-      }
-
-      static void
-      get_gradient(Tensor<1, dim, VectorizedArray<Number>> &value,
-                   const unsigned int                       vector_lane,
-                   const gradient_type &                    result)
-      {
-        for (unsigned int d = 0; d < dim; ++d)
-          value[d][vector_lane] = result[d];
-      }
-
-      static void
-      set_value(const VectorizedArray<Number> &value,
-                const unsigned int             vector_lane,
-                value_type &                   result)
-      {
-        result = value[vector_lane];
-      }
-
-      static void
-      get_value(VectorizedArray<Number> &value,
-                const unsigned int       vector_lane,
-                const value_type &       result)
-      {
-        value[vector_lane] = result;
-      }
-
-      template <typename Number2>
-      static Number2 &
-      access(Number2 &value, const unsigned int)
-      {
-        return value;
-      }
-
-      template <typename Number2>
-      static const Number2 &
-      access(const Number2 &value, const unsigned int)
-      {
-        return value;
-      }
     };
 
     template <int dim, typename Number>
@@ -359,86 +220,6 @@ namespace internal
     {
       using value_type    = Tensor<1, dim, VectorizedArrayType>;
       using gradient_type = Tensor<2, dim, VectorizedArrayType>;
-
-      static void
-      read_value(const Number       vector_entry,
-                 const unsigned int component,
-                 value_type &       result)
-      {
-        result[component] = vector_entry;
-      }
-
-      static void
-      write_value(Number &           vector_entry,
-                  const unsigned int component,
-                  const value_type & result)
-      {
-        vector_entry = result[component];
-      }
-
-      static void
-      set_gradient(
-        const Tensor<1, dim, Tensor<1, dim, VectorizedArray<Number>>> &value,
-        const unsigned int vector_lane,
-        gradient_type &    result)
-      {
-        for (unsigned int i = 0; i < dim; ++i)
-          for (unsigned int d = 0; d < dim; ++d)
-            result[i][d] = value[d][i][vector_lane];
-      }
-
-      static void
-      get_gradient(
-        Tensor<1, dim, Tensor<1, dim, VectorizedArray<Number>>> &value,
-        const unsigned int                                       vector_lane,
-        const gradient_type &                                    result)
-      {
-        for (unsigned int i = 0; i < dim; ++i)
-          for (unsigned int d = 0; d < dim; ++d)
-            value[d][i][vector_lane] = result[i][d];
-      }
-
-      static void
-      set_value(const Tensor<1, dim, VectorizedArray<Number>> &value,
-                const unsigned int                             vector_lane,
-                value_type &                                   result)
-      {
-        for (unsigned int i = 0; i < dim; ++i)
-          result[i] = value[i][vector_lane];
-      }
-
-      static void
-      get_value(Tensor<1, dim, VectorizedArray<Number>> &value,
-                const unsigned int                       vector_lane,
-                const value_type &                       result)
-      {
-        for (unsigned int i = 0; i < dim; ++i)
-          value[i][vector_lane] = result[i];
-      }
-
-      static Number &
-      access(value_type &value, const unsigned int component)
-      {
-        return value[component];
-      }
-
-      static const Number &
-      access(const value_type &value, const unsigned int component)
-      {
-        return value[component];
-      }
-
-      static Tensor<1, dim, Number> &
-      access(gradient_type &value, const unsigned int component)
-      {
-        return value[component];
-      }
-
-      static const Tensor<1, dim, Number> &
-      access(const gradient_type &value, const unsigned int component)
-      {
-        return value[component];
-      }
     };
 
     template <int dim, typename Number>
@@ -533,68 +314,6 @@ namespace internal
     {
       using value_type    = VectorizedArrayType;
       using gradient_type = Tensor<1, 1, VectorizedArrayType>;
-
-      static void
-      read_value(const Number vector_entry,
-                 const unsigned int,
-                 value_type &result)
-      {
-        result = vector_entry;
-      }
-
-      static void
-      write_value(Number &vector_entry,
-                  const unsigned int,
-                  const value_type &result)
-      {
-        vector_entry = result;
-      }
-
-      static void
-      set_gradient(const Tensor<1, 1, VectorizedArray<Number>> &value,
-                   const unsigned int                           vector_lane,
-                   gradient_type &                              result)
-      {
-        result[0] = value[0][vector_lane];
-      }
-
-      static void
-      get_gradient(Tensor<1, 1, VectorizedArray<Number>> &value,
-                   const unsigned int                     vector_lane,
-                   const gradient_type &                  result)
-      {
-        value[0][vector_lane] = result[0];
-      }
-
-      static void
-      set_value(const VectorizedArray<Number> &value,
-                const unsigned int             vector_lane,
-                value_type &                   result)
-      {
-        result = value[vector_lane];
-      }
-
-      static void
-      get_value(VectorizedArray<Number> &value,
-                const unsigned int       vector_lane,
-                const value_type &       result)
-      {
-        value[vector_lane] = result;
-      }
-
-      template <typename Number2>
-      static Number2 &
-      access(Number2 &value, const unsigned int)
-      {
-        return value;
-      }
-
-      template <typename Number2>
-      static const Number2 &
-      access(const Number2 &value, const unsigned int)
-      {
-        return value;
-      }
     };
 
     template <typename Number>
@@ -927,7 +646,7 @@ public:
    * class or the MappingInfo object passed to this function needs to be
    * constructed with UpdateFlags containing `update_JxW_values`.
    */
-  Number
+  VectorizedArrayType
   JxW(const unsigned int point_index) const;
 
   /**
@@ -935,7 +654,7 @@ public:
    * this function needs to be constructed with UpdateFlags containing
    * `update_normal_vectors`.
    */
-  Tensor<1, spacedim>
+  Tensor<1, spacedim, VectorizedArrayType>
   normal_vector(const unsigned int point_index) const;
 
   /**
@@ -1278,14 +997,13 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
     {
       const unsigned int n_lanes = VectorizedArray<Number>::size();
       n_filled_lanes_last_batch  = n_q_points_unvectorized % n_lanes;
-      n_q_points =
-        n_q_points_unvectorized / n_lanes + (n_filled_lanes_last_batch > 0) ?
-          1 :
-          0;
+      n_q_points                 = n_q_points_unvectorized / n_lanes;
+      if (n_filled_lanes_last_batch > 0)
+        ++n_q_points;
     }
   else if (std::is_same<VectorizedArrayType, Number>::value)
     {
-      n_q_points = n_q_points_unvectorized;
+      n_q_points = unit_points.size();
     }
   else
     AssertThrow(false, ExcNotImplemented());
@@ -1313,14 +1031,13 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
     {
       const unsigned int n_lanes = VectorizedArray<Number>::size();
       n_filled_lanes_last_batch  = n_q_points_unvectorized % n_lanes;
-      n_q_points =
-        n_q_points_unvectorized / n_lanes + (n_filled_lanes_last_batch > 0) ?
-          1 :
-          0;
+      n_q_points                 = n_q_points_unvectorized / n_lanes;
+      if (n_filled_lanes_last_batch > 0)
+        ++n_q_points;
     }
   else if (std::is_same<VectorizedArrayType, Number>::value)
     {
-      n_q_points = n_q_points_unvectorized;
+      n_q_points = unit_points.size();
     }
   else
     AssertThrow(false, ExcNotImplemented());
@@ -1948,14 +1665,29 @@ template <int n_components,
           int spacedim,
           typename Number,
           typename VectorizedArrayType>
-inline Number
+inline VectorizedArrayType
 FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   JxW(const unsigned int point_index) const
 {
   const auto &mapping_data =
     mapping_info->get_mapping_data(current_cell_index, current_face_number);
-  AssertIndexRange(point_index, mapping_data.JxW_values.size());
-  return mapping_data.JxW_values[point_index];
+
+  if constexpr (std::is_same_v<VectorizedArrayType, Number>)
+    {
+      AssertIndexRange(point_index, mapping_data.JxW_values.size());
+      return mapping_data.JxW_values[point_index];
+    }
+  else if constexpr (std::is_same_v<VectorizedArrayType,
+                                    VectorizedArray<Number>>)
+    {
+      const auto              n_lanes = VectorizedArray<Number>::size();
+      VectorizedArray<Number> vectorized_JxW;
+      for (unsigned int v = 0; v < n_lanes && point_index * n_lanes + v <
+                                                mapping_data.JxW_values.size();
+           ++v)
+        vectorized_JxW[v] = mapping_data.JxW_values[point_index * n_lanes + v];
+      return vectorized_JxW;
+    }
 }
 
 
@@ -1964,14 +1696,32 @@ template <int n_components,
           int spacedim,
           typename Number,
           typename VectorizedArrayType>
-inline Tensor<1, spacedim>
+inline Tensor<1, spacedim, VectorizedArrayType>
 FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   normal_vector(const unsigned int point_index) const
 {
   const auto &mapping_data =
     mapping_info->get_mapping_data(current_cell_index, current_face_number);
-  AssertIndexRange(point_index, mapping_data.normal_vectors.size());
-  return mapping_data.normal_vectors[point_index];
+
+  if constexpr (std::is_same_v<VectorizedArrayType, Number>)
+    {
+      AssertIndexRange(point_index, mapping_data.normal_vectors.size());
+      return mapping_data.normal_vectors[point_index];
+    }
+  else if constexpr (std::is_same_v<VectorizedArrayType,
+                                    VectorizedArray<Number>>)
+    {
+      const auto n_lanes = VectorizedArray<Number>::size();
+      Tensor<1, spacedim, VectorizedArray<Number>> vectorized_normal_vectors;
+      for (unsigned int v = 0;
+           v < n_lanes &&
+           point_index * n_lanes + v < mapping_data.normal_vectors.size();
+           ++v)
+        for (unsigned int d = 0; d < spacedim; ++d)
+          vectorized_normal_vectors[d][v] =
+            mapping_data.normal_vectors[point_index * n_lanes + v][d];
+      return vectorized_normal_vectors;
+    }
 }
 
 
