@@ -989,9 +989,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   current_cell_index  = cell_index;
   current_face_number = numbers::invalid_unsigned_int;
 
-  const unsigned int n_q_points_unvectorized =
-    mapping_info->get_unit_points(current_cell_index, current_face_number)
-      .size();
+  unit_points =
+    mapping_info->get_unit_points(current_cell_index, current_face_number);
+
+  const unsigned int n_q_points_unvectorized = unit_points.size();
 
   if (std::is_same<VectorizedArrayType, VectorizedArray<Number>>::value)
     {
@@ -1007,9 +1008,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
     }
   else
     AssertThrow(false, ExcNotImplemented());
-
-  unit_points =
-    mapping_info->get_unit_points(current_cell_index, current_face_number);
 
   if (update_flags & update_values)
     values.resize(n_q_points, numbers::signaling_nan<value_type>());
@@ -1031,9 +1029,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   current_cell_index  = cell_index;
   current_face_number = face_number;
 
-  const unsigned int n_q_points_unvectorized =
-    mapping_info->get_unit_points(current_cell_index, current_face_number)
-      .size();
+  unit_points =
+    mapping_info->get_unit_points(current_cell_index, current_face_number);
+
+  const unsigned int n_q_points_unvectorized = unit_points.size();
 
   if (std::is_same<VectorizedArrayType, VectorizedArray<Number>>::value)
     {
@@ -1049,9 +1048,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
     }
   else
     AssertThrow(false, ExcNotImplemented());
-
-  unit_points =
-    mapping_info->get_unit_points(current_cell_index, current_face_number);
 
   if (update_flags & update_values)
     values.resize(n_q_points, numbers::signaling_nan<value_type>());
