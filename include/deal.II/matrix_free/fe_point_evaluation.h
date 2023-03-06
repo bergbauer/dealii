@@ -517,7 +517,7 @@ public:
    * the cell in the MappingInfo object.
    */
   void
-  reinit(const unsigned int cell_index);
+  reinit(const unsigned int cell_index = numbers::invalid_unsigned_int);
 
   /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
@@ -797,7 +797,7 @@ private:
   /**
    * The reference points specified at reinit().
    */
-  std::vector<Point<dim>> unit_points;
+  ArrayView<const Point<dim>> unit_points;
 
   /**
    * Bool indicating if fast path is chosen.
@@ -950,8 +950,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
       fe_values->reinit(cell);
     }
 
-  this->unit_points =
-    std::vector<Point<dim>>(unit_points.begin(), unit_points.end());
+  this->unit_points = unit_points;
 
   if (std::is_same<VectorizedArrayType, VectorizedArray<Number>>::value)
     {
@@ -1067,19 +1066,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   evaluate(const ArrayView<const Number> &         solution_values,
            const EvaluationFlags::EvaluationFlags &evaluation_flag)
 {
-  const bool precomputed_mapping = mapping_info_on_the_fly.get() == nullptr;
-  if (precomputed_mapping)
-    {
-      unit_points =
-        mapping_info->get_unit_points(current_cell_index, current_face_number);
-
-      if (update_flags & update_values)
-        values.resize(n_q_points, numbers::signaling_nan<value_type>());
-      if (update_flags & update_gradients)
-        gradients.resize(n_q_points, numbers::signaling_nan<gradient_type>());
-    }
-
-  if (unit_points.empty())
+  if (unit_points.size() == 0)
     return;
 
   Assert(!(evaluation_flag & EvaluationFlags::hessians), ExcNotImplemented());
@@ -1106,34 +1093,30 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
 
       // unit gradients are currently only implemented with the fast tensor
       // path
-      unit_gradients.resize(unit_points.size(),
+      unit_gradients.resize(n_q_points,
                             numbers::signaling_nan<gradient_type>());
 
       const std::size_t n_points = unit_points.size();
       const std::size_t n_lanes  = VectorizedArray<Number>::size();
 
-      // convert quadrature points to vectorized format
-      std::vector<Point<dim, VectorizedArray<Number>>> vectorized_points(
-        n_q_points);
-      for (unsigned int qb = 0, q = 0; q < n_points; q += n_lanes, ++qb)
-        {
-          for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
-            for (unsigned int d = 0; d < dim; ++d)
-              vectorized_points[qb][d][v] = unit_points[q + v][d];
-        }
-
-      // loop over quadrature batches
-      for (unsigned int qb = 0; qb < n_q_points; ++qb)
+      // loop over quadrature batches qb / points q
+      for (unsigned int qb = 0, q = 0; q < n_points; ++qb, q += n_lanes)
         {
           const bool incomplete_last_batch =
             qb == (n_q_points - 1) && n_filled_lanes_last_batch > 0;
+
+          // convert quadrature points to vectorized format
+          Point<dim, VectorizedArray<Number>> vectorized_points;
+          for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
+            for (unsigned int d = 0; d < dim; ++d)
+              vectorized_points[d][v] = unit_points[q + v][d];
 
           // compute
           const auto val_and_grad =
             internal::evaluate_tensor_product_value_and_gradient(
               poly,
               solution_renumbered,
-              vectorized_points[qb],
+              vectorized_points,
               polynomials_are_hat_functions);
 
           if (evaluation_flag & EvaluationFlags::values)
@@ -1161,12 +1144,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
                                               VectorizedArrayType>::value)
                 {
                   // convert back to standard format
-                  for (unsigned int v = 0;
-                       v < n_lanes && qb * n_lanes + v < n_points;
-                       ++v)
+                  for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
                     internal::FEPointEvaluation::
                       EvaluatorTypeTraits<dim, n_components, Number>::set_value(
-                        val_and_grad.first, v, values[qb * n_lanes + v]);
+                        val_and_grad.first, v, values[q + v]);
                 }
               else
                 static_assert(
@@ -1191,13 +1172,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
                     vectorized_inverse_transposed_jacobians;
 
                   // convert to vectorized format
-                  for (unsigned int v = 0;
-                       v < n_lanes && qb * n_lanes + v < n_points;
-                       ++v)
+                  for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
                     for (unsigned int d = 0; d < dim; ++d)
                       for (unsigned int s = 0; s < spacedim; ++s)
                         vectorized_inverse_transposed_jacobians[s][d][v] =
-                          mapping_data.inverse_jacobians[qb * n_lanes + v]
+                          mapping_data.inverse_jacobians[q + v]
                             .transpose()[s][d];
 
                   unit_gradients[qb] = val_and_grad.second;
@@ -1223,20 +1202,17 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
                                               VectorizedArrayType>::value)
                 {
                   // convert back to standard format
-                  for (unsigned int v = 0;
-                       v < n_lanes && qb * n_lanes + v < n_points;
-                       ++v)
+                  for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
                     {
                       internal::FEPointEvaluation::EvaluatorTypeTraits<
                         dim,
                         n_components,
                         Number>::set_gradient(val_and_grad.second,
                                               v,
-                                              unit_gradients[qb * n_lanes + v]);
-                      gradients[qb * n_lanes + v] = apply_transformation(
-                        mapping_data.inverse_jacobians[qb * n_lanes + v]
-                          .transpose(),
-                        unit_gradients[qb * n_lanes + v]);
+                                              unit_gradients[q + v]);
+                      gradients[q + v] = apply_transformation(
+                        mapping_data.inverse_jacobians[q + v].transpose(),
+                        unit_gradients[q + v]);
                     }
                 }
               else
@@ -1315,18 +1291,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   integrate(const ArrayView<Number> &               solution_values,
             const EvaluationFlags::EvaluationFlags &integration_flags)
 {
-  const bool precomputed_mapping = mapping_info_on_the_fly.get() == nullptr;
-  if (precomputed_mapping)
-    {
-      unit_points =
-        mapping_info->get_unit_points(current_cell_index, current_face_number);
-
-      if (update_flags & update_values)
-        values.resize(n_q_points, numbers::signaling_nan<value_type>());
-      if (update_flags & update_gradients)
-        gradients.resize(n_q_points, numbers::signaling_nan<gradient_type>());
-    }
-
   if (unit_points.size() == 0) // no evaluation points provided
     {
       std::fill(solution_values.begin(), solution_values.end(), 0.0);
@@ -1338,7 +1302,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   if (!((integration_flags & EvaluationFlags::values) ||
         (integration_flags &
          EvaluationFlags::gradients))) // no integration flags
-    return;
+    {
+      std::fill(solution_values.begin(), solution_values.end(), 0.0);
+      return;
+    }
 
   AssertDimension(solution_values.size(), fe->dofs_per_cell);
   if (fast_path)
@@ -1356,18 +1323,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
       const std::size_t n_points = unit_points.size();
       const std::size_t n_lanes  = VectorizedArray<Number>::size();
 
-      // convert quadrature points to vectorized format
-      std::vector<Point<dim, VectorizedArray<Number>>> vectorized_points(
-        n_q_points);
-      for (unsigned int qb = 0, q = 0; q < n_points; q += n_lanes, ++qb)
-        {
-          for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
-            for (unsigned int d = 0; d < dim; ++d)
-              vectorized_points[qb][d][v] = unit_points[q + v][d];
-        }
-
-      // loop over quadrature batches
-      for (unsigned int qb = 0; qb < n_q_points; ++qb)
+      // loop over quadrature batches qb / points q
+      for (unsigned int qb = 0, q = 0; q < n_points; ++qb, q += n_lanes)
         {
           typename internal::ProductTypeNoPoint<value_type,
                                                 VectorizedArray<Number>>::type
@@ -1389,12 +1346,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
               else if constexpr (std::is_same<Number,
                                               VectorizedArrayType>::value)
                 {
-                  for (unsigned int v = 0;
-                       v < n_lanes && qb * n_lanes + v < n_points;
-                       ++v)
+                  for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
                     internal::FEPointEvaluation::
                       EvaluatorTypeTraits<dim, n_components, Number>::get_value(
-                        value, v, values[qb * n_lanes + v]);
+                        value, v, values[q + v]);
                 }
               else
                 static_assert(
@@ -1416,14 +1371,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
                     vectorized_inverse_transposed_jacobians;
 
                   // convert to vectorized format
-                  for (unsigned int v = 0;
-                       v < n_lanes && qb * n_lanes + v < n_points;
-                       ++v)
+                  for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
                     for (unsigned int d = 0; d < dim; ++d)
                       for (unsigned int s = 0; s < spacedim; ++s)
                         vectorized_inverse_transposed_jacobians[s][d][v] =
-                          mapping_data
-                            .inverse_jacobians[qb * n_lanes + v][s][d];
+                          mapping_data.inverse_jacobians[q + v][s][d];
 
                   gradient = apply_transformation(
                     vectorized_inverse_transposed_jacobians, gradients[qb]);
@@ -1431,19 +1383,15 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
               else if constexpr (std::is_same<Number,
                                               VectorizedArrayType>::value)
                 {
-                  for (unsigned int v = 0;
-                       v < n_lanes && qb * n_lanes + v < n_points;
-                       ++v)
+                  for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
                     {
-                      gradients[qb * n_lanes + v] = apply_transformation(
-                        mapping_data.inverse_jacobians[qb * n_lanes + v],
-                        gradients[qb * n_lanes + v]);
+                      gradients[q + v] = apply_transformation(
+                        mapping_data.inverse_jacobians[q + v],
+                        gradients[q + v]);
                       internal::FEPointEvaluation::EvaluatorTypeTraits<
                         dim,
                         n_components,
-                        Number>::get_gradient(gradient,
-                                              v,
-                                              gradients[qb * n_lanes + v]);
+                        Number>::get_gradient(gradient, v, gradients[q + v]);
                     }
                 }
               else
@@ -1454,12 +1402,18 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
                   "VectorizedArrayType must be Number or VectorizedArray<Number>");
             }
 
+          // convert quadrature points to vectorized format
+          Point<dim, VectorizedArray<Number>> vectorized_points;
+          for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
+            for (unsigned int d = 0; d < dim; ++d)
+              vectorized_points[d][v] = unit_points[q + v][d];
+
           // compute
           internal::integrate_add_tensor_product_value_and_gradient(
             poly,
             value,
             gradient,
-            vectorized_points[qb],
+            vectorized_points,
             solution_renumbered_vectorized);
         }
 
@@ -1795,7 +1749,12 @@ FEPointEvaluation<n_components, dim, spacedim, Number, VectorizedArrayType>::
   if constexpr (std::is_same_v<VectorizedArrayType, Number>)
     {
       AssertIndexRange(point_index, mapping_data.quadrature_points.size());
-      return mapping_data.quadrature_points[point_index];
+
+      Point<spacedim, Number> point;
+      for (unsigned int s = 0; s < spacedim; ++s)
+        point[s] = mapping_data.quadrature_points[point_index][s];
+
+      return point;
     }
   else if constexpr (std::is_same_v<VectorizedArrayType,
                                     VectorizedArray<Number>>)

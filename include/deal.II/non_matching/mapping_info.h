@@ -136,7 +136,7 @@ namespace NonMatching
     /**
      * Getter function for current unit points.
      */
-    const std::vector<Point<dim>>
+    ArrayView<const Point<dim>>
     get_unit_points(
       const unsigned int cell_index  = numbers::invalid_unsigned_int,
       const unsigned int face_number = numbers::invalid_unsigned_int) const;
@@ -686,7 +686,7 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
-  const std::vector<Point<dim>>
+  ArrayView<const Point<dim>>
   MappingInfo<dim, spacedim>::get_unit_points(
     const unsigned int cell_index,
     const unsigned int face_number) const
@@ -720,7 +720,7 @@ namespace NonMatching
               unit_points.begin() +
               unit_points_index
                 [cell_index_to_compressed_cell_index[cell_index] + 1];
-            return std::vector<Point<dim>>(it_begin, it_end);
+            return make_array_view(it_begin, it_end);
           }
         else
           {
@@ -728,7 +728,7 @@ namespace NonMatching
               unit_points.begin() + unit_points_index[cell_index];
             const auto it_end =
               unit_points.begin() + unit_points_index[cell_index + 1];
-            return std::vector<Point<dim>>(it_begin, it_end);
+            return make_array_view(it_begin, it_end);
           }
       }
     else if (cell_index != numbers::invalid_unsigned_int)
@@ -754,7 +754,7 @@ namespace NonMatching
               unit_points.begin() + unit_points_index[current_face_index];
             const auto it_end =
               unit_points.begin() + unit_points_index[current_face_index + 1];
-            return std::vector<Point<dim>>(it_begin, it_end);
+            return make_array_view(it_begin, it_end);
           }
         else
           {
@@ -764,7 +764,7 @@ namespace NonMatching
               unit_points.begin() + unit_points_index[current_face_index];
             const auto it_end =
               unit_points.begin() + unit_points_index[current_face_index + 1];
-            return std::vector<Point<dim>>(it_begin, it_end);
+            return make_array_view(it_begin, it_end);
           }
       }
     else
