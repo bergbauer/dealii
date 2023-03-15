@@ -82,13 +82,13 @@ namespace numbers
       };
 
 
-      template <typename T>
-      struct NaNInitializer<VectorizedArray<T>>
+      template <typename T, size_t width>
+      struct NaNInitializer<VectorizedArray<T, width>>
       {
-        static VectorizedArray<T>
+        static VectorizedArray<T, width>
         invalid_element()
         {
-          return make_vectorized_array(NaNInitializer<T>::invalid_element());
+          return VectorizedArray<T, width>(NaNInitializer<T>::invalid_element());
         }
       };
 
