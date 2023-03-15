@@ -76,7 +76,7 @@ test(const unsigned int degree)
   dof_handler.distribute_dofs(fe);
   Vector<Number> vector(dof_handler.n_dofs());
 
-  FEPointEvaluation<1, dim, dim, Number, VectorizedArrayType> evaluator(
+  FEPointEvaluation<1, dim, dim, VectorizedArrayType> evaluator(
     mapping, fe, update_values | update_gradients);
 
   Tensor<1, dim, Number> exponents;
