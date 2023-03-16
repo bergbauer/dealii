@@ -1005,7 +1005,7 @@ public:
    * the cell in the MappingInfo object.
    */
   void
-  reinit(const unsigned int cell_index);
+  reinit(const unsigned int cell_index = numbers::invalid_unsigned_int);
 
   /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
@@ -1438,16 +1438,16 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 
   if (std::is_same<ScalarNumber, Number>::value)
     {
-      n_q_points = unit_points.size();
+      const_cast<unsigned int &>(n_q_points) = unit_points.size();
     }
   else
     {
       const unsigned int n_lanes =
         internal::VectorizedArrayTrait<VectorizedArrayType>::width;
-      n_filled_lanes_last_batch = unit_points.size() % n_lanes;
-      n_q_points                = unit_points.size() / n_lanes;
+      n_filled_lanes_last_batch              = unit_points.size() % n_lanes;
+      const_cast<unsigned int &>(n_q_points) = unit_points.size() / n_lanes;
       if (n_filled_lanes_last_batch > 0)
-        ++n_q_points;
+        ++const_cast<unsigned int &>(n_q_points);
     }
 
 
@@ -1474,16 +1474,17 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 
   if (std::is_same<ScalarNumber, Number>::value)
     {
-      n_q_points = unit_points.size();
+      const_cast<unsigned int &>(n_q_points) = unit_points.size();
     }
   else
     {
       const unsigned int n_lanes =
         internal::VectorizedArrayTrait<VectorizedArrayType>::width;
       n_filled_lanes_last_batch = n_q_points_unvectorized % n_lanes;
-      n_q_points                = n_q_points_unvectorized / n_lanes;
+      const_cast<unsigned int &>(n_q_points) =
+        n_q_points_unvectorized / n_lanes;
       if (n_filled_lanes_last_batch > 0)
-        ++n_q_points;
+        ++const_cast<unsigned int &>(n_q_points);
     }
 
   if (update_flags & update_values)
@@ -1510,16 +1511,17 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::reinit(
 
   if (std::is_same<ScalarNumber, Number>::value)
     {
-      n_q_points = unit_points.size();
+      const_cast<unsigned int &>(n_q_points) = unit_points.size();
     }
   else
     {
       const unsigned int n_lanes =
         internal::VectorizedArrayTrait<VectorizedArrayType>::width;
       n_filled_lanes_last_batch = n_q_points_unvectorized % n_lanes;
-      n_q_points                = n_q_points_unvectorized / n_lanes;
+      const_cast<unsigned int &>(n_q_points) =
+        n_q_points_unvectorized / n_lanes;
       if (n_filled_lanes_last_batch > 0)
-        ++n_q_points;
+        ++const_cast<unsigned int &>(n_q_points);
     }
 
   if (update_flags & update_values)

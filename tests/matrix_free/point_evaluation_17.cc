@@ -110,6 +110,7 @@ test()
                            solution_values.end());
 
       mapping_info.reinit(cell, unit_points);
+      evaluator1.reinit();
       evaluator1.evaluate(solution_values,
                           EvaluationFlags::values | EvaluationFlags::gradients);
 

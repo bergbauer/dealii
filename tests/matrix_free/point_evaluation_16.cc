@@ -110,6 +110,10 @@ test(const unsigned int degree)
 
       mapping_info.reinit(cell, unit_points);
 
+
+      evaluator.reinit();
+      evaluator2.reinit();
+
       evaluator.evaluate(solution_values,
                          EvaluationFlags::values | EvaluationFlags::gradients);
 
