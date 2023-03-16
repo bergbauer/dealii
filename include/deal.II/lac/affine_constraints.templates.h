@@ -220,13 +220,48 @@ namespace internal
 
     // helper function
     const auto sort_constraints = [&]() {
+      if (locally_relevant_constraints.empty())
+        return;
+
       std::sort(locally_relevant_constraints.begin(),
                 locally_relevant_constraints.end());
 
-      locally_relevant_constraints.erase(
-        std::unique(locally_relevant_constraints.begin(),
-                    locally_relevant_constraints.end()),
-        locally_relevant_constraints.end());
+      auto read_ptr  = locally_relevant_constraints.begin();
+      auto write_ptr = locally_relevant_constraints.begin();
+      // go through sorted locally relevant constraints
+      while (++read_ptr != locally_relevant_constraints.end())
+        {
+          // check if global dof index is different
+          if (read_ptr->index != write_ptr->index)
+            {
+              // remove duplicates, pick read_ptr
+              if (++write_ptr != read_ptr)
+                *write_ptr = std::move(*read_ptr);
+            }
+          else // equal global dof index
+            {
+              auto &      a = *write_ptr;
+              const auto &b = *read_ptr;
+              Assert(a.index == b.index, ExcInternalError());
+              if (a.inhomogeneity != b.inhomogeneity)
+                a.inhomogeneity += b.inhomogeneity;
+
+              auto &      av = a.entries;
+              const auto &bv = b.entries;
+              // check if entries vectors are equal
+              bool vectors_are_equal = (av.size() == bv.size());
+              for (unsigned int i = 0; vectors_are_equal && i < av.size(); ++i)
+                if (av[i].first != bv[i].first)
+                  vectors_are_equal = false;
+
+              // merge entries vectors if different
+              if (!vectors_are_equal)
+                av.insert(av.end(), bv.begin(), bv.end());
+            }
+        }
+      ++write_ptr;
+      locally_relevant_constraints.erase(write_ptr,
+                                         locally_relevant_constraints.end());
     };
 
     // 0) collect constrained indices of the current object
