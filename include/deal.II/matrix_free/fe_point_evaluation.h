@@ -420,6 +420,7 @@ namespace internal
       using gradient_type            = Tensor<2, dim, Number>;
       using scalar_gradient_type     = Tensor<2, dim, ScalarNumber>;
       using vectorized_gradient_type = Tensor<2, dim, VectorizedArrayType>;
+      using interface_gradient_type  = Tensor<1, dim, Tensor<1, dim, Number>>;
       using interface_vectorized_gradient_type =
         Tensor<1, dim, Tensor<1, dim, VectorizedArrayType>>;
 
@@ -442,7 +443,7 @@ namespace internal
       static void
       set_gradient(const interface_vectorized_gradient_type &value,
                    const unsigned int                        vector_lane,
-                   gradient_type &                           result)
+                   scalar_gradient_type &                    result)
       {
         for (unsigned int i = 0; i < dim; ++i)
           for (unsigned int d = 0; d < dim; ++d)
@@ -450,13 +451,21 @@ namespace internal
       }
 
       static void
-      get_gradient(interface_vectorized_gradient_type &value,
-                   const unsigned int                  vector_lane,
-                   const gradient_type &               result)
+      set_gradient(const interface_gradient_type &,
+                   const unsigned int,
+                   gradient_type &)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static void
+      get_gradient(vectorized_gradient_type &  value,
+                   const unsigned int          vector_lane,
+                   const scalar_gradient_type &result)
       {
         for (unsigned int i = 0; i < dim; ++i)
           for (unsigned int d = 0; d < dim; ++d)
-            value[d][i][vector_lane] = result[i][d];
+            value[i][d][vector_lane] = result[i][d];
       }
 
       static void
@@ -466,25 +475,49 @@ namespace internal
       }
 
       static void
+      get_gradient(interface_vectorized_gradient_type &value,
+                   const unsigned int                  vector_lane,
+                   const scalar_gradient_type &        result)
+      {
+        for (unsigned int i = 0; i < dim; ++i)
+          for (unsigned int d = 0; d < dim; ++d)
+            value[d][i][vector_lane] = result[i][d];
+      }
+
+      static void
+      get_gradient(interface_gradient_type &,
+                   const unsigned int,
+                   const gradient_type &)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static void
       set_value(const vectorized_value_type &value,
                 const unsigned int           vector_lane,
-                value_type &                 result)
+                scalar_value_type &          result)
       {
         for (unsigned int i = 0; i < dim; ++i)
           result[i] = value[i][vector_lane];
       }
 
       static void
-      get_value(vectorized_value_type &value,
-                const unsigned int     vector_lane,
-                const value_type &     result)
+      set_value(const value_type &, const unsigned int, value_type &)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static void
+      get_value(vectorized_value_type &  value,
+                const unsigned int       vector_lane,
+                const scalar_value_type &result)
       {
         for (unsigned int i = 0; i < dim; ++i)
           value[i][vector_lane] = result[i];
       }
 
       static void
-      get_value(value_type &, const unsigned int, const scalar_value_type &)
+      get_value(value_type &, const unsigned int, const value_type &)
       {
         AssertThrow(false, ExcInternalError());
       }
