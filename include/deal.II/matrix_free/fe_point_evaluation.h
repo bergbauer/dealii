@@ -243,20 +243,52 @@ namespace internal
         AssertThrow(false, ExcInternalError());
       }
 
-      template <typename Number2>
-      static Number2 &
-      access(Tensor<1, n_components, Number2> &value,
-             const unsigned int                component)
+      static ScalarNumber &
+      access(scalar_value_type &value, const unsigned int component)
       {
         return value[component];
       }
 
-      template <typename Number2>
-      static const Number2 &
-      access(const Tensor<1, n_components, Number2> &value,
-             const unsigned int                      component)
+      static const ScalarNumber &
+      access(const scalar_value_type &value, const unsigned int component)
       {
         return value[component];
+      }
+
+      static Tensor<1, dim, ScalarNumber> &
+      access(scalar_gradient_type &value, const unsigned int component)
+      {
+        return value[component];
+      }
+
+      static const Tensor<1, dim, ScalarNumber> &
+      access(const scalar_gradient_type &value, const unsigned int component)
+      {
+        return value[component];
+      }
+
+      static ScalarNumber &
+      access(vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const ScalarNumber &
+      access(const vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static Tensor<1, dim, ScalarNumber> &
+      access(vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const Tensor<1, dim, ScalarNumber> &
+      access(const vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
       }
     };
 
@@ -389,18 +421,52 @@ namespace internal
         AssertThrow(false, ExcInternalError());
       }
 
-      template <typename Number2>
-      static Number2 &
-      access(Number2 &value, const unsigned int)
+      static scalar_value_type &
+      access(scalar_value_type &value, const unsigned int)
       {
         return value;
       }
 
-      template <typename Number2>
-      static const Number2 &
-      access(const Number2 &value, const unsigned int)
+      static const scalar_value_type &
+      access(const scalar_value_type &value, const unsigned int)
       {
         return value;
+      }
+
+      static scalar_gradient_type &
+      access(scalar_gradient_type &value, const unsigned int)
+      {
+        return value;
+      }
+
+      static const scalar_gradient_type &
+      access(const scalar_gradient_type &value, const unsigned int)
+      {
+        return value;
+      }
+
+      static scalar_value_type &
+      access(vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const scalar_value_type &
+      access(const vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static scalar_gradient_type &
+      access(vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const scalar_gradient_type &
+      access(const vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
       }
     };
 
@@ -585,28 +651,52 @@ namespace internal
         AssertThrow(false, ExcInternalError());
       }
 
-      static Number &
-      access(value_type &value, const unsigned int component)
+      static ScalarNumber &
+      access(scalar_value_type &value, const unsigned int component)
       {
         return value[component];
       }
 
-      static const Number &
-      access(const value_type &value, const unsigned int component)
+      static const ScalarNumber &
+      access(const scalar_value_type &value, const unsigned int component)
       {
         return value[component];
       }
 
-      static Tensor<1, dim, Number> &
-      access(gradient_type &value, const unsigned int component)
+      static Tensor<1, dim, ScalarNumber> &
+      access(scalar_gradient_type &value, const unsigned int component)
       {
         return value[component];
       }
 
-      static const Tensor<1, dim, Number> &
-      access(const gradient_type &value, const unsigned int component)
+      static const Tensor<1, dim, ScalarNumber> &
+      access(const scalar_gradient_type &value, const unsigned int component)
       {
         return value[component];
+      }
+
+      static ScalarNumber &
+      access(vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const ScalarNumber &
+      access(const vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static Tensor<1, dim, ScalarNumber> &
+      access(vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const Tensor<1, dim, ScalarNumber> &
+      access(const vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
       }
     };
 
@@ -737,18 +827,52 @@ namespace internal
         AssertThrow(false, ExcInternalError());
       }
 
-      template <typename Number2>
-      static Number2 &
-      access(Number2 &value, const unsigned int)
+      static scalar_value_type &
+      access(scalar_value_type &value, const unsigned int)
       {
         return value;
       }
 
-      template <typename Number2>
-      static const Number2 &
-      access(const Number2 &value, const unsigned int)
+      static const scalar_value_type &
+      access(const scalar_value_type &value, const unsigned int)
       {
         return value;
+      }
+
+      static scalar_gradient_type &
+      access(scalar_gradient_type &value, const unsigned int)
+      {
+        return value;
+      }
+
+      static const scalar_gradient_type &
+      access(const scalar_gradient_type &value, const unsigned int)
+      {
+        return value;
+      }
+
+      static scalar_value_type &
+      access(vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const scalar_value_type &
+      access(const vectorized_value_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static scalar_gradient_type &
+      access(vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
+      }
+
+      static const scalar_gradient_type &
+      access(const vectorized_gradient_type &, const unsigned int)
+      {
+        AssertThrow(false, ExcInternalError());
       }
     };
 
@@ -1567,7 +1691,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
           std::fill(values.begin(), values.end(), value_type());
           for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
             {
-              const Number value = solution_values[i];
+              const ScalarNumber value = solution_values[i];
               for (unsigned int d = 0; d < n_components; ++d)
                 if (nonzero_shape_function_component[i][d] &&
                     (fe->is_primitive(i) || fe->is_primitive()))
@@ -1590,7 +1714,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
           std::fill(gradients.begin(), gradients.end(), gradient_type());
           for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
             {
-              const Number value = solution_values[i];
+              const ScalarNumber value = solution_values[i];
               for (unsigned int d = 0; d < n_components; ++d)
                 if (nonzero_shape_function_component[i][d] &&
                     (fe->is_primitive(i) || fe->is_primitive()))
@@ -1755,64 +1879,56 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate(
   else
     {
       // slow path with FEValues
-      if constexpr (std::is_same<ScalarNumber, Number>::value)
+      Assert(fe_values.get() != nullptr,
+             ExcMessage(
+               "Not initialized. Please call FEPointEvaluation::reinit()!"));
+      std::fill(solution_values.begin(), solution_values.end(), 0.0);
+
+      if (integration_flags & EvaluationFlags::values)
         {
-          Assert(
-            fe_values.get() != nullptr,
-            ExcMessage(
-              "Not initialized. Please call FEPointEvaluation::reinit()!"));
-          std::fill(solution_values.begin(), solution_values.end(), 0.0);
-
-          if (integration_flags & EvaluationFlags::values)
+          AssertIndexRange(unit_points.size(), values.size() + 1);
+          for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
             {
-              AssertIndexRange(unit_points.size(), values.size() + 1);
-              for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
-                {
-                  for (unsigned int d = 0; d < n_components; ++d)
-                    if (nonzero_shape_function_component[i][d] &&
-                        (fe->is_primitive(i) || fe->is_primitive()))
-                      for (unsigned int q = 0; q < unit_points.size(); ++q)
-                        solution_values[i] +=
-                          fe_values->shape_value(i, q) *
-                          internal::FEPointEvaluation::EvaluatorTypeTraits<
-                            dim,
-                            n_components,
-                            Number>::access(values[q], d);
-                    else if (nonzero_shape_function_component[i][d])
-                      for (unsigned int q = 0; q < unit_points.size(); ++q)
-                        solution_values[i] +=
-                          fe_values->shape_value_component(i, q, d) *
-                          internal::FEPointEvaluation::EvaluatorTypeTraits<
-                            dim,
-                            n_components,
-                            Number>::access(values[q], d);
-                }
+              for (unsigned int d = 0; d < n_components; ++d)
+                if (nonzero_shape_function_component[i][d] &&
+                    (fe->is_primitive(i) || fe->is_primitive()))
+                  for (unsigned int q = 0; q < unit_points.size(); ++q)
+                    solution_values[i] +=
+                      fe_values->shape_value(i, q) *
+                      internal::FEPointEvaluation::
+                        EvaluatorTypeTraits<dim, n_components, Number>::access(
+                          values[q], d);
+                else if (nonzero_shape_function_component[i][d])
+                  for (unsigned int q = 0; q < unit_points.size(); ++q)
+                    solution_values[i] +=
+                      fe_values->shape_value_component(i, q, d) *
+                      internal::FEPointEvaluation::
+                        EvaluatorTypeTraits<dim, n_components, Number>::access(
+                          values[q], d);
             }
+        }
 
-          if (integration_flags & EvaluationFlags::gradients)
+      if (integration_flags & EvaluationFlags::gradients)
+        {
+          AssertIndexRange(unit_points.size(), gradients.size() + 1);
+          for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
             {
-              AssertIndexRange(unit_points.size(), gradients.size() + 1);
-              for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
-                {
-                  for (unsigned int d = 0; d < n_components; ++d)
-                    if (nonzero_shape_function_component[i][d] &&
-                        (fe->is_primitive(i) || fe->is_primitive()))
-                      for (unsigned int q = 0; q < unit_points.size(); ++q)
-                        solution_values[i] +=
-                          fe_values->shape_grad(i, q) *
-                          internal::FEPointEvaluation::EvaluatorTypeTraits<
-                            dim,
-                            n_components,
-                            Number>::access(gradients[q], d);
-                    else if (nonzero_shape_function_component[i][d])
-                      for (unsigned int q = 0; q < unit_points.size(); ++q)
-                        solution_values[i] +=
-                          fe_values->shape_grad_component(i, q, d) *
-                          internal::FEPointEvaluation::EvaluatorTypeTraits<
-                            dim,
-                            n_components,
-                            Number>::access(gradients[q], d);
-                }
+              for (unsigned int d = 0; d < n_components; ++d)
+                if (nonzero_shape_function_component[i][d] &&
+                    (fe->is_primitive(i) || fe->is_primitive()))
+                  for (unsigned int q = 0; q < unit_points.size(); ++q)
+                    solution_values[i] +=
+                      fe_values->shape_grad(i, q) *
+                      internal::FEPointEvaluation::
+                        EvaluatorTypeTraits<dim, n_components, Number>::access(
+                          gradients[q], d);
+                else if (nonzero_shape_function_component[i][d])
+                  for (unsigned int q = 0; q < unit_points.size(); ++q)
+                    solution_values[i] +=
+                      fe_values->shape_grad_component(i, q, d) *
+                      internal::FEPointEvaluation::
+                        EvaluatorTypeTraits<dim, n_components, Number>::access(
+                          gradients[q], d);
             }
         }
     }
