@@ -1575,9 +1575,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
       // loop over quadrature batches qb / points q
       for (unsigned int qb = 0, q = 0; q < n_points; ++qb, q += n_lanes)
         {
-          const bool incomplete_last_batch =
-            qb == (n_q_points - 1) && n_filled_lanes_last_batch > 0;
-
           // convert quadrature points to vectorized format
           Point<dim, VectorizedArrayType> vectorized_points;
           for (unsigned int v = 0; v < n_lanes && q + v < n_points; ++v)
@@ -1609,20 +1606,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
                     n_components,
                     Number>::set_value_vectorized(val_and_grad.first,
                                                   values[qb]);
-                  if (incomplete_last_batch)
-                    {
-                      typename internal::FEPointEvaluation::EvaluatorTypeTraits<
-                        dim,
-                        n_components,
-                        ScalarNumber>::value_type zero;
-                      for (unsigned int v = n_filled_lanes_last_batch;
-                           v < n_lanes;
-                           ++v)
-                        internal::FEPointEvaluation::EvaluatorTypeTraits<
-                          dim,
-                          n_components,
-                          Number>::get_value(values[qb], v, zero);
-                    }
                 }
             }
           if (evaluation_flag & EvaluationFlags::gradients)
@@ -1675,20 +1658,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate(
                           vectorized_inverse_transposed_jacobians,
                           unit_gradients[qb]),
                         gradients[qb]);
-                  if (incomplete_last_batch)
-                    {
-                      typename internal::FEPointEvaluation::EvaluatorTypeTraits<
-                        dim,
-                        n_components,
-                        ScalarNumber>::gradient_type zero;
-                      for (unsigned int v = n_filled_lanes_last_batch;
-                           v < n_lanes;
-                           ++v)
-                        internal::FEPointEvaluation::EvaluatorTypeTraits<
-                          dim,
-                          n_components,
-                          Number>::get_gradient(gradients[qb], v, zero);
-                    }
                 }
             }
         }
@@ -1792,6 +1761,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate(
       // loop over quadrature batches qb / points q
       for (unsigned int qb = 0, q = 0; q < n_points; ++qb, q += n_lanes)
         {
+          const bool incomplete_last_batch =
+            (qb == (n_q_points - 1)) && (n_filled_lanes_last_batch > 0);
+
           typename internal::ProductTypeNoPoint<value_type,
                                                 VectorizedArrayType>::type
             value = {};
@@ -1812,6 +1784,21 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate(
                 }
               else
                 {
+                  // zero out lanes of incomplete last quadrature point batch
+                  if (incomplete_last_batch)
+                    {
+                      typename internal::FEPointEvaluation::EvaluatorTypeTraits<
+                        dim,
+                        n_components,
+                        ScalarNumber>::value_type zero;
+                      for (unsigned int v = n_filled_lanes_last_batch;
+                           v < n_lanes;
+                           ++v)
+                        internal::FEPointEvaluation::EvaluatorTypeTraits<
+                          dim,
+                          n_components,
+                          Number>::get_value(values[qb], v, zero);
+                    }
                   internal::FEPointEvaluation::EvaluatorTypeTraits<
                     dim,
                     n_components,
@@ -1848,6 +1835,22 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate(
                       for (unsigned int s = 0; s < spacedim; ++s)
                         vectorized_inverse_transposed_jacobians[s][d][v] =
                           mapping_data.inverse_jacobians[q + v][s][d];
+
+                  // zero out lanes of incomplete last quadrature point batch
+                  if (incomplete_last_batch)
+                    {
+                      typename internal::FEPointEvaluation::EvaluatorTypeTraits<
+                        dim,
+                        n_components,
+                        ScalarNumber>::gradient_type zero;
+                      for (unsigned int v = n_filled_lanes_last_batch;
+                           v < n_lanes;
+                           ++v)
+                        internal::FEPointEvaluation::EvaluatorTypeTraits<
+                          dim,
+                          n_components,
+                          Number>::get_gradient(gradients[qb], v, zero);
+                    }
 
                   internal::FEPointEvaluation::EvaluatorTypeTraits<
                     dim,
