@@ -228,13 +228,14 @@ namespace internal
 
       auto read_ptr  = locally_relevant_constraints.begin();
       auto write_ptr = locally_relevant_constraints.begin();
-      // go through sorted locally relevant constraints
+      // go through sorted locally relevant constraints and look out for
+      // duplicates (same constrained index, same entries) or cases that need to
+      // be augmented (same index, different entries)
       while (++read_ptr != locally_relevant_constraints.end())
         {
-          // check if global dof index is different
           if (read_ptr->index != write_ptr->index)
             {
-              // remove duplicates, pick read_ptr
+              // if we have a different index, use it here
               if (++write_ptr != read_ptr)
                 *write_ptr = std::move(*read_ptr);
             }
@@ -243,18 +244,29 @@ namespace internal
               auto &      a = *write_ptr;
               const auto &b = *read_ptr;
               Assert(a.index == b.index, ExcInternalError());
-              if (a.inhomogeneity != b.inhomogeneity)
-                a.inhomogeneity += b.inhomogeneity;
+              if (a.inhomogeneity != b.inhomogeneity &&
+                  locally_owned_dofs.is_element(b.index))
+                {
+                  Assert(b.inhomogeneity ==
+                           constraints_in.get_inhomogeneity(b.index),
+                         ExcInternalError());
+                  a.inhomogeneity = b.inhomogeneity;
+                }
 
               auto &      av = a.entries;
               const auto &bv = b.entries;
               // check if entries vectors are equal
               bool vectors_are_equal = (av.size() == bv.size());
               for (unsigned int i = 0; vectors_are_equal && i < av.size(); ++i)
-                if (av[i].first != bv[i].first)
-                  vectors_are_equal = false;
+                {
+                  if (av[i].first != bv[i].first)
+                    vectors_are_equal = false;
+                  else
+                    Assert(av[i].second == bv[i].second, ExcInternalError());
+                }
 
-              // merge entries vectors if different
+              // merge entries vectors if different, otherwise ignore the
+              // second entry
               if (!vectors_are_equal)
                 av.insert(av.end(), bv.begin(), bv.end());
             }
@@ -559,6 +571,7 @@ AffineConstraints<number>::make_consistent_in_parallel(
     }
 
 #ifdef DEBUG
+  std::cout << "is consistent" << std::endl;
   Assert(this->is_consistent_in_parallel(
            Utilities::MPI::all_gather(mpi_communicator, locally_owned_dofs),
            locally_relevant_dofs,
