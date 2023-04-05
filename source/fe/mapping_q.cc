@@ -985,6 +985,8 @@ MappingQ<dim, spacedim>::fill_fe_values(
           computed_cell_similarity,
           data,
           output_data.quadrature_points,
+          output_data.jacobians,
+          output_data.inverse_jacobians,
           output_data.jacobian_grads);
     }
   else
@@ -997,7 +999,9 @@ MappingQ<dim, spacedim>::fill_fe_values(
       internal::MappingQImplementation::maybe_update_Jacobians<dim, spacedim>(
         computed_cell_similarity,
         QProjector<dim>::DataSetDescriptor::cell(),
-        data);
+        data,
+        output_data.jacobians,
+        output_data.inverse_jacobians);
 
       internal::MappingQImplementation::maybe_update_jacobian_grads<dim,
                                                                     spacedim>(
@@ -1135,27 +1139,6 @@ MappingQ<dim, spacedim>::fill_fe_values(
           }
     }
 
-
-
-  // copy values from InternalData to vector given by reference
-  if (update_flags & update_jacobians)
-    {
-      AssertDimension(output_data.jacobians.size(), n_q_points);
-      if (computed_cell_similarity != CellSimilarity::translation)
-        for (unsigned int point = 0; point < n_q_points; ++point)
-          output_data.jacobians[point] = data.contravariant[point];
-    }
-
-  // copy values from InternalData to vector given by reference
-  if (update_flags & update_inverse_jacobians)
-    {
-      AssertDimension(output_data.inverse_jacobians.size(), n_q_points);
-      if (computed_cell_similarity != CellSimilarity::translation)
-        for (unsigned int point = 0; point < n_q_points; ++point)
-          output_data.inverse_jacobians[point] =
-            data.covariant[point].transpose();
-    }
-
   return computed_cell_similarity;
 }
 
@@ -1287,7 +1270,11 @@ MappingQ<dim, spacedim>::fill_fe_immersed_surface_values(
     output_data.quadrature_points);
 
   internal::MappingQImplementation::maybe_update_Jacobians<dim, spacedim>(
-    CellSimilarity::none, QProjector<dim>::DataSetDescriptor::cell(), data);
+    CellSimilarity::none,
+    QProjector<dim>::DataSetDescriptor::cell(),
+    data,
+    output_data.jacobians,
+    output_data.inverse_jacobians);
 
   internal::MappingQImplementation::maybe_update_jacobian_grads<dim, spacedim>(
     CellSimilarity::none,
@@ -1371,23 +1358,6 @@ MappingQ<dim, spacedim>::fill_fe_immersed_surface_values(
               output_data.normal_vectors[point] = normal;
             }
         }
-    }
-
-  // copy values from InternalData to vector given by reference
-  if ((update_flags & update_jacobians) != 0u)
-    {
-      AssertDimension(output_data.jacobians.size(), n_q_points);
-      for (unsigned int point = 0; point < n_q_points; ++point)
-        output_data.jacobians[point] = data.contravariant[point];
-    }
-
-  // copy values from InternalData to vector given by reference
-  if ((update_flags & update_inverse_jacobians) != 0u)
-    {
-      AssertDimension(output_data.inverse_jacobians.size(), n_q_points);
-      for (unsigned int point = 0; point < n_q_points; ++point)
-        output_data.inverse_jacobians[point] =
-          data.covariant[point].transpose();
     }
 }
 

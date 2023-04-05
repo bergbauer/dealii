@@ -1116,6 +1116,8 @@ namespace internal
       const CellSimilarity::Similarity cell_similarity,
       const typename dealii::MappingQ<dim, spacedim>::InternalData &data,
       std::vector<Point<spacedim>> &                 quadrature_points,
+      std::vector<DerivativeForm<1, dim, spacedim>> &jacobians,
+      std::vector<DerivativeForm<1, spacedim, dim>> &inverse_jacobians,
       std::vector<DerivativeForm<2, dim, spacedim>> &jacobian_grads)
     {
       const UpdateFlags update_flags = data.update_each;
@@ -1245,6 +1247,26 @@ namespace internal
           for (unsigned int point = 0; point < n_q_points; ++point)
             data.volume_elements[point] =
               data.contravariant[point].determinant();
+
+      // copy values from InternalData to vector given by reference
+      if (update_flags & update_jacobians)
+        {
+          const unsigned int n_q_points = data.contravariant.size();
+          AssertDimension(jacobians.size(), n_q_points);
+          if (cell_similarity != CellSimilarity::translation)
+            for (unsigned int point = 0; point < n_q_points; ++point)
+              jacobians[point] = data.contravariant[point];
+        }
+
+      // copy values from InternalData to vector given by reference
+      if (update_flags & update_inverse_jacobians)
+        {
+          const unsigned int n_q_points = data.contravariant.size();
+          AssertDimension(inverse_jacobians.size(), n_q_points);
+          if (cell_similarity != CellSimilarity::translation)
+            for (unsigned int point = 0; point < n_q_points; ++point)
+              inverse_jacobians[point] = data.covariant[point].transpose();
+        }
 
       if (evaluation_flag & EvaluationFlags::hessians)
         {
@@ -1423,7 +1445,9 @@ namespace internal
     maybe_update_Jacobians(
       const CellSimilarity::Similarity                          cell_similarity,
       const typename dealii::QProjector<dim>::DataSetDescriptor data_set,
-      const typename dealii::MappingQ<dim, spacedim>::InternalData &data)
+      const typename dealii::MappingQ<dim, spacedim>::InternalData &data,
+      std::vector<DerivativeForm<1, dim, spacedim>> &               jacobians,
+      std::vector<DerivativeForm<1, spacedim, dim>> &inverse_jacobians)
     {
       const UpdateFlags update_flags = data.update_each;
 
@@ -1487,6 +1511,26 @@ namespace internal
               data.volume_elements[point] =
                 data.contravariant[point].determinant();
           }
+
+      // copy values from InternalData to vector given by reference
+      if (update_flags & update_jacobians)
+        {
+          const unsigned int n_q_points = data.contravariant.size();
+          AssertDimension(jacobians.size(), n_q_points);
+          if (cell_similarity != CellSimilarity::translation)
+            for (unsigned int point = 0; point < n_q_points; ++point)
+              jacobians[point] = data.contravariant[point];
+        }
+
+      // copy values from InternalData to vector given by reference
+      if (update_flags & update_inverse_jacobians)
+        {
+          const unsigned int n_q_points = data.contravariant.size();
+          AssertDimension(inverse_jacobians.size(), n_q_points);
+          if (cell_similarity != CellSimilarity::translation)
+            for (unsigned int point = 0; point < n_q_points; ++point)
+              inverse_jacobians[point] = data.covariant[point].transpose();
+        }
     }
 
 
@@ -2106,15 +2150,6 @@ namespace internal
               output_data.normal_vectors[i] =
                 Point<spacedim>(output_data.boundary_forms[i] /
                                 output_data.boundary_forms[i].norm());
-
-          if (update_flags & update_jacobians)
-            for (unsigned int point = 0; point < n_q_points; ++point)
-              output_data.jacobians[point] = data.contravariant[point];
-
-          if (update_flags & update_inverse_jacobians)
-            for (unsigned int point = 0; point < n_q_points; ++point)
-              output_data.inverse_jacobians[point] =
-                data.covariant[point].transpose();
         }
     }
 
@@ -2144,6 +2179,8 @@ namespace internal
             CellSimilarity::none,
             data,
             output_data.quadrature_points,
+            output_data.jacobians,
+            output_data.inverse_jacobians,
             output_data.jacobian_grads);
         }
       else
@@ -2153,7 +2190,9 @@ namespace internal
                                                 output_data.quadrature_points);
           maybe_update_Jacobians<dim, spacedim>(CellSimilarity::none,
                                                 data_set,
-                                                data);
+                                                data,
+                                                output_data.jacobians,
+                                                output_data.inverse_jacobians);
           maybe_update_jacobian_grads<dim, spacedim>(
             CellSimilarity::none, data_set, data, output_data.jacobian_grads);
         }
