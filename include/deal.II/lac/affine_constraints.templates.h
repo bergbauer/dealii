@@ -226,6 +226,16 @@ namespace internal
       std::sort(locally_relevant_constraints.begin(),
                 locally_relevant_constraints.end());
 
+      auto equal_with_tol = [](const number d, const number e) {
+        if (std::abs(std::real(d - e)) <
+            100000. *
+              std::numeric_limits<
+                typename numbers::NumberTraits<number>::real_type>::epsilon())
+          return true;
+        else
+          return false;
+      };
+
       auto read_ptr  = locally_relevant_constraints.begin();
       auto write_ptr = locally_relevant_constraints.begin();
       // go through sorted locally relevant constraints and look out for
@@ -244,11 +254,12 @@ namespace internal
               auto &      a = *write_ptr;
               const auto &b = *read_ptr;
               Assert(a.index == b.index, ExcInternalError());
-              if (a.inhomogeneity != b.inhomogeneity &&
+              if (!equal_with_tol(a.inhomogeneity, b.inhomogeneity) &&
                   locally_owned_dofs.is_element(b.index))
                 {
-                  Assert(b.inhomogeneity ==
-                           constraints_in.get_inhomogeneity(b.index),
+                  Assert(equal_with_tol(b.inhomogeneity,
+                                        constraints_in.get_inhomogeneity(
+                                          b.index)),
                          ExcInternalError());
                   a.inhomogeneity = b.inhomogeneity;
                 }
@@ -262,7 +273,8 @@ namespace internal
                   if (av[i].first != bv[i].first)
                     vectors_are_equal = false;
                   else
-                    Assert(av[i].second == bv[i].second, ExcInternalError());
+                    Assert(equal_with_tol(av[i].second, bv[i].second),
+                           ExcInternalError());
                 }
 
               // merge entries vectors if different, otherwise ignore the
@@ -571,7 +583,6 @@ AffineConstraints<number>::make_consistent_in_parallel(
     }
 
 #ifdef DEBUG
-  std::cout << "is consistent" << std::endl;
   Assert(this->is_consistent_in_parallel(
            Utilities::MPI::all_gather(mpi_communicator, locally_owned_dofs),
            locally_relevant_dofs,
