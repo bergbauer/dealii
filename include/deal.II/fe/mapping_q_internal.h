@@ -1286,6 +1286,100 @@ namespace internal
     }
 
 
+
+    template <int dim, int spacedim>
+    inline void
+    maybe_update_q_points_Jacobians_generic(
+      const ArrayView<const Point<dim>> &                 unit_points,
+      const UpdateFlags                                   update_flags,
+      const std::vector<Point<spacedim>> &                support_points,
+      const std::vector<Polynomials::Polynomial<double>> &polynomials_1d,
+      const unsigned int                                  polynomial_degree,
+      const std::vector<unsigned int> &renumber_lexicographic_to_hierarchic,
+      std::vector<Point<spacedim>> &   quadrature_points,
+      std::vector<DerivativeForm<1, dim, spacedim>> &jacobians,
+      std::vector<DerivativeForm<1, spacedim, dim>> &inverse_jacobians)
+    {
+      const unsigned int n_points = unit_points.size();
+      const unsigned int n_lanes  = VectorizedArray<double>::size();
+
+      // Use the more heavy VectorizedArray code path if there is more than
+      // one point left to compute
+      for (unsigned int i = 0; i < n_points; i += n_lanes)
+        if (n_points - i > 1)
+          {
+            Point<dim, VectorizedArray<double>> p_vec;
+            for (unsigned int j = 0; j < n_lanes; ++j)
+              if (i + j < n_points)
+                for (unsigned int d = 0; d < dim; ++d)
+                  p_vec[d][j] = unit_points[i + j][d];
+              else
+                for (unsigned int d = 0; d < dim; ++d)
+                  p_vec[d][j] = unit_points[i][d];
+
+            const auto result =
+              internal::evaluate_tensor_product_value_and_gradient(
+                polynomials_1d,
+                support_points,
+                p_vec,
+                polynomial_degree == 1,
+                renumber_lexicographic_to_hierarchic);
+
+            if (update_flags & update_quadrature_points)
+              for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                for (unsigned int d = 0; d < spacedim; ++d)
+                  quadrature_points[i + j][d] = result.first[d][j];
+
+            if (update_flags & update_jacobians)
+              for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                for (unsigned int d = 0; d < spacedim; ++d)
+                  for (unsigned int e = 0; e < dim; ++e)
+                    jacobians[i + j][d][e] = result.second[e][d][j];
+
+            if (update_flags & update_inverse_jacobians)
+              {
+                DerivativeForm<1, spacedim, dim, VectorizedArray<double>> jac(
+                  result.second);
+                const DerivativeForm<1, spacedim, dim, VectorizedArray<double>>
+                  inv_jac = jac.covariant_form();
+                for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                  for (unsigned int d = 0; d < dim; ++d)
+                    for (unsigned int e = 0; e < spacedim; ++e)
+                      inverse_jacobians[i + j][d][e] = inv_jac[d][e][j];
+              }
+          }
+        else
+          {
+            const auto result =
+              internal::evaluate_tensor_product_value_and_gradient(
+                polynomials_1d,
+                support_points,
+                unit_points[i],
+                polynomial_degree == 1,
+                renumber_lexicographic_to_hierarchic);
+
+            if (update_flags & update_quadrature_points)
+              quadrature_points[i] = result.first;
+
+            if (update_flags & update_jacobians)
+              {
+                DerivativeForm<1, spacedim, dim> jac = result.second;
+                jacobians[i]                         = jac.transpose();
+              }
+
+            if (update_flags & update_inverse_jacobians)
+              {
+                DerivativeForm<1, spacedim, dim> jac(result.second);
+                DerivativeForm<1, spacedim, dim> inv_jac = jac.covariant_form();
+                for (unsigned int d = 0; d < dim; ++d)
+                  for (unsigned int e = 0; e < spacedim; ++e)
+                    inverse_jacobians[i][d][e] = inv_jac[d][e];
+              }
+          }
+    }
+
+
+
     /**
      * Compute the locations of quadrature points on the object described by
      * the first argument (and the cell for which the mapping support points
