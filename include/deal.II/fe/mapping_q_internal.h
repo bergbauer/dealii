@@ -2181,6 +2181,9 @@ namespace internal
       const typename QProjector<dim>::DataSetDescriptor             data_set,
       const Quadrature<dim - 1> &                                   quadrature,
       const typename dealii::MappingQ<dim, spacedim>::InternalData &data,
+      const std::vector<Polynomials::Polynomial<double>> &polynomials_1d,
+      const unsigned int                                  polynomial_degree,
+      const std::vector<unsigned int> &renumber_lexicographic_to_hierarchic,
       internal::FEValuesImplementation::MappingRelatedData<dim, spacedim>
         &output_data)
     {
@@ -2196,14 +2199,19 @@ namespace internal
         }
       else
         {
-          maybe_compute_q_points<dim, spacedim>(data_set,
-                                                data,
-                                                output_data.quadrature_points);
-          maybe_update_Jacobians<dim, spacedim>(CellSimilarity::none,
-                                                data_set,
-                                                data,
-                                                output_data.jacobians,
-                                                output_data.inverse_jacobians);
+          auto quadrature_dim = QProjector<dim>::project_to_face(
+            ReferenceCells::get_hypercube<dim>(), quadrature, face_no);
+          internal::MappingQImplementation::
+            maybe_update_q_points_Jacobians_generic(
+              CellSimilarity::none,
+              data,
+              make_array_view(quadrature_dim.get_points()),
+              polynomials_1d,
+              polynomial_degree,
+              renumber_lexicographic_to_hierarchic,
+              output_data.quadrature_points,
+              output_data.jacobians,
+              output_data.inverse_jacobians);
           maybe_update_jacobian_grads<dim, spacedim>(
             CellSimilarity::none, data_set, data, output_data.jacobian_grads);
         }

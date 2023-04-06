@@ -1187,6 +1187,9 @@ MappingQ<dim, spacedim>::fill_fe_face_values(
       quadrature[0].size()),
     quadrature[0],
     data,
+    polynomials_1d,
+    polynomial_degree,
+    renumber_lexicographic_to_hierarchic,
     output_data);
 }
 
@@ -1237,6 +1240,9 @@ MappingQ<dim, spacedim>::fill_fe_subface_values(
       cell->subface_case(face_no)),
     quadrature,
     data,
+    polynomials_1d,
+    polynomial_degree,
+    renumber_lexicographic_to_hierarchic,
     output_data);
 }
 
