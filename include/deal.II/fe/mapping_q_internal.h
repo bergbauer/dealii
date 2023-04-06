@@ -1312,7 +1312,9 @@ namespace internal
     template <int dim, int spacedim>
     inline void
     maybe_update_q_points_Jacobians_generic(
-      const ArrayView<const Point<dim>> &                 unit_points,
+      const CellSimilarity::Similarity cell_similarity,
+      const typename dealii::MappingQ<dim, spacedim>::InternalData &data,
+      const ArrayView<const Point<dim>> &                           unit_points,
       const UpdateFlags                                   update_flags,
       const std::vector<Point<spacedim>> &                support_points,
       const std::vector<Polynomials::Polynomial<double>> &polynomials_1d,
@@ -1352,23 +1354,27 @@ namespace internal
                 for (unsigned int d = 0; d < spacedim; ++d)
                   quadrature_points[i + j][d] = result.first[d][j];
 
-            if (update_flags & update_jacobians)
+            if (cell_similarity == CellSimilarity::translation)
+              continue;
+
+            if (update_flags & update_contravariant_transformation)
               for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
                 for (unsigned int d = 0; d < spacedim; ++d)
                   for (unsigned int e = 0; e < dim; ++e)
-                    jacobians[i + j][d][e] = result.second[e][d][j];
+                    data.contravariant[i + j][d][e] = result.second[e][d][j];
+
+            if (update_flags & update_jacobians)
+              for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                jacobians[i + j] = data.contravariant[i + j];
+
+            if (update_flags & update_covariant_transformation)
+              for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                data.covariant[i + j] =
+                  data.contravariant[i + j].covariant_form();
 
             if (update_flags & update_inverse_jacobians)
-              {
-                DerivativeForm<1, spacedim, dim, VectorizedArray<double>> jac(
-                  result.second);
-                const DerivativeForm<1, spacedim, dim, VectorizedArray<double>>
-                  inv_jac = jac.covariant_form();
-                for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
-                  for (unsigned int d = 0; d < dim; ++d)
-                    for (unsigned int e = 0; e < spacedim; ++e)
-                      inverse_jacobians[i + j][d][e] = inv_jac[d][e][j];
-              }
+              for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                inverse_jacobians[i + j] = data.covariant[i + j].transpose();
           }
         else
           {
@@ -1383,20 +1389,23 @@ namespace internal
             if (update_flags & update_quadrature_points)
               quadrature_points[i] = result.first;
 
-            if (update_flags & update_jacobians)
+            if (cell_similarity == CellSimilarity::translation)
+              continue;
+
+            if (update_flags & update_contravariant_transformation)
               {
-                DerivativeForm<1, spacedim, dim> jac = result.second;
-                jacobians[i]                         = jac.transpose();
+                DerivativeForm<1, spacedim, dim> jac_transposed = result.second;
+                data.contravariant[i] = jac_transposed.transpose();
               }
 
+            if (update_flags & update_jacobians)
+              jacobians[i] = data.contravariant[i];
+
+            if (update_flags & update_covariant_transformation)
+              data.covariant[i] = data.contravariant[i].covariant_form();
+
             if (update_flags & update_inverse_jacobians)
-              {
-                DerivativeForm<1, spacedim, dim> jac(result.second);
-                DerivativeForm<1, spacedim, dim> inv_jac = jac.covariant_form();
-                for (unsigned int d = 0; d < dim; ++d)
-                  for (unsigned int e = 0; e < spacedim; ++e)
-                    inverse_jacobians[i][d][e] = inv_jac[d][e];
-              }
+              inverse_jacobians[i] = data.contravariant[i].transpose();
           }
     }
 

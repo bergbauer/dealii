@@ -991,15 +991,16 @@ MappingQ<dim, spacedim>::fill_fe_values(
     }
   else
     {
-      internal::MappingQImplementation::maybe_compute_q_points<dim, spacedim>(
-        QProjector<dim>::DataSetDescriptor::cell(),
-        data,
-        output_data.quadrature_points);
-
-      internal::MappingQImplementation::maybe_update_Jacobians<dim, spacedim>(
+      internal::MappingQImplementation::maybe_update_q_points_Jacobians_generic(
         computed_cell_similarity,
-        QProjector<dim>::DataSetDescriptor::cell(),
         data,
+        make_array_view(quadrature.get_points()),
+        data.update_each,
+        data.mapping_support_points,
+        polynomials_1d,
+        polynomial_degree,
+        renumber_lexicographic_to_hierarchic,
+        output_data.quadrature_points,
         output_data.jacobians,
         output_data.inverse_jacobians);
 
@@ -1384,7 +1385,11 @@ MappingQ<dim, spacedim>::fill_mapping_data_for_generic_points(
   const std::vector<Point<spacedim>> support_points =
     this->compute_mapping_support_points(cell);
 
+  const InternalData data(polynomial_degree);
+
   internal::MappingQImplementation::maybe_update_q_points_Jacobians_generic(
+    CellSimilarity::none,
+    data,
     unit_points,
     update_flags,
     support_points,
