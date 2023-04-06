@@ -1269,15 +1269,14 @@ MappingQ<dim, spacedim>::fill_fe_immersed_surface_values(
   data.mapping_support_points = this->compute_mapping_support_points(cell);
   data.cell_of_current_support_points = cell;
 
-  internal::MappingQImplementation::maybe_compute_q_points<dim, spacedim>(
-    QProjector<dim>::DataSetDescriptor::cell(),
-    data,
-    output_data.quadrature_points);
-
-  internal::MappingQImplementation::maybe_update_Jacobians<dim, spacedim>(
+  internal::MappingQImplementation::maybe_update_q_points_Jacobians_generic(
     CellSimilarity::none,
-    QProjector<dim>::DataSetDescriptor::cell(),
     data,
+    make_array_view(quadrature.get_points()),
+    polynomials_1d,
+    polynomial_degree,
+    renumber_lexicographic_to_hierarchic,
+    output_data.quadrature_points,
     output_data.jacobians,
     output_data.inverse_jacobians);
 
