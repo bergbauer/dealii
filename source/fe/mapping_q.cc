@@ -995,8 +995,6 @@ MappingQ<dim, spacedim>::fill_fe_values(
         computed_cell_similarity,
         data,
         make_array_view(quadrature.get_points()),
-        data.update_each,
-        data.mapping_support_points,
         polynomials_1d,
         polynomial_degree,
         renumber_lexicographic_to_hierarchic,
@@ -1385,14 +1383,14 @@ MappingQ<dim, spacedim>::fill_mapping_data_for_generic_points(
   const std::vector<Point<spacedim>> support_points =
     this->compute_mapping_support_points(cell);
 
-  const InternalData data(polynomial_degree);
+  InternalData data(polynomial_degree);
+  data.update_each            = this->requires_update_flags(update_flags);
+  data.mapping_support_points = this->compute_mapping_support_points(cell);
 
   internal::MappingQImplementation::maybe_update_q_points_Jacobians_generic(
     CellSimilarity::none,
     data,
     unit_points,
-    update_flags,
-    support_points,
     polynomials_1d,
     polynomial_degree,
     renumber_lexicographic_to_hierarchic,

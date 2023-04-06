@@ -1315,8 +1315,6 @@ namespace internal
       const CellSimilarity::Similarity cell_similarity,
       const typename dealii::MappingQ<dim, spacedim>::InternalData &data,
       const ArrayView<const Point<dim>> &                           unit_points,
-      const UpdateFlags                                   update_flags,
-      const std::vector<Point<spacedim>> &                support_points,
       const std::vector<Polynomials::Polynomial<double>> &polynomials_1d,
       const unsigned int                                  polynomial_degree,
       const std::vector<unsigned int> &renumber_lexicographic_to_hierarchic,
@@ -1324,6 +1322,10 @@ namespace internal
       std::vector<DerivativeForm<1, dim, spacedim>> &jacobians,
       std::vector<DerivativeForm<1, spacedim, dim>> &inverse_jacobians)
     {
+      const UpdateFlags                   update_flags = data.update_each;
+      const std::vector<Point<spacedim>> &support_points =
+        data.mapping_support_points;
+
       const unsigned int n_points = unit_points.size();
       const unsigned int n_lanes  = VectorizedArray<double>::size();
 
