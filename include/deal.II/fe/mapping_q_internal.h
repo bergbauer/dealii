@@ -1407,7 +1407,7 @@ namespace internal
               data.covariant[i] = data.contravariant[i].covariant_form();
 
             if (update_flags & update_inverse_jacobians)
-              inverse_jacobians[i] = data.contravariant[i].transpose();
+              inverse_jacobians[i] = data.covariant[i].transpose();
           }
     }
 

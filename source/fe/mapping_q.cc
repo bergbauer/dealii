@@ -1380,11 +1380,12 @@ MappingQ<dim, spacedim>::fill_mapping_data_for_generic_points(
          ExcNotImplemented());
 
   output_data.initialize(unit_points.size(), update_flags);
-  const std::vector<Point<spacedim>> support_points =
-    this->compute_mapping_support_points(cell);
 
-  InternalData data(polynomial_degree);
-  data.update_each            = this->requires_update_flags(update_flags);
+  auto internal_data =
+    this->get_data(update_flags,
+                   Quadrature<dim>(std::vector<Point<dim>>(unit_points.begin(),
+                                                           unit_points.end())));
+  const InternalData &data = static_cast<const InternalData &>(*internal_data);
   data.mapping_support_points = this->compute_mapping_support_points(cell);
 
   internal::MappingQImplementation::maybe_update_q_points_Jacobians_generic(
