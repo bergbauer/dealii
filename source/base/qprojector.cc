@@ -211,6 +211,77 @@ QProjector<3>::project_to_face(const ReferenceCell &  reference_cell,
 }
 
 
+template <int dim>
+Quadrature<dim>
+QProjector<dim>::project_to_oriented_face(const ReferenceCell &reference_cell,
+                                          const Quadrature<dim - 1> &quadrature,
+                                          const unsigned int         face_no,
+                                          const bool,
+                                          const bool,
+                                          const bool)
+{
+  return QProjector<dim>::project_to_face(reference_cell, quadrature, face_no);
+}
+
+
+
+template <>
+Quadrature<3>
+QProjector<3>::project_to_oriented_face(const ReferenceCell &reference_cell,
+                                        const Quadrature<2> &quadrature,
+                                        const unsigned int   face_no,
+                                        const bool           face_orientation,
+                                        const bool           face_flip,
+                                        const bool           face_rotation)
+{
+  constexpr int dim = 3;
+
+  static const unsigned int offset[2][2][2] = {
+    {{4, 5},   // face_orientation=false; face_flip=false;
+               // face_rotation=false and true
+     {6, 7}},  // face_orientation=false; face_flip=true;
+               // face_rotation=false and true
+    {{0, 1},   // face_orientation=true;  face_flip=false;
+               // face_rotation=false and true
+     {2, 3}}}; // face_orientation=true; face_flip=true;
+               // face_rotation=false and true
+
+  Quadrature<dim - 1> mutation;
+  const auto quadrature_reflected = internal::QProjector::reflect(quadrature);
+  switch (offset[face_orientation][face_flip][face_rotation])
+    {
+      case 0:
+        mutation = quadrature;
+        break;
+      case 1:
+        mutation = internal::QProjector::rotate(quadrature, 1);
+        break;
+      case 2:
+        mutation = internal::QProjector::rotate(quadrature, 2);
+        break;
+      case 3:
+        mutation = internal::QProjector::rotate(quadrature, 3);
+        break;
+      case 4:
+        mutation = quadrature_reflected;
+        break;
+      case 5:
+        mutation = internal::QProjector::rotate(quadrature_reflected, 3);
+        break;
+      case 6:
+        mutation = internal::QProjector::rotate(quadrature_reflected, 2);
+        break;
+      case 7:
+        mutation = internal::QProjector::rotate(quadrature_reflected, 1);
+        break;
+      default:
+        Assert(false, ExcInternalError());
+    }
+
+  return QProjector<dim>::project_to_face(reference_cell, mutation, face_no);
+}
+
+
 
 template <>
 void
@@ -464,6 +535,91 @@ QProjector<3>::project_to_subface(const ReferenceCell &    reference_cell,
         eta_scale * quadrature.point(p)(1) + eta_translation;
       q_points[p][const_index] = const_value;
     }
+}
+
+
+
+template <int dim>
+Quadrature<dim>
+QProjector<dim>::project_to_oriented_subface(
+  const ReferenceCell &      reference_cell,
+  const Quadrature<dim - 1> &quadrature,
+  const unsigned int         face_no,
+  const unsigned int         subface_no,
+  const bool                 face_orientation,
+  const bool                 face_flip,
+  const bool                 face_rotation)
+{
+  return QProjector<dim>::project_to_subface(
+    reference_cell,
+    quadrature,
+    face_no,
+    subface_no,
+    RefinementCase<dim - 1>::isotropic_refinement);
+}
+
+
+
+template <>
+Quadrature<3>
+QProjector<3>::project_to_oriented_subface(const ReferenceCell &reference_cell,
+                                           const Quadrature<2> &quadrature,
+                                           const unsigned int   face_no,
+                                           const unsigned int   subface_no,
+                                           const bool face_orientation,
+                                           const bool face_flip,
+                                           const bool face_rotation)
+{
+  constexpr int dim = 3;
+
+  static const unsigned int offset[2][2][2] = {
+    {{4, 5},   // face_orientation=false; face_flip=false;
+               // face_rotation=false and true
+     {6, 7}},  // face_orientation=false; face_flip=true;
+               // face_rotation=false and true
+    {{0, 1},   // face_orientation=true;  face_flip=false;
+               // face_rotation=false and true
+     {2, 3}}}; // face_orientation=true; face_flip=true;
+               // face_rotation=false and true
+
+  Quadrature<dim - 1> mutation;
+  const auto quadrature_reflected = internal::QProjector::reflect(quadrature);
+  switch (offset[face_orientation][face_flip][face_rotation])
+    {
+      case 0:
+        mutation = quadrature;
+        break;
+      case 1:
+        mutation = internal::QProjector::rotate(quadrature, 1);
+        break;
+      case 2:
+        mutation = internal::QProjector::rotate(quadrature, 2);
+        break;
+      case 3:
+        mutation = internal::QProjector::rotate(quadrature, 3);
+        break;
+      case 4:
+        mutation = quadrature_reflected;
+        break;
+      case 5:
+        mutation = internal::QProjector::rotate(quadrature_reflected, 3);
+        break;
+      case 6:
+        mutation = internal::QProjector::rotate(quadrature_reflected, 2);
+        break;
+      case 7:
+        mutation = internal::QProjector::rotate(quadrature_reflected, 1);
+        break;
+      default:
+        Assert(false, ExcInternalError());
+    }
+
+  return QProjector<dim>::project_to_subface(
+    reference_cell,
+    mutation,
+    face_no,
+    subface_no,
+    RefinementCase<dim - 1>::isotropic_refinement);
 }
 
 

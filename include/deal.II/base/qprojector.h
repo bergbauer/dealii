@@ -109,6 +109,14 @@ public:
                   const SubQuadrature &quadrature,
                   const unsigned int   face_no);
 
+  static Quadrature<dim>
+  project_to_oriented_face(const ReferenceCell &reference_cell,
+                           const SubQuadrature &quadrature,
+                           const unsigned int   face_no,
+                           const bool           face_orientation,
+                           const bool           face_flip,
+                           const bool           face_rotation);
+
   /**
    * Compute the quadrature points on the cell if the given quadrature formula
    * is used on face <tt>face_no</tt>, subface number <tt>subface_no</tt>
@@ -147,6 +155,15 @@ public:
                      const unsigned int             subface_no,
                      const RefinementCase<dim - 1> &ref_case =
                        RefinementCase<dim - 1>::isotropic_refinement);
+
+  static Quadrature<dim>
+  project_to_oriented_subface(const ReferenceCell &reference_cell,
+                              const SubQuadrature &quadrature,
+                              const unsigned int   face_no,
+                              const unsigned int   subface_no,
+                              const bool           face_orientation,
+                              const bool           face_flip,
+                              const bool           face_rotation);
 
   /**
    * Take a collection of face quadrature formulas and generate a cell
