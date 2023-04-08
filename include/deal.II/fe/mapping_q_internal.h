@@ -2032,6 +2032,59 @@ namespace internal
     }
 
 
+    namespace QProjectorHelper
+    {
+      namespace
+      {
+        Quadrature<2>
+        reflect(const Quadrature<2> &q)
+        {
+          // Take the points and reflect them by the diagonal
+          std::vector<Point<2>> q_points(q.get_points());
+          for (Point<2> &p : q_points)
+            std::swap(p[0], p[1]);
+
+          return Quadrature<2>(q_points, q.get_weights());
+        }
+
+
+        Quadrature<2>
+        rotate(const Quadrature<2> &q, const unsigned int n_times)
+        {
+          std::vector<Point<2>> q_points(q.size());
+          for (unsigned int i = 0; i < q.size(); ++i)
+            {
+              switch (n_times % 4)
+                {
+                  case 0:
+                    // 0 degree. the point remains as it is.
+                    q_points[i] = q.point(i);
+                    break;
+
+                  case 1:
+                    // 90 degree counterclockwise
+                    q_points[i][0] = 1.0 - q.point(i)[1];
+                    q_points[i][1] = q.point(i)[0];
+                    break;
+                  case 2:
+                    // 180 degree counterclockwise
+                    q_points[i][0] = 1.0 - q.point(i)[0];
+                    q_points[i][1] = 1.0 - q.point(i)[1];
+                    break;
+                  case 3:
+                    // 270 degree counterclockwise
+                    q_points[i][0] = q.point(i)[1];
+                    q_points[i][1] = 1.0 - q.point(i)[0];
+                    break;
+                }
+            }
+
+          return Quadrature<2>(q_points, q.get_weights());
+        }
+      } // namespace
+    }   // namespace QProjectorHelper
+
+
     /**
      * Do the work of MappingQ::fill_fe_face_values() and
      * MappingQ::fill_fe_subface_values() in a generic way,
@@ -2066,8 +2119,68 @@ namespace internal
         }
       else
         {
-          auto quadrature_dim = QProjector<dim>::project_to_face(
-            ReferenceCells::get_hypercube<dim>(), quadrature, face_no);
+          Quadrature<dim - 1> mutation;
+          if constexpr (dim == 3)
+            {
+              static const unsigned int offset[2][2][2] = {
+                {{4, 5},   // face_orientation=false; face_flip=false;
+                           // face_rotation=false and true
+                 {6, 7}},  // face_orientation=false; face_flip=true;
+                           // face_rotation=false and true
+                {{0, 1},   // face_orientation=true;  face_flip=false;
+                           // face_rotation=false and true
+                 {2, 3}}}; // face_orientation=true; face_flip=true;
+                           // face_rotation=false and true
+
+              switch (offset[cell->face_orientation(face_no)][cell->face_flip(
+                face_no)][cell->face_rotation(face_no)])
+                {
+                  case 0:
+                    mutation = quadrature;
+                    break;
+                  case 1:
+                    mutation = QProjectorHelper::rotate(quadrature, 1);
+                    break;
+                  case 2:
+                    mutation = QProjectorHelper::rotate(quadrature, 2);
+                    break;
+                  case 3:
+                    mutation = QProjectorHelper::rotate(quadrature, 3);
+                    break;
+                  case 4:
+                    mutation = QProjectorHelper::reflect(quadrature);
+                    break;
+                  case 5:
+                    mutation = QProjectorHelper::rotate(
+                      QProjectorHelper::reflect(quadrature), 3);
+                    break;
+                  case 6:
+                    mutation = QProjectorHelper::rotate(
+                      QProjectorHelper::reflect(quadrature), 2);
+                    break;
+                  case 7:
+                    mutation = QProjectorHelper::rotate(
+                      QProjectorHelper::reflect(quadrature), 1);
+                    break;
+                  default:
+                    Assert(false, ExcInternalError());
+                }
+            }
+          else
+            {
+              mutation = quadrature;
+            }
+
+          auto quadrature_dim =
+            subface_no == numbers::invalid_unsigned_int ?
+              QProjector<dim>::project_to_face(
+                ReferenceCells::get_hypercube<dim>(), mutation, face_no) :
+              QProjector<dim>::project_to_subface(
+                ReferenceCells::get_hypercube<dim>(),
+                mutation,
+                face_no,
+                subface_no,
+                RefinementCase<dim - 1>::isotropic_refinement);
           internal::MappingQImplementation::
             maybe_update_q_points_Jacobians_generic(
               CellSimilarity::none,
