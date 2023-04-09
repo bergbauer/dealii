@@ -391,6 +391,8 @@ public:
     virtual std::size_t
     memory_consumption() const override;
 
+    AlignedVector<Point<dim>> quadrature_points;
+
     /**
      * Values of shape functions. Access by function @p shape.
      *

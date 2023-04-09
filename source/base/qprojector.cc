@@ -557,7 +557,8 @@ QProjector<dim>::project_to_oriented_subface(
   const unsigned int         subface_no,
   const bool,
   const bool,
-  const bool)
+  const bool,
+  const internal::SubfaceCase<dim>)
 {
   return QProjector<dim>::project_to_subface(
     reference_cell,
@@ -571,23 +572,142 @@ QProjector<dim>::project_to_oriented_subface(
 
 template <>
 Quadrature<3>
-QProjector<3>::project_to_oriented_subface(const ReferenceCell &reference_cell,
-                                           const Quadrature<2> &quadrature,
-                                           const unsigned int   face_no,
-                                           const unsigned int   subface_no,
-                                           const bool face_orientation,
-                                           const bool face_flip,
-                                           const bool face_rotation)
+QProjector<3>::project_to_oriented_subface(
+  const ReferenceCell &          reference_cell,
+  const Quadrature<2> &          quadrature,
+  const unsigned int             face_no,
+  const unsigned int             subface_no,
+  const bool                     face_orientation,
+  const bool                     face_flip,
+  const bool                     face_rotation,
+  const internal::SubfaceCase<3> ref_case)
 {
   const Quadrature<2> mutation = internal::QProjector::mutate_quadrature(
     quadrature, face_orientation, face_flip, face_rotation);
 
+  constexpr int dim = 3;
+
+  // first, define an invalid number
+  static const unsigned int e = numbers::invalid_unsigned_int;
+
+  static const RefinementCase<dim - 1>
+    equivalent_refine_case[internal::SubfaceCase<dim>::case_isotropic + 1]
+                          [GeometryInfo<3>::max_children_per_face] = {
+                            // case_none. there should be only
+                            // invalid values here. However, as
+                            // this function is also called (in
+                            // tests) for cells which have no
+                            // refined faces, use isotropic
+                            // refinement instead
+                            {RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy},
+                            // case_x
+                            {RefinementCase<dim - 1>::cut_x,
+                             RefinementCase<dim - 1>::cut_x,
+                             RefinementCase<dim - 1>::no_refinement,
+                             RefinementCase<dim - 1>::no_refinement},
+                            // case_x1y
+                            {RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_x,
+                             RefinementCase<dim - 1>::no_refinement},
+                            // case_x2y
+                            {RefinementCase<dim - 1>::cut_x,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::no_refinement},
+                            // case_x1y2y
+                            {RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy},
+                            // case_y
+                            {RefinementCase<dim - 1>::cut_y,
+                             RefinementCase<dim - 1>::cut_y,
+                             RefinementCase<dim - 1>::no_refinement,
+                             RefinementCase<dim - 1>::no_refinement},
+                            // case_y1x
+                            {RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_y,
+                             RefinementCase<dim - 1>::no_refinement},
+                            // case_y2x
+                            {RefinementCase<dim - 1>::cut_y,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::no_refinement},
+                            // case_y1x2x
+                            {RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy},
+                            // case_xy (case_isotropic)
+                            {RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy,
+                             RefinementCase<dim - 1>::cut_xy}};
+
+  static const unsigned int
+    equivalent_subface_number[internal::SubfaceCase<dim>::case_isotropic + 1]
+                             [GeometryInfo<3>::max_children_per_face] = {
+                               // case_none, see above
+                               {0, 1, 2, 3},
+                               // case_x
+                               {0, 1, e, e},
+                               // case_x1y
+                               {0, 2, 1, e},
+                               // case_x2y
+                               {0, 1, 3, e},
+                               // case_x1y2y
+                               {0, 2, 1, 3},
+                               // case_y
+                               {0, 1, e, e},
+                               // case_y1x
+                               {0, 1, 1, e},
+                               // case_y2x
+                               {0, 2, 3, e},
+                               // case_y1x2x
+                               {0, 1, 2, 3},
+                               // case_xy (case_isotropic)
+                               {0, 1, 2, 3}};
+
+  // If face-orientation or face_rotation are
+  // non-standard, cut_x and cut_y have to be
+  // exchanged.
+  static const RefinementCase<dim - 1> ref_case_permutation[4] = {
+    RefinementCase<dim - 1>::no_refinement,
+    RefinementCase<dim - 1>::cut_y,
+    RefinementCase<dim - 1>::cut_x,
+    RefinementCase<dim - 1>::cut_xy};
+
+  // set a corresponding (equivalent)
+  // RefineCase and subface number
+  const RefinementCase<dim - 1> equ_ref_case =
+    equivalent_refine_case[ref_case][subface_no];
+  const unsigned int equ_subface_no =
+    equivalent_subface_number[ref_case][subface_no];
+  // make sure, that we got a valid subface and RefineCase
+  Assert(equ_ref_case != RefinementCase<dim>::no_refinement,
+         ExcInternalError());
+  Assert(equ_subface_no != e, ExcInternalError());
+  // now, finally respect non-standard faces
+  const RefinementCase<dim - 1> final_ref_case =
+    (face_orientation == face_rotation ? ref_case_permutation[equ_ref_case] :
+                                         equ_ref_case);
+
+  const unsigned int final_subface_no =
+    GeometryInfo<dim>::child_cell_on_face(RefinementCase<dim>(final_ref_case),
+                                          4,
+                                          equ_subface_no,
+                                          face_orientation,
+                                          face_flip,
+                                          face_rotation,
+                                          equ_ref_case);
+
   return QProjector<3>::project_to_subface(
-    reference_cell,
-    mutation,
-    face_no,
-    subface_no,
-    RefinementCase<2>::isotropic_refinement);
+    reference_cell, mutation, face_no, final_subface_no, final_ref_case);
 }
 
 

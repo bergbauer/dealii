@@ -163,7 +163,8 @@ public:
                               const unsigned int   subface_no,
                               const bool           face_orientation,
                               const bool           face_flip,
-                              const bool           face_rotation);
+                              const bool           face_rotation,
+                              const internal::SubfaceCase<dim> ref_case);
 
   /**
    * Take a collection of face quadrature formulas and generate a cell

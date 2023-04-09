@@ -2082,7 +2082,8 @@ namespace internal
                                     subface_no,
                                     cell->face_orientation(face_no),
                                     cell->face_flip(face_no),
-                                    cell->face_rotation(face_no));
+                                    cell->face_rotation(face_no),
+                                    cell->subface_case(face_no));
           internal::MappingQImplementation::
             maybe_update_q_points_Jacobians_generic(
               CellSimilarity::none,
