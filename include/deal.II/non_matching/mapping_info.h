@@ -378,9 +378,6 @@ namespace NonMatching
     const std::vector<std::vector<Point<dim>>> &unit_points_vector,
     const unsigned int                          n_unfiltered_cells)
   {
-    do_cell_index_compression =
-      n_unfiltered_cells != numbers::invalid_unsigned_int;
-
     const unsigned int n_cells = unit_points_vector.size();
     AssertDimension(n_cells,
                     std::distance(cell_iterator_range.begin(),
@@ -404,6 +401,9 @@ namespace NonMatching
     const std::vector<Quadrature<dim>> &quadrature_vector,
     const unsigned int                  n_unfiltered_cells)
   {
+    do_cell_index_compression =
+      n_unfiltered_cells != numbers::invalid_unsigned_int;
+
     const unsigned int n_cells = quadrature_vector.size();
     AssertDimension(n_cells,
                     std::distance(cell_iterator_range.begin(),
@@ -412,9 +412,8 @@ namespace NonMatching
     // fill unit points index offset vector
     unit_points_index.reserve(n_cells + 1);
     unit_points_index.push_back(0);
-    for (const auto &unit_points : quadrature_vector)
-      unit_points_index.push_back(unit_points_index.back() +
-                                  unit_points.size());
+    for (const auto &quadrature : quadrature_vector)
+      unit_points_index.push_back(unit_points_index.back() + quadrature.size());
 
     const unsigned int n_unit_points = unit_points_index.back();
 
