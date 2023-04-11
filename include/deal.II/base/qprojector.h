@@ -157,13 +157,13 @@ public:
                        RefinementCase<dim - 1>::isotropic_refinement);
 
   static Quadrature<dim>
-  project_to_oriented_subface(const ReferenceCell &reference_cell,
-                              const SubQuadrature &quadrature,
-                              const unsigned int   face_no,
-                              const unsigned int   subface_no,
-                              const bool           face_orientation,
-                              const bool           face_flip,
-                              const bool           face_rotation,
+  project_to_oriented_subface(const ReferenceCell &            reference_cell,
+                              const SubQuadrature &            quadrature,
+                              const unsigned int               face_no,
+                              const unsigned int               subface_no,
+                              const bool                       face_orientation,
+                              const bool                       face_flip,
+                              const bool                       face_rotation,
                               const internal::SubfaceCase<dim> ref_case);
 
   /**
