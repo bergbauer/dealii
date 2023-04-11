@@ -1413,6 +1413,63 @@ MappingQ<dim, spacedim>::fill_mapping_data_for_generic_points(
 
 template <int dim, int spacedim>
 void
+MappingQ<dim, spacedim>::fill_mapping_data_for_face_quadrature(
+  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+  const unsigned int                                          face_no,
+  const Quadrature<dim - 1> &                                 face_quadrature,
+  const UpdateFlags                                           update_flags,
+  internal::FEValuesImplementation::MappingRelatedData<dim, spacedim>
+    &output_data) const
+{
+  if (update_flags == update_default)
+    return;
+
+  if (face_quadrature.get_points().empty())
+    return;
+
+  Assert(update_flags & (update_inverse_jacobians | update_jacobians |
+                         update_quadrature_points | update_normal_vectors |
+                         update_JxW_values),
+         ExcNotImplemented());
+
+  const UpdateFlags update_flags_mapping =
+    this->requires_update_flags(update_flags);
+
+  output_data.initialize(face_quadrature.size(), update_flags_mapping);
+
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
+    std::make_unique<InternalData>(polynomial_degree);
+  auto &data = dynamic_cast<InternalData &>(*data_ptr);
+  data.initialize_face(update_flags_mapping,
+                       QProjector<dim>::project_to_oriented_face(
+                         ReferenceCells::get_hypercube<dim>(),
+                         face_quadrature,
+                         face_no,
+                         cell->face_orientation(face_no),
+                         cell->face_flip(face_no),
+                         cell->face_rotation(face_no)),
+                       face_quadrature.size());
+
+  data.mapping_support_points = this->compute_mapping_support_points(cell);
+
+  internal::MappingQImplementation::do_fill_fe_face_values(
+    *this,
+    cell,
+    face_no,
+    numbers::invalid_unsigned_int,
+    QProjector<dim>::DataSetDescriptor::cell(),
+    face_quadrature,
+    data,
+    polynomials_1d,
+    polynomial_degree,
+    renumber_lexicographic_to_hierarchic,
+    output_data);
+}
+
+
+
+template <int dim, int spacedim>
+void
 MappingQ<dim, spacedim>::transform(
   const ArrayView<const Tensor<1, dim>> &                  input,
   const MappingKind                                        mapping_kind,

@@ -256,6 +256,34 @@ public:
       &output_data) const;
 
   /**
+   * As opposed to the fill_fe_face_values()
+   * function that relys on pre-computed information of InternalDataBase, this
+   * function chooses the flexible evaluation path on the cell and points
+   * passed in to the current function.
+   *
+   * @param[in] cell The cell where to evaluate the mapping.
+   *
+   * @param[in] face_number The face number where to evaluate the mapping.
+   *
+   * @param[in] face_quadrature The quadrature points where the
+   * transformation (Jacobians, positions) should be computed.
+   *
+   * @param[in] update_flags The kind of information that should be computed.
+   *
+   * @param[out] output_data A struct containing the evaluated quantities such
+   * as the Jacobian resulting from application of the mapping on the given
+   * cell with its underlying manifolds.
+   */
+  void
+  fill_mapping_data_for_face_quadrature(
+    const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+    const unsigned int                                          face_number,
+    const Quadrature<dim - 1> &                                 face_quadrature,
+    const UpdateFlags                                           update_flags,
+    internal::FEValuesImplementation::MappingRelatedData<dim, spacedim>
+      &output_data) const;
+
+  /**
    * @name Interface with FEValues and friends
    * @{
    */

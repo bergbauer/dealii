@@ -887,21 +887,30 @@ namespace NonMatching
     const Quadrature<dim - 1> &                                 quadrature,
     MappingData &                                               mapping_data)
   {
-    update_flags_mapping |=
-      mapping->requires_update_flags(update_flags_mapping);
+    if (const MappingQ<dim, spacedim> *mapping_q =
+          dynamic_cast<const MappingQ<dim, spacedim> *>(&(*mapping)))
+      {
+        mapping_q->fill_mapping_data_for_face_quadrature(
+          cell, face_no, quadrature, update_flags_mapping, mapping_data);
+      }
+    else
+      {
+        update_flags_mapping |=
+          mapping->requires_update_flags(update_flags_mapping);
 
-    mapping_data.initialize(quadrature.get_points().size(),
-                            update_flags_mapping);
+        mapping_data.initialize(quadrature.get_points().size(),
+                                update_flags_mapping);
 
-    auto internal_mapping_data =
-      mapping->get_face_data(update_flags_mapping,
-                             hp::QCollection<dim - 1>(quadrature));
+        auto internal_mapping_data =
+          mapping->get_face_data(update_flags_mapping,
+                                 hp::QCollection<dim - 1>(quadrature));
 
-    mapping->fill_fe_face_values(cell,
-                                 face_no,
-                                 hp::QCollection<dim - 1>(quadrature),
-                                 *internal_mapping_data,
-                                 mapping_data);
+        mapping->fill_fe_face_values(cell,
+                                     face_no,
+                                     hp::QCollection<dim - 1>(quadrature),
+                                     *internal_mapping_data,
+                                     mapping_data);
+      }
   }
 } // namespace NonMatching
 
