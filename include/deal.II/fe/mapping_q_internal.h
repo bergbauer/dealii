@@ -1365,6 +1365,11 @@ namespace internal
                   for (unsigned int e = 0; e < dim; ++e)
                     data.contravariant[i + j][d][e] = result.second[e][d][j];
 
+            if (update_flags & update_volume_elements)
+              for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
+                data.volume_elements[i + j] =
+                  data.contravariant[i + j].determinant();
+
             if (update_flags & update_jacobians)
               for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
                 jacobians[i + j] = data.contravariant[i + j];
@@ -1399,6 +1404,9 @@ namespace internal
                 DerivativeForm<1, spacedim, dim> jac_transposed = result.second;
                 data.contravariant[i] = jac_transposed.transpose();
               }
+
+            if (update_flags & update_volume_elements)
+              data.volume_elements[i] = data.contravariant[i].determinant();
 
             if (update_flags & update_jacobians)
               jacobians[i] = data.contravariant[i];
