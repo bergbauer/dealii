@@ -212,10 +212,11 @@ namespace NonMatching
      * class.
      */
     void
-    compute_mapping_data_for_generic_points(
+    compute_mapping_data_for_quadrature(
       const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-      const ArrayView<const Point<dim>> &                         unit_points,
-      MappingData &                                               mapping_data);
+      CellSimilarity::Similarity &cell_similarity,
+      const Quadrature<dim> &     quadrature,
+      MappingData &               mapping_data);
 
     /**
      * Compute the mapping related data for the given @p mapping,
@@ -328,7 +329,7 @@ namespace NonMatching
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
     const std::vector<Point<dim>> &                             unit_points_in)
   {
-    reinit(cell, make_array_view(unit_points_in.begin(), unit_points_in.end()));
+    reinit(cell, Quadrature<dim>(unit_points_in));
   }
 
 
@@ -339,16 +340,9 @@ namespace NonMatching
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
     const ArrayView<const Point<dim>> &                         unit_points_in)
   {
-    unit_points =
-      std::vector<Point<dim>>(unit_points_in.begin(), unit_points_in.end());
-
-    mapping_data.resize(1);
-    compute_mapping_data_for_generic_points(cell,
-                                            unit_points_in,
-                                            mapping_data[0]);
-
-    state = State::single_cell;
-    is_reinitialized();
+    reinit(cell,
+           std::vector<Point<dim>>(unit_points_in.begin(),
+                                   unit_points_in.end()));
   }
 
 
@@ -359,16 +353,19 @@ namespace NonMatching
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
     const Quadrature<dim> &                                     quadrature)
   {
-    const auto &points  = quadrature.get_points();
-    const auto &weights = quadrature.get_weights();
+    const auto &points = quadrature.get_points();
+    unit_points        = std::vector<Point<dim>>(points.begin(), points.end());
 
-    reinit(cell, points);
+    mapping_data.resize(1);
+    CellSimilarity::Similarity cell_similarity =
+      CellSimilarity::Similarity::none;
+    compute_mapping_data_for_quadrature(cell,
+                                        cell_similarity,
+                                        quadrature,
+                                        mapping_data[0]);
 
-    if (update_flags_mapping & update_JxW_values)
-      for (unsigned int q = 0; q < points.size(); ++q)
-        mapping_data[0].JxW_values[q] =
-          determinant(Tensor<2, dim>(mapping_data[0].jacobians[q])) *
-          weights[q];
+    state = State::single_cell;
+    is_reinitialized();
   }
 
 
@@ -389,44 +386,12 @@ namespace NonMatching
                     std::distance(cell_iterator_range.begin(),
                                   cell_iterator_range.end()));
 
-    // fill unit points index offset vector
-    unit_points_index.reserve(n_cells + 1);
-    unit_points_index.push_back(0);
-    for (const auto &unit_points : unit_points_vector)
-      unit_points_index.push_back(unit_points_index.back() +
-                                  unit_points.size());
+    std::vector<Quadrature<dim>> quadrature_vector(n_cells);
+    for (unsigned int cell_index = 0; cell_index < n_cells; ++cell_index)
+      quadrature_vector[cell_index] =
+        Quadrature<dim>(quadrature_vector[cell_index].get_points());
 
-    const unsigned int n_unit_points = unit_points_index.back();
-
-    unit_points.resize(n_unit_points);
-    mapping_data.resize(n_cells);
-
-    if (do_cell_index_compression)
-      cell_index_to_compressed_cell_index.resize(n_unfiltered_cells,
-                                                 numbers::invalid_unsigned_int);
-    unsigned int cell_index = 0;
-    for (const auto &cell : cell_iterator_range)
-      {
-        auto it = unit_points.begin() + unit_points_index[cell_index];
-        for (const auto &unit_point : unit_points_vector[cell_index])
-          {
-            *it = unit_point;
-            ++it;
-          }
-
-        compute_mapping_data_for_generic_points(cell,
-                                                unit_points_vector[cell_index],
-                                                mapping_data[cell_index]);
-
-        if (do_cell_index_compression)
-          cell_index_to_compressed_cell_index[cell->active_cell_index()] =
-            cell_index;
-
-        ++cell_index;
-      }
-
-    state = State::cell_vector;
-    is_reinitialized();
+    reinit_cells(cell_iterator_range, quadrature_vector, n_unfiltered_cells);
   }
 
 
@@ -444,24 +409,48 @@ namespace NonMatching
                     std::distance(cell_iterator_range.begin(),
                                   cell_iterator_range.end()));
 
-    std::vector<std::vector<Point<dim>>> unit_points_vector(n_cells);
-    for (unsigned int cell_index = 0; cell_index < n_cells; ++cell_index)
-      unit_points_vector[cell_index] = std::vector<Point<dim>>(
-        quadrature_vector[cell_index].get_points().begin(),
-        quadrature_vector[cell_index].get_points().end());
+    // fill unit points index offset vector
+    unit_points_index.reserve(n_cells + 1);
+    unit_points_index.push_back(0);
+    for (const auto &unit_points : quadrature_vector)
+      unit_points_index.push_back(unit_points_index.back() +
+                                  unit_points.size());
 
-    reinit_cells(cell_iterator_range, unit_points_vector, n_unfiltered_cells);
+    const unsigned int n_unit_points = unit_points_index.back();
 
-    if (update_flags_mapping & update_JxW_values)
-      for (unsigned int cell_index = 0; cell_index < n_cells; ++cell_index)
-        {
-          const auto &weights = quadrature_vector[cell_index].get_weights();
-          for (unsigned int q = 0; q < weights.size(); ++q)
-            mapping_data[cell_index].JxW_values[q] =
-              determinant(
-                Tensor<2, dim>(mapping_data[cell_index].jacobians[q])) *
-              weights[q];
-        }
+    unit_points.resize(n_unit_points);
+    mapping_data.resize(n_cells);
+
+    if (do_cell_index_compression)
+      cell_index_to_compressed_cell_index.resize(n_unfiltered_cells,
+                                                 numbers::invalid_unsigned_int);
+    CellSimilarity::Similarity cell_similarity =
+      CellSimilarity::Similarity::none;
+    unsigned int cell_index = 0;
+    for (const auto &cell : cell_iterator_range)
+      {
+        auto it = unit_points.begin() + unit_points_index[cell_index];
+        for (const auto &unit_point :
+             quadrature_vector[cell_index].get_points())
+          {
+            *it = unit_point;
+            ++it;
+          }
+
+        compute_mapping_data_for_quadrature(cell,
+                                            cell_similarity,
+                                            quadrature_vector[cell_index],
+                                            mapping_data[cell_index]);
+
+        if (do_cell_index_compression)
+          cell_index_to_compressed_cell_index[cell->active_cell_index()] =
+            cell_index;
+
+        ++cell_index;
+      }
+
+    state = State::cell_vector;
+    is_reinitialized();
   }
 
 
@@ -809,47 +798,23 @@ namespace NonMatching
 
   template <int dim, int spacedim>
   void
-  MappingInfo<dim, spacedim>::compute_mapping_data_for_generic_points(
+  MappingInfo<dim, spacedim>::compute_mapping_data_for_quadrature(
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-    const ArrayView<const Point<dim>> &                         unit_points,
+    CellSimilarity::Similarity &                                cell_similarity,
+    const Quadrature<dim> &                                     quadrature,
     MappingData &                                               mapping_data)
   {
-    if (const MappingQ<dim, spacedim> *mapping_q =
-          dynamic_cast<const MappingQ<dim, spacedim> *>(&(*mapping)))
-      {
-        mapping_q->fill_mapping_data_for_generic_points(cell,
-                                                        unit_points,
-                                                        update_flags_mapping,
-                                                        mapping_data);
-      }
-    else if (const MappingCartesian<dim, spacedim> *mapping_cartesian =
-               dynamic_cast<const MappingCartesian<dim, spacedim> *>(
-                 &(*mapping)))
-      {
-        mapping_cartesian->fill_mapping_data_for_generic_points(
-          cell, unit_points, update_flags_mapping, mapping_data);
-      }
-    else
-      {
-        FE_DGQ<dim, spacedim>           dummy_fe(1);
-        dealii::FEValues<dim, spacedim> fe_values(
-          *mapping,
-          dummy_fe,
-          Quadrature<dim>(
-            std::vector<Point<dim>>(unit_points.begin(), unit_points.end())),
-          update_flags_mapping);
-        fe_values.reinit(cell);
-        mapping_data.initialize(unit_points.size(), update_flags_mapping);
-        if (update_flags_mapping & update_jacobians)
-          for (unsigned int q = 0; q < unit_points.size(); ++q)
-            mapping_data.jacobians[q] = fe_values.jacobian(q);
-        if (update_flags_mapping & update_inverse_jacobians)
-          for (unsigned int q = 0; q < unit_points.size(); ++q)
-            mapping_data.inverse_jacobians[q] = fe_values.inverse_jacobian(q);
-        if (update_flags_mapping & update_quadrature_points)
-          for (unsigned int q = 0; q < unit_points.size(); ++q)
-            mapping_data.quadrature_points[q] = fe_values.quadrature_point(q);
-      }
+    update_flags_mapping |=
+      mapping->requires_update_flags(update_flags_mapping);
+
+    mapping_data.initialize(quadrature.get_points().size(),
+                            update_flags_mapping);
+
+    auto internal_mapping_data =
+      mapping->get_data(update_flags_mapping, quadrature);
+
+    cell_similarity = mapping->fill_fe_values(
+      cell, cell_similarity, quadrature, *internal_mapping_data, mapping_data);
   }
 
 
