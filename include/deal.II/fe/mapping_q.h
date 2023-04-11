@@ -391,6 +391,11 @@ public:
     virtual std::size_t
     memory_consumption() const override;
 
+    /**
+     * Location of quadrature points of faces or subfaces in 3d with all
+     * possible orientations. Can be accessed with the correct offset provided
+     * via QProjector::DataSetDescriptor. Not needed/used for cells.
+     */
     AlignedVector<Point<dim>> quadrature_points;
 
     /**

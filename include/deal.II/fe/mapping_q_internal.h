@@ -2075,28 +2075,13 @@ namespace internal
         }
       else
         {
-          auto quadrature_dim = subface_no == numbers::invalid_unsigned_int ?
-                                  QProjector<dim>::project_to_oriented_face(
-                                    ReferenceCells::get_hypercube<dim>(),
-                                    quadrature,
-                                    face_no,
-                                    cell->face_orientation(face_no),
-                                    cell->face_flip(face_no),
-                                    cell->face_rotation(face_no)) :
-                                  QProjector<dim>::project_to_oriented_subface(
-                                    ReferenceCells::get_hypercube<dim>(),
-                                    quadrature,
-                                    face_no,
-                                    subface_no,
-                                    cell->face_orientation(face_no),
-                                    cell->face_flip(face_no),
-                                    cell->face_rotation(face_no),
-                                    cell->subface_case(face_no));
           internal::MappingQImplementation::
             maybe_update_q_points_Jacobians_generic(
               CellSimilarity::none,
               data,
-              make_array_view(quadrature_dim.get_points()),
+              make_array_view(&data.quadrature_points[data_set],
+                              &data.quadrature_points[data_set] +
+                                quadrature.size()),
               polynomials_1d,
               polynomial_degree,
               renumber_lexicographic_to_hierarchic,

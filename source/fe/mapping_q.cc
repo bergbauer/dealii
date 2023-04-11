@@ -83,14 +83,14 @@ template <int dim, int spacedim>
 void
 MappingQ<dim, spacedim>::InternalData::initialize(
   const UpdateFlags      update_flags,
-  const Quadrature<dim> &q,
+  const Quadrature<dim> &quadrature,
   const unsigned int     n_original_q_points)
 {
   // store the flags in the internal data object so we can access them
   // in fill_fe_*_values()
   this->update_each = update_flags;
 
-  const unsigned int n_q_points = q.size();
+  const unsigned int n_q_points = quadrature.size();
 
   if (this->update_each & update_covariant_transformation)
     covariant.resize(n_original_q_points);
@@ -101,7 +101,7 @@ MappingQ<dim, spacedim>::InternalData::initialize(
   if (this->update_each & update_volume_elements)
     volume_elements.resize(n_original_q_points);
 
-  tensor_product_quadrature = q.is_tensor_product();
+  tensor_product_quadrature = quadrature.is_tensor_product();
 
   // use of MatrixFree only for higher order elements and with more than one
   // point where tensor products do not make sense
@@ -115,7 +115,7 @@ MappingQ<dim, spacedim>::InternalData::initialize(
       if (tensor_product_quadrature)
         {
           const std::array<Quadrature<1>, dim> &quad_array =
-            q.get_tensor_basis();
+            quadrature.get_tensor_basis();
           for (unsigned int i = 1; i < dim && tensor_product_quadrature; ++i)
             {
               if (quad_array[i - 1].size() != quad_array[i].size())
@@ -151,11 +151,11 @@ MappingQ<dim, spacedim>::InternalData::initialize(
               // numbering manually (building an FE_Q<dim> is relatively
               // expensive due to constraints)
               const FE_DGQ<1> fe(polynomial_degree);
-              shape_info.reinit(q.get_tensor_basis()[0], fe);
+              shape_info.reinit(quadrature.get_tensor_basis()[0], fe);
               shape_info.lexicographic_numbering =
                 FETools::lexicographic_to_hierarchic_numbering<dim>(
                   polynomial_degree);
-              shape_info.n_q_points = q.size();
+              shape_info.n_q_points = n_q_points;
               shape_info.dofs_per_component_on_cell =
                 Utilities::pow(polynomial_degree + 1, dim);
             }
@@ -202,7 +202,7 @@ MappingQ<dim, spacedim>::InternalData::initialize(
         shape_fourth_derivatives.resize(n_shape_functions * n_q_points);
 
       // now also fill the various fields with their correct values
-      compute_shape_function_values(q.get_points());
+      compute_shape_function_values(quadrature.get_points());
     }
 }
 
@@ -212,16 +212,21 @@ template <int dim, int spacedim>
 void
 MappingQ<dim, spacedim>::InternalData::initialize_face(
   const UpdateFlags      update_flags,
-  const Quadrature<dim> &q,
+  const Quadrature<dim> &quadrature,
   const unsigned int     n_original_q_points)
 {
-  initialize(update_flags, q, n_original_q_points);
+  initialize(update_flags, quadrature, n_original_q_points);
+
+  const unsigned int n_q_points = quadrature.size();
+  quadrature_points.resize(n_q_points);
+  for (unsigned int q = 0; q < n_q_points; ++q)
+    quadrature_points[q] = quadrature.get_points()[q];
 
   if (dim > 1 && tensor_product_quadrature)
     {
       constexpr unsigned int facedim = dim - 1;
       const FE_DGQ<1>        fe(polynomial_degree);
-      shape_info.reinit(q.get_tensor_basis()[0], fe);
+      shape_info.reinit(quadrature.get_tensor_basis()[0], fe);
       shape_info.lexicographic_numbering =
         FETools::lexicographic_to_hierarchic_numbering<facedim>(
           polynomial_degree);
