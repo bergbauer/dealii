@@ -59,7 +59,8 @@ namespace NonMatching
      * during the call of reinit(). These update flags are also handed to a
      * FEEvaluation object if you construct it with this MappingInfo object.
      */
-    MappingInfo(const Mapping<dim> &mapping, const UpdateFlags update_flags);
+    MappingInfo(const Mapping<dim, spacedim> &mapping,
+                const UpdateFlags             update_flags);
 
     /**
      * Compute the mapping information for the incoming cell and unit
@@ -300,8 +301,8 @@ namespace NonMatching
 
 
   template <int dim, int spacedim>
-  MappingInfo<dim, spacedim>::MappingInfo(const Mapping<dim> &mapping,
-                                          const UpdateFlags   update_flags)
+  MappingInfo<dim, spacedim>::MappingInfo(const Mapping<dim, spacedim> &mapping,
+                                          const UpdateFlags update_flags)
     : mapping(&mapping)
     , update_flags(update_flags)
   {
@@ -839,42 +840,6 @@ namespace NonMatching
                                              quadrature,
                                              *internal_mapping_data,
                                              mapping_data);
-  }
-
-
-
-  template <int dim, int spacedim>
-  void
-  MappingInfo<dim, spacedim>::compute_mapping_data_for_face_quadrature(
-    const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-    const unsigned int                                          face_no,
-    const Quadrature<dim - 1> &                                 quadrature,
-    MappingData &                                               mapping_data)
-  {
-    if (const MappingQ<dim, spacedim> *mapping_q =
-          dynamic_cast<const MappingQ<dim, spacedim> *>(&(*mapping)))
-      {
-        mapping_q->fill_mapping_data_for_face_quadrature(
-          cell, face_no, quadrature, update_flags_mapping, mapping_data);
-      }
-    else
-      {
-        update_flags_mapping |=
-          mapping->requires_update_flags(update_flags_mapping);
-
-        mapping_data.initialize(quadrature.get_points().size(),
-                                update_flags_mapping);
-
-        auto internal_mapping_data =
-          mapping->get_face_data(update_flags_mapping,
-                                 hp::QCollection<dim - 1>(quadrature));
-
-        mapping->fill_fe_face_values(cell,
-                                     face_no,
-                                     hp::QCollection<dim - 1>(quadrature),
-                                     *internal_mapping_data,
-                                     mapping_data);
-      }
   }
 } // namespace NonMatching
 

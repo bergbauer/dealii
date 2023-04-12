@@ -20,6 +20,7 @@ set(_src
   quadrature_generator.cc
   coupling.cc
   immersed_surface_quadrature.cc
+  mapping_info.cc
   )
 
   set(_inst
@@ -28,6 +29,7 @@ set(_src
   mesh_classifier.inst.in
   quadrature_generator.inst.in
   coupling.inst.in
+  mapping_info.inst.in
   )
 
 file(GLOB _header
