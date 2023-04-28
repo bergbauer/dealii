@@ -3071,13 +3071,19 @@ namespace internal
     const std::vector<Number> &                        values,
     const std::vector<unsigned int> &                  renumber = {})
   {
-    static_assert(dim >= 1 && dim <= 3, "Only dim=1,2,3 implemented");
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
     AssertDimension(Utilities::pow(n_shapes, dim), values.size());
     Assert(renumber.empty() || renumber.size() == values.size(),
            ExcDimensionMismatch(renumber.size(), values.size()));
+
+    // we only need the value on faces of a 1d element
+    if (dim == 0)
+      {
+        return std::make_pair(values[0], Tensor<1, dim, Number3>());
+      }
 
     // Go through the tensor product of shape functions and interpolate
     // with optimal algorithm
@@ -3142,7 +3148,7 @@ namespace internal
     const std::vector<unsigned int> &                   renumber = {})
   {
     (void)poly;
-    static_assert(dim >= 1 && dim <= 3, "Only dim=1,2,3 implemented");
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
@@ -3154,7 +3160,12 @@ namespace internal
     for (unsigned int i = 0; i < renumber.size(); ++i)
       AssertDimension(renumber[i], i);
 
-    if (dim == 1)
+    if (dim == 0)
+      {
+        // we only need the value on faces of a 1d element
+        return std::make_pair(values[0], Tensor<1, dim, Number3>());
+      }
+    else if (dim == 1)
       {
         Tensor<1, dim, Number3> derivative;
         derivative[0] = values[1] - values[0];
@@ -3471,7 +3482,7 @@ namespace internal
   template <int dim, int length, typename Number2, typename Number>
   inline void
   do_apply_test_functions_xy(
-    AlignedVector<Number2> &                          values,
+    ArrayView<Number2>                                values,
     const ArrayView<dealii::ndarray<Number, 2, dim>> &shapes,
     const std::array<Number2, 3> &                    test_grads_value,
     const int                                         n_shapes_runtime,
@@ -3541,12 +3552,18 @@ namespace internal
     const int                                         n_shapes,
     const Number2 &                                   value,
     const Tensor<1, dim, Number2> &                   gradient,
-    AlignedVector<Number2> &                          values)
+    ArrayView<Number2>                                values)
   {
-    static_assert(dim >= 1 && dim <= 3, "Only dim=1,2,3 implemented");
+    static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
     // as in evaluate, use `int` type to produce better code in this context
     AssertDimension(Utilities::pow(n_shapes, dim), values.size());
+
+    if (dim == 0)
+      {
+        values[0] = value;
+        return;
+      }
 
     // Implement the transpose of the function above
     std::array<Number2, 3> test_grads_value;
@@ -3599,17 +3616,21 @@ namespace internal
     const std::vector<Polynomials::Polynomial<double>> &poly,
     const Number2 &                                     value,
     const Tensor<1, dim, Number2> &                     gradient,
-    AlignedVector<Number2> &                            values,
+    ArrayView<Number2>                                  values,
     const Point<dim, Number> &                          p)
   {
     (void)poly;
-    static_assert(dim >= 1 && dim <= 3, "Only dim=1,2,3 implemented");
+    static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
     AssertDimension(Utilities::pow(poly.size(), dim), values.size());
 
     AssertDimension(poly.size(), 2);
 
-    if (dim == 1)
+    if (dim == 0)
+      {
+        values[0] = value;
+      }
+    else if (dim == 1)
       {
         const auto x0 = 1. - p[0], x1 = p[0];
 

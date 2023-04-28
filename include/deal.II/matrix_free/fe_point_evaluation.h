@@ -29,6 +29,7 @@
 #include <deal.II/fe/mapping.h>
 
 #include <deal.II/matrix_free/evaluation_flags.h>
+#include <deal.II/matrix_free/evaluation_kernels.h>
 #include <deal.II/matrix_free/shape_info.h>
 #include <deal.II/matrix_free/tensor_product_kernels.h>
 
@@ -226,6 +227,7 @@ namespace internal
       using gradient_type            = Tensor<1, dim, Number>;
       using scalar_gradient_type     = Tensor<1, dim, ScalarNumber>;
       using vectorized_gradient_type = Tensor<1, dim, VectorizedArrayType>;
+      using interface_vectorized_gradient_type = vectorized_gradient_type;
 
       static void
       read_value(const ScalarNumber vector_entry,
@@ -531,6 +533,7 @@ namespace internal
       using gradient_type            = Tensor<1, 1, Number>;
       using scalar_gradient_type     = Tensor<1, 1, ScalarNumber>;
       using vectorized_gradient_type = Tensor<1, 1, VectorizedArrayType>;
+      using interface_vectorized_gradient_type = vectorized_gradient_type;
 
       static void
       read_value(const ScalarNumber vector_entry,
@@ -733,6 +736,8 @@ public:
   using scalar_value_type     = typename ETT::scalar_value_type;
   using vectorized_value_type = typename ETT::vectorized_value_type;
   using gradient_type         = typename ETT::gradient_type;
+  using interface_vectorized_gradient_type =
+    typename ETT::interface_vectorized_gradient_type;
 
   /**
    * Constructor.
@@ -1113,6 +1118,9 @@ private:
    */
   const Point<dim, VectorizedArrayType> *unit_point_ptr;
 
+
+  const Point<dim - 1, VectorizedArrayType> *unit_point_faces_ptr;
+
   /**
    * Pointer to real point of first quadrature point of current cell/face from
    * MappingInfo, set internally during do_reinit().
@@ -1149,6 +1157,13 @@ private:
    * for the chosen FiniteElement (or base element).
    */
   unsigned int dofs_per_component;
+  unsigned int dofs_per_component_face;
+
+  bool is_face = false;
+
+  internal::MatrixFreeFunctions::ShapeInfo<ScalarNumber> shape_info;
+  internal::MatrixFreeFunctions::ShapeInfo<VectorizedArrayType>
+    shape_info_vectorized;
 
   /**
    * The first selected component in the active base element.
@@ -1214,7 +1229,8 @@ private:
    * Vector containing tensor product shape functions evaluated (during
    * reinit()) at the vectorized unit points.
    */
-  AlignedVector<dealii::ndarray<VectorizedArrayType, 2, dim>> shapes;
+  AlignedVector<dealii::ndarray<VectorizedArrayType, 2, dim>>     shapes;
+  AlignedVector<dealii::ndarray<VectorizedArrayType, 2, dim - 1>> shapes_faces;
 };
 
 // ----------------------- template and inline function ----------------------
@@ -1380,12 +1396,12 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::setup(
         *fe, base_element_number) &&
       same_base_element)
     {
-      internal::MatrixFreeFunctions::ShapeInfo<double> shape_info;
-
       shape_info.reinit(QMidpoint<1>(), *fe, base_element_number);
-      renumber           = shape_info.lexicographic_numbering;
-      dofs_per_component = shape_info.dofs_per_component_on_cell;
-      poly               = internal::FEPointEvaluation::get_polynomial_space(
+      shape_info_vectorized.reinit(QMidpoint<1>(), *fe, base_element_number);
+      renumber                = shape_info.lexicographic_numbering;
+      dofs_per_component      = shape_info.dofs_per_component_on_cell;
+      dofs_per_component_face = shape_info.dofs_per_component_on_face;
+      poly = internal::FEPointEvaluation::get_polynomial_space(
         fe->base_element(base_element_number));
 
       polynomials_are_hat_functions =
@@ -1508,11 +1524,28 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::do_reinit()
       return;
     }
 
+  // if(n_q_points_scalar == 0)
+  //  return;
+
+  is_face = mapping_info->state ==
+            NonMatching::MappingInfo<dim, spacedim, Number>::State::
+              faces_on_cells_in_vector;
+
+  //  is_face = false;
+
   // set unit point pointer
   const unsigned int unit_point_offset =
     mapping_info->compute_unit_point_index_offset(current_cell_index,
                                                   current_face_number);
-  unit_point_ptr = mapping_info->get_unit_point(unit_point_offset);
+
+  if (is_face)
+    {
+      unit_point_faces_ptr =
+        mapping_info->get_unit_point_faces(unit_point_offset);
+      unit_point_ptr = mapping_info->get_unit_point(unit_point_offset);
+    }
+  else
+    unit_point_ptr = mapping_info->get_unit_point(unit_point_offset);
 
   // set data pointers
   const UpdateFlags update_flags_mapping =
@@ -1538,12 +1571,26 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::do_reinit()
         (n_q_points_scalar % n_lanes_internal > 0 ? 1 : 0);
       const std::size_t n_shapes = poly.size();
       shapes.resize_fast(n_batches * n_shapes);
+      shapes_faces.resize_fast(n_batches * n_shapes);
       for (unsigned int qb = 0; qb < n_batches; ++qb)
-        internal::compute_values_of_array(make_array_view(shapes,
-                                                          qb * n_shapes,
-                                                          n_shapes),
-                                          poly,
-                                          unit_point_ptr[qb]);
+        if (is_face)
+          {
+            internal::compute_values_of_array<dim - 1>(
+              make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+              poly,
+              unit_point_faces_ptr[qb]);
+            internal::compute_values_of_array(make_array_view(shapes,
+                                                              qb * n_shapes,
+                                                              n_shapes),
+                                              poly,
+                                              unit_point_ptr[qb]);
+          }
+        else
+          internal::compute_values_of_array(make_array_view(shapes,
+                                                            qb * n_shapes,
+                                                            n_shapes),
+                                            poly,
+                                            unit_point_ptr[qb]);
     }
 
   is_reinitialized = true;
@@ -1558,16 +1605,55 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
   const EvaluationFlags::EvaluationFlags &evaluation_flags)
 {
   // fast path with tensor product evaluation
-  if (solution_renumbered.size() != dofs_per_component)
-    solution_renumbered.resize(dofs_per_component);
+  if (is_face)
+    {
+      if (solution_renumbered.size() != 3 * dofs_per_component_face)
+        solution_renumbered.resize(3 * dofs_per_component_face);
+    }
+  else
+    {
+      if (solution_renumbered.size() != dofs_per_component)
+        solution_renumbered.resize(dofs_per_component);
+    }
   for (unsigned int comp = 0; comp < n_components; ++comp)
-    for (unsigned int i = 0; i < dofs_per_component; ++i)
-      ETT::read_value(
-        solution_values[renumber[(component_in_base_element + comp) *
-                                   dofs_per_component +
-                                 i]],
-        comp,
-        solution_renumbered[i]);
+    {
+      if (is_face)
+        {
+          const unsigned int          size_input  = dofs_per_component;
+          const unsigned int          size_output = 3 * dofs_per_component_face;
+          AlignedVector<ScalarNumber> scratch_data(size_input + size_output);
+          ScalarNumber *              input  = scratch_data.begin();
+          ScalarNumber *              output = input + size_input;
+
+          for (unsigned int i = 0; i < dofs_per_component; ++i)
+            input[i] =
+              solution_values[renumber[(component_in_base_element + comp) *
+                                         dofs_per_component +
+                                       i]];
+
+          internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+            template interpolate<true, false>(1,
+                                              evaluation_flags,
+                                              shape_info,
+                                              input,
+                                              output,
+                                              current_face_number);
+
+          for (unsigned int i = 0; i < 3 * dofs_per_component_face; ++i)
+            ETT::read_value(output[i], comp, solution_renumbered[i]);
+        }
+      else
+        {
+          for (unsigned int i = 0; i < dofs_per_component; ++i)
+            ETT::read_value(
+              solution_values[renumber[(component_in_base_element + comp) *
+                                         dofs_per_component +
+                                       i]],
+              comp,
+              solution_renumbered[i]);
+        }
+    }
+
 
   // unit gradients are currently only implemented with the fast tensor
   // path
@@ -1579,18 +1665,89 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
        ++qb, q += n_lanes_internal)
     {
       // compute
-      const auto val_and_grad =
-        polynomials_are_hat_functions ?
-          internal::evaluate_tensor_product_value_and_gradient_linear(
-            poly, solution_renumbered, unit_point_ptr[qb]) :
-          internal::evaluate_tensor_product_value_and_gradient_shapes<
-            dim,
-            scalar_value_type,
-            VectorizedArrayType>(make_array_view(shapes,
-                                                 qb * n_shapes,
-                                                 n_shapes),
-                                 n_shapes,
-                                 solution_renumbered);
+      const auto val_and_grad = [&]() {
+        if (is_face)
+          {
+            const unsigned int size_scalar =
+              n_components * dofs_per_component_face;
+
+            auto compute_codim1_result = [&](const unsigned int derivative) {
+              const std::vector<scalar_value_type> solution_codim1(
+                solution_renumbered.begin() + derivative * size_scalar,
+                solution_renumbered.begin() + (derivative + 1) * size_scalar);
+
+              if (polynomials_are_hat_functions)
+                return internal::
+                  evaluate_tensor_product_value_and_gradient_linear(
+                    poly, solution_codim1, unit_point_faces_ptr[qb]);
+              else
+                return internal::
+                  evaluate_tensor_product_value_and_gradient_shapes<
+                    dim - 1,
+                    scalar_value_type,
+                    VectorizedArrayType>(make_array_view(shapes_faces,
+                                                         qb * n_shapes,
+                                                         n_shapes),
+                                         n_shapes,
+                                         solution_codim1);
+            };
+
+            const auto interpolated_value           = compute_codim1_result(0);
+            const auto interpolated_normal_gradient = compute_codim1_result(1);
+
+            std::pair<vectorized_value_type, interface_vectorized_gradient_type>
+              val_and_grad;
+            val_and_grad.first = interpolated_value.first;
+            if (current_face_number / 2 == 0)
+              {
+                val_and_grad.second[0] = interpolated_normal_gradient.first;
+                if (dim > 1)
+                  val_and_grad.second[1] = interpolated_value.second[0];
+                if (dim > 2)
+                  val_and_grad.second[2] = interpolated_value.second[1];
+              }
+            else if (current_face_number / 2 == 1)
+              {
+                val_and_grad.second[1] = interpolated_normal_gradient.first;
+                if (dim > 2)
+                  {
+                    val_and_grad.second[0] = interpolated_value.second[1];
+                    val_and_grad.second[2] = interpolated_value.second[0];
+                  }
+                else
+                  {
+                    val_and_grad.second[0] = interpolated_value.second[0];
+                  }
+              }
+            else if (current_face_number / 2 == 2)
+              {
+                val_and_grad.second[0] = interpolated_value.second[0];
+                val_and_grad.second[1] = interpolated_value.second[1];
+                val_and_grad.second[2] = interpolated_normal_gradient.first;
+              }
+            else
+              AssertThrow(false, ExcInternalError());
+
+            return val_and_grad;
+          }
+        else
+          {
+            if (polynomials_are_hat_functions)
+              return internal::
+                evaluate_tensor_product_value_and_gradient_linear(
+                  poly, solution_renumbered, unit_point_ptr[qb]);
+            else
+              return internal::
+                evaluate_tensor_product_value_and_gradient_shapes<
+                  dim,
+                  scalar_value_type,
+                  VectorizedArrayType>(make_array_view(shapes,
+                                                       qb * n_shapes,
+                                                       n_shapes),
+                                       n_shapes,
+                                       solution_renumbered);
+          }
+      }();
 
       if (evaluation_flags & EvaluationFlags::values)
         {
@@ -1733,8 +1890,17 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
   const EvaluationFlags::EvaluationFlags &integration_flags)
 {
   // fast path with tensor product integration
-  if (solution_renumbered_vectorized.size() != dofs_per_component)
-    solution_renumbered_vectorized.resize(dofs_per_component);
+  if (is_face)
+    {
+      if (solution_renumbered_vectorized.size() != 3 * dofs_per_component_face)
+        solution_renumbered_vectorized.resize(3 * dofs_per_component_face);
+    }
+  else
+    {
+      if (solution_renumbered_vectorized.size() != dofs_per_component)
+        solution_renumbered_vectorized.resize(dofs_per_component);
+    }
+
   // zero content
   solution_renumbered_vectorized.fill(vectorized_value_type());
 
@@ -1790,38 +1956,153 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
         }
 
       // compute
-      if (polynomials_are_hat_functions)
-        internal::integrate_add_tensor_product_value_and_gradient_linear(
-          poly,
-          value,
-          gradient,
-          solution_renumbered_vectorized,
-          unit_point_ptr[qb]);
+      if (is_face)
+        {
+          vectorized_value_type                     value_face;
+          Tensor<1, dim - 1, vectorized_value_type> gradient_in_face;
+
+          vectorized_value_type                     normal_gradient_face;
+          Tensor<1, dim - 1, vectorized_value_type> dummy;
+
+          value_face = value;
+          if (current_face_number / 2 == 0)
+            {
+              normal_gradient_face = gradient[0];
+              if (dim > 1)
+                gradient_in_face[0] = gradient[1];
+              if (dim > 2)
+                gradient_in_face[1] = gradient[2];
+            }
+          else if (current_face_number / 2 == 1)
+            {
+              normal_gradient_face = gradient[1];
+              if (dim > 2)
+                {
+                  gradient_in_face[0] = gradient[2];
+                  gradient_in_face[1] = gradient[0];
+                }
+              else
+                {
+                  gradient_in_face[0] = gradient[0];
+                }
+            }
+          else if (current_face_number / 2 == 2)
+            {
+              normal_gradient_face = gradient[2];
+              gradient_in_face[0]  = gradient[0];
+              gradient_in_face[1]  = gradient[1];
+            }
+          else
+            AssertThrow(false, ExcInternalError());
+
+          const unsigned int size_scalar =
+            n_components * dofs_per_component_face;
+
+          auto integrate_add_codim1 = [&](
+                                        const unsigned int           derivative,
+                                        const vectorized_value_type &face_value,
+                                        const Tensor<1,
+                                                     dim - 1,
+                                                     vectorized_value_type>
+                                          &face_gradient) {
+            if (polynomials_are_hat_functions)
+              internal::integrate_add_tensor_product_value_and_gradient_linear(
+                poly,
+                face_value,
+                face_gradient,
+                make_array_view(solution_renumbered_vectorized,
+                                derivative * size_scalar,
+                                size_scalar),
+                unit_point_faces_ptr[qb]);
+            else
+              internal::integrate_add_tensor_product_value_and_gradient_shapes<
+                dim - 1,
+                VectorizedArrayType,
+                vectorized_value_type>(
+                make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+                n_shapes,
+                face_value,
+                face_gradient,
+                make_array_view(solution_renumbered_vectorized,
+                                derivative * size_scalar,
+                                size_scalar));
+          };
+
+          integrate_add_codim1(0, value_face, gradient_in_face);
+          integrate_add_codim1(1, normal_gradient_face, dummy);
+        }
       else
-        internal::integrate_add_tensor_product_value_and_gradient_shapes<
-          dim,
-          VectorizedArrayType,
-          vectorized_value_type>(make_array_view(shapes,
-                                                 qb * n_shapes,
-                                                 n_shapes),
-                                 n_shapes,
-                                 value,
-                                 gradient,
-                                 solution_renumbered_vectorized);
+        {
+          if (polynomials_are_hat_functions)
+            internal::integrate_add_tensor_product_value_and_gradient_linear(
+              poly,
+              value,
+              gradient,
+              make_array_view(solution_renumbered_vectorized),
+              unit_point_ptr[qb]);
+          else
+            internal::integrate_add_tensor_product_value_and_gradient_shapes<
+              dim,
+              VectorizedArrayType,
+              vectorized_value_type>(
+              make_array_view(shapes, qb * n_shapes, n_shapes),
+              n_shapes,
+              value,
+              gradient,
+              make_array_view(solution_renumbered_vectorized));
+        }
     }
 
   // add between the lanes and write into the result
   std::fill(solution_values.begin(), solution_values.end(), ScalarNumber());
   for (unsigned int comp = 0; comp < n_components; ++comp)
-    for (unsigned int i = 0; i < dofs_per_component; ++i)
-      {
-        VectorizedArrayType result;
-        ETT::write_value(result, comp, solution_renumbered_vectorized[i]);
-        for (unsigned int lane = n_lanes_internal / 2; lane > 0; lane /= 2)
-          for (unsigned int j = 0; j < lane; ++j)
-            result[j] += result[lane + j];
-        solution_values[renumber[comp * dofs_per_component + i]] = result[0];
-      }
+    {
+      if (is_face)
+        {
+          const unsigned int size_input  = 3 * dofs_per_component_face;
+          const unsigned int size_output = dofs_per_component;
+          AlignedVector<VectorizedArrayType> scratch_data(size_input +
+                                                          size_output);
+          VectorizedArrayType *              input  = scratch_data.begin();
+          VectorizedArrayType *              output = input + size_input;
+
+          for (unsigned int i = 0; i < 3 * dofs_per_component_face; ++i)
+            ETT::write_value(input[i], comp, solution_renumbered_vectorized[i]);
+
+          internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
+            template interpolate<false, false>(1,
+                                               integration_flags,
+                                               shape_info_vectorized,
+                                               input,
+                                               output,
+                                               current_face_number);
+
+          for (unsigned int i = 0; i < dofs_per_component; ++i)
+            {
+              VectorizedArrayType result = output[i];
+              for (unsigned int lane = n_lanes_internal / 2; lane > 0;
+                   lane /= 2)
+                for (unsigned int j = 0; j < lane; ++j)
+                  result[j] += result[lane + j];
+              solution_values[renumber[comp * dofs_per_component + i]] =
+                result[0];
+            }
+        }
+      else
+        {
+          for (unsigned int i = 0; i < dofs_per_component; ++i)
+            {
+              VectorizedArrayType result;
+              ETT::write_value(result, comp, solution_renumbered_vectorized[i]);
+              for (unsigned int lane = n_lanes_internal / 2; lane > 0;
+                   lane /= 2)
+                for (unsigned int j = 0; j < lane; ++j)
+                  result[j] += result[lane + j];
+              solution_values[renumber[comp * dofs_per_component + i]] =
+                result[0];
+            }
+        }
+    }
 }
 
 
