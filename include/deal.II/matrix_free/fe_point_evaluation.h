@@ -1544,11 +1544,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::do_reinit()
                                                   current_face_number);
 
   if (is_face)
-    {
-      unit_point_faces_ptr =
-        mapping_info->get_unit_point_faces(unit_point_offset);
-      unit_point_ptr = mapping_info->get_unit_point(unit_point_offset);
-    }
+    unit_point_faces_ptr =
+      mapping_info->get_unit_point_faces(unit_point_offset);
   else
     unit_point_ptr = mapping_info->get_unit_point(unit_point_offset);
 
