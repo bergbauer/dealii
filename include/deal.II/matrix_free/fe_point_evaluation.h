@@ -1660,42 +1660,35 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
       const auto val_and_grad = [&]() {
         if (is_face)
           {
+            const unsigned int size_scalar =
+              n_components * dofs_per_component_face;
+
             const auto interpolated_value =
               polynomials_are_hat_functions ?
-                internal::evaluate_tensor_product_value_and_gradient_linear(
-                  poly, &solution_renumbered[0], unit_point_faces_ptr[qb]) :
+                internal::evaluate_tensor_product_value_and_gradient_linear<
+                  dim - 1,
+                  scalar_value_type,
+                  VectorizedArrayType,
+                  true>(poly,
+                        &solution_renumbered[0],
+                        &solution_renumbered[size_scalar],
+                        unit_point_faces_ptr[qb]) :
                 internal::evaluate_tensor_product_value_and_gradient_shapes<
                   dim - 1,
                   scalar_value_type,
-                  VectorizedArrayType>(make_array_view(shapes_faces,
-                                                       qb * n_shapes,
-                                                       n_shapes),
-                                       n_shapes,
-                                       &solution_renumbered[0]);
+                  VectorizedArrayType,
+                  true>(make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+                        n_shapes,
+                        &solution_renumbered[0],
+                        &solution_renumbered[size_scalar]);
 
-            const unsigned int size_scalar =
-              n_components * dofs_per_component_face;
-            const auto interpolated_normal_gradient =
-              polynomials_are_hat_functions ?
-                internal::evaluate_tensor_product_value_linear(
-                  poly,
-                  &solution_renumbered[size_scalar],
-                  unit_point_faces_ptr[qb]) :
-                internal::evaluate_tensor_product_value_shapes<
-                  dim - 1,
-                  scalar_value_type,
-                  VectorizedArrayType>(make_array_view(shapes_faces,
-                                                       qb * n_shapes,
-                                                       n_shapes),
-                                       n_shapes,
-                                       &solution_renumbered[size_scalar]);
-
-            std::pair<vectorized_value_type, interface_vectorized_gradient_type>
+            std::pair<std::array<vectorized_value_type, 2>,
+                      interface_vectorized_gradient_type>
               val_and_grad;
-            val_and_grad.first = interpolated_value.first;
+            val_and_grad.first[0] = interpolated_value.first[0];
             if (current_face_number / 2 == 0)
               {
-                val_and_grad.second[0] = interpolated_normal_gradient;
+                val_and_grad.second[0] = interpolated_value.first[1];
                 if (dim > 1)
                   val_and_grad.second[1] = interpolated_value.second[0];
                 if (dim > 2)
@@ -1703,7 +1696,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
               }
             else if (current_face_number / 2 == 1)
               {
-                val_and_grad.second[1] = interpolated_normal_gradient;
+                val_and_grad.second[1] = interpolated_value.first[1];
                 if (dim > 2)
                   {
                     val_and_grad.second[0] = interpolated_value.second[1];
@@ -1718,7 +1711,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
               {
                 val_and_grad.second[0] = interpolated_value.second[0];
                 val_and_grad.second[1] = interpolated_value.second[1];
-                val_and_grad.second[2] = interpolated_normal_gradient;
+                val_and_grad.second[2] = interpolated_value.first[1];
               }
             else
               AssertThrow(false, ExcInternalError());
@@ -1730,7 +1723,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
             if (polynomials_are_hat_functions)
               return internal::
                 evaluate_tensor_product_value_and_gradient_linear(
-                  poly, solution_renumbered.data(), unit_point_ptr[qb]);
+                  poly,
+                  solution_renumbered.data(),
+                  solution_renumbered.data(),
+                  unit_point_ptr[qb]);
             else
               return internal::
                 evaluate_tensor_product_value_and_gradient_shapes<
@@ -1740,6 +1736,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
                                                        qb * n_shapes,
                                                        n_shapes),
                                        n_shapes,
+                                       solution_renumbered.data(),
                                        solution_renumbered.data());
           }
       }();
@@ -1747,7 +1744,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
       if (evaluation_flags & EvaluationFlags::values)
         {
           for (unsigned int v = 0; v < stride && q + v < n_q_points_scalar; ++v)
-            ETT::set_value(val_and_grad.first, v, values[qb * stride + v]);
+            ETT::set_value(val_and_grad.first[0], v, values[qb * stride + v]);
         }
       if (evaluation_flags & EvaluationFlags::gradients)
         {

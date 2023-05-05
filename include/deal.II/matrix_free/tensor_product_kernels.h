@@ -3154,9 +3154,14 @@ namespace internal
   /**
    * Interpolate inner dimensions of tensor product shape functions.
    */
-  template <int dim, int length, typename Number2, typename Number>
-  inline std::array<typename ProductTypeNoPoint<Number, Number2>::type, 3>
+  template <int dim,
+            int length,
+            typename Number2,
+            typename Number,
+            bool interpolate_2>
+  inline std::array<typename ProductTypeNoPoint<Number, Number2>::type, 4>
   do_interpolate_xy(const Number *                                     values,
+                    const Number *                                     values_2,
                     const std::vector<unsigned int> &                  renumber,
                     const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
                     const int n_shapes_runtime,
@@ -3164,11 +3169,11 @@ namespace internal
   {
     const int n_shapes = length > 0 ? length : n_shapes_runtime;
     using Number3      = typename ProductTypeNoPoint<Number, Number2>::type;
-    std::array<Number3, 3> result = {};
+    std::array<Number3, 4> result = {};
     for (int i1 = 0; i1 < (dim > 1 ? n_shapes : 1); ++i1)
       {
         // Interpolation + derivative x direction
-        Number3 value = {}, deriv = {};
+        Number3 value = {}, value_2 = {}, deriv = {};
 
         // Distinguish the inner loop based on whether we have a
         // renumbering or not
@@ -3176,12 +3181,16 @@ namespace internal
           for (int i0 = 0; i0 < n_shapes; ++i0, ++i)
             {
               value += shapes[i0][0][0] * values[i];
+              if (interpolate_2)
+                value_2 += shapes[i0][0][0] * values_2[i];
               deriv += shapes[i0][1][0] * values[i];
             }
         else
           for (int i0 = 0; i0 < n_shapes; ++i0, ++i)
             {
               value += shapes[i0][0][0] * values[renumber[i]];
+              if (interpolate_2)
+                value_2 += shapes[i0][0][0] * values_2[renumber[i]];
               deriv += shapes[i0][1][0] * values[renumber[i]];
             }
 
@@ -3191,11 +3200,15 @@ namespace internal
             result[0] += value * shapes[i1][0][1];
             result[1] += deriv * shapes[i1][0][1];
             result[2] += value * shapes[i1][1][1];
+            if (interpolate_2)
+              result[3] += value_2 * shapes[i1][0][1];
           }
         else
           {
             result[0] = value;
             result[1] = deriv;
+            if (interpolate_2)
+              result[3] = value_2;
           }
       }
     return result;
@@ -3207,14 +3220,18 @@ namespace internal
    * Interpolates the values and gradients into the points specified in
    * @p compute_values_of_array() with help of the precomputed @p shapes.
    */
-  template <int dim, typename Number, typename Number2>
+  template <int dim,
+            typename Number,
+            typename Number2,
+            bool interpolate_2 = false>
   inline std::pair<
-    typename ProductTypeNoPoint<Number, Number2>::type,
+    std::array<typename ProductTypeNoPoint<Number, Number2>::type, 2>,
     Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
   evaluate_tensor_product_value_and_gradient_shapes(
     const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
     const int                                          n_shapes,
     const Number *                                     values,
+    const Number *                                     values_2,
     const std::vector<unsigned int> &                  renumber = {})
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
@@ -3224,46 +3241,57 @@ namespace internal
     // we only need the value on faces of a 1d element
     if (dim == 0)
       {
-        return std::make_pair(values[0], Tensor<1, dim, Number3>());
+        return std::make_pair(std::array<Number3, 2>{values[0], values_2[0]},
+                              Tensor<1, dim, Number3>());
       }
 
     // Go through the tensor product of shape functions and interpolate
     // with optimal algorithm
-    std::pair<Number3, Tensor<1, dim, Number3>> result = {};
+    std::pair<std::array<Number3, 2>, Tensor<1, dim, Number3>> result = {};
     for (int i2 = 0, i = 0; i2 < (dim > 2 ? n_shapes : 1); ++i2)
       {
-        std::array<Number3, 3> inner_result;
+        std::array<Number3, 4> inner_result;
         // Generate separate code with known loop bounds for the most common
         // cases
         if (n_shapes == 2)
-          inner_result = do_interpolate_xy<dim, 2, Number2, Number>(
-            values, renumber, shapes, n_shapes, i);
+          inner_result =
+            do_interpolate_xy<dim, 2, Number2, Number, interpolate_2>(
+              values, values_2, renumber, shapes, n_shapes, i);
         else if (n_shapes == 3)
-          inner_result = do_interpolate_xy<dim, 3, Number2, Number>(
-            values, renumber, shapes, n_shapes, i);
+          inner_result =
+            do_interpolate_xy<dim, 3, Number2, Number, interpolate_2>(
+              values, values_2, renumber, shapes, n_shapes, i);
         else if (n_shapes == 4)
-          inner_result = do_interpolate_xy<dim, 4, Number2, Number>(
-            values, renumber, shapes, n_shapes, i);
+          inner_result =
+            do_interpolate_xy<dim, 4, Number2, Number, interpolate_2>(
+              values, values_2, renumber, shapes, n_shapes, i);
         else if (n_shapes == 5)
-          inner_result = do_interpolate_xy<dim, 5, Number2, Number>(
-            values, renumber, shapes, n_shapes, i);
+          inner_result =
+            do_interpolate_xy<dim, 5, Number2, Number, interpolate_2>(
+              values, values_2, renumber, shapes, n_shapes, i);
         else if (n_shapes == 6)
-          inner_result = do_interpolate_xy<dim, 6, Number2, Number>(
-            values, renumber, shapes, n_shapes, i);
+          inner_result =
+            do_interpolate_xy<dim, 6, Number2, Number, interpolate_2>(
+              values, values_2, renumber, shapes, n_shapes, i);
         else
-          inner_result = do_interpolate_xy<dim, -1, Number2, Number>(
-            values, renumber, shapes, n_shapes, i);
+          inner_result =
+            do_interpolate_xy<dim, -1, Number2, Number, interpolate_2>(
+              values, values_2, renumber, shapes, n_shapes, i);
         if (dim == 3)
           {
             // Interpolation + derivative in z direction
-            result.first += inner_result[0] * shapes[i2][0][2];
+            result.first[0] += inner_result[0] * shapes[i2][0][2];
+            if (interpolate_2)
+              result.first[1] += inner_result[3] * shapes[i2][0][2];
             result.second[0] += inner_result[1] * shapes[i2][0][2];
             result.second[1] += inner_result[2] * shapes[i2][0][2];
             result.second[2] += inner_result[0] * shapes[i2][1][2];
           }
         else
           {
-            result.first     = inner_result[0];
+            result.first[0] = inner_result[0];
+            if (interpolate_2)
+              result.first[1] = inner_result[3];
             result.second[0] = inner_result[1];
             if (dim > 1)
               result.second[1] = inner_result[2];
@@ -3279,13 +3307,17 @@ namespace internal
    * Specializes @p evaluate_tensor_product_value_and_gradient() for linear
    * polynomials which massively reduces the necessary instructions.
    */
-  template <int dim, typename Number, typename Number2>
+  template <int dim,
+            typename Number,
+            typename Number2,
+            bool interpolate_2 = false>
   inline std::pair<
-    typename ProductTypeNoPoint<Number, Number2>::type,
+    std::array<typename ProductTypeNoPoint<Number, Number2>::type, 2>,
     Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
   evaluate_tensor_product_value_and_gradient_linear(
     const std::vector<Polynomials::Polynomial<double>> &poly,
     const Number *                                      values,
+    const Number *                                      values_2,
     const Point<dim, Number2> &                         p,
     const std::vector<unsigned int> &                   renumber = {})
   {
@@ -3301,26 +3333,40 @@ namespace internal
     if (dim == 0)
       {
         // we only need the value on faces of a 1d element
-        return std::make_pair(values[0], Tensor<1, dim, Number3>());
+        return std::make_pair(std::array<Number3, 2>{values[0], values_2[0]},
+                              Tensor<1, dim, Number3>());
       }
     else if (dim == 1)
       {
         Tensor<1, dim, Number3> derivative;
-        derivative[0] = values[1] - values[0];
-        return std::make_pair((1. - p[0]) * values[0] + p[0] * values[1],
+        derivative[0]    = values[1] - values[0];
+        const Number2 x0 = 1. - p[0], x1 = p[0];
+        const Number3 value = x0 * values[0] + x1 * values[1];
+        Number3       value_2;
+        if (interpolate_2)
+          value_2 = x0 * values_2[0] + x1 * values_2[1];
+        return std::make_pair(std::array<Number3, 2>{value, value_2},
                               derivative);
       }
     else if (dim == 2)
       {
-        const Number2           x0 = 1. - p[0], x1 = p[0];
-        const Number3           tmp0   = x0 * values[0] + x1 * values[1];
-        const Number3           tmp1   = x0 * values[2] + x1 * values[3];
-        const Number3           mapped = (1. - p[1]) * tmp0 + p[1] * tmp1;
+        const Number2 x0 = 1. - p[0], x1 = p[0], y0 = 1. - p[1], y1 = p[1];
+        const Number3 tmp0   = x0 * values[0] + x1 * values[1];
+        const Number3 tmp1   = x0 * values[2] + x1 * values[3];
+        const Number3 mapped = y0 * tmp0 + y0 * tmp1;
+        Number3       mapped_2;
+        if (interpolate_2)
+          {
+            const Number3 tmp0_2 = x0 * values_2[0] + x1 * values_2[1];
+            const Number3 tmp1_2 = x0 * values_2[2] + x1 * values_2[3];
+            mapped_2             = y0 * tmp0_2 + y0 * tmp1_2;
+          }
         Tensor<1, dim, Number3> derivative;
-        derivative[0] = (1. - p[1]) * (values[1] - values[0]) +
-                        p[1] * (values[3] - values[2]);
+        derivative[0] =
+          y0 * (values[1] - values[0]) + y1 * (values[3] - values[2]);
         derivative[1] = tmp1 - tmp0;
-        return std::make_pair(mapped, derivative);
+        return std::make_pair(std::array<Number3, 2>{mapped, mapped_2},
+                              derivative);
       }
     else if (dim == 3)
       {
@@ -3339,11 +3385,14 @@ namespace internal
         derivative[0] =
           z0 * (y0 * (values[1] - values[0]) + y1 * (values[3] - values[2])) +
           z1 * (y0 * (values[5] - values[4]) + y1 * (values[7] - values[6]));
-        return std::make_pair(mapped, derivative);
+        Assert(!interpolate_2, ExcNotImplemented());
+        return std::make_pair(std::array<Number3, 2>{mapped, mapped},
+                              derivative);
       }
 
     // work around a compile error: missing return statement
-    return std::make_pair(Number3(), Tensor<1, dim, Number3>());
+    return std::make_pair(std::array<Number3, 2>{Number3(), Number3()},
+                          Tensor<1, dim, Number3>());
   }
 
 
