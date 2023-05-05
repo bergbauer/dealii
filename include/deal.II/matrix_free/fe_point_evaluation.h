@@ -1097,6 +1097,9 @@ private:
    */
   AlignedVector<vectorized_value_type> solution_renumbered_vectorized;
 
+  AlignedVector<ScalarNumber>        scratch_data_scalar;
+  AlignedVector<VectorizedArrayType> scratch_data_vectorized;
+
   /**
    * Temporary array to store the values at the points.
    */
@@ -1409,6 +1412,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::setup(
          poly[0].value(1.) == 0. && poly[1].value(0.) == 0. &&
          poly[1].value(1.) == 1.);
 
+      const unsigned int size_face = 3 * dofs_per_component_face;
+      const unsigned int size_cell = dofs_per_component;
+      scratch_data_scalar.resize(size_face + size_cell);
+      scratch_data_vectorized.resize(size_face + size_cell);
+
       fast_path = true;
     }
   else
@@ -1619,11 +1627,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
     {
       if (is_face)
         {
-          const unsigned int          size_input  = dofs_per_component;
-          const unsigned int          size_output = 3 * dofs_per_component_face;
-          AlignedVector<ScalarNumber> scratch_data(size_input + size_output);
-          ScalarNumber *              input  = scratch_data.begin();
-          ScalarNumber *              output = input + size_input;
+          const unsigned int size_input  = dofs_per_component;
+          const unsigned int size_output = 3 * dofs_per_component_face;
+          ScalarNumber *     input       = scratch_data_scalar.begin();
+          ScalarNumber *     output      = input + size_input;
 
           for (unsigned int i = 0; i < dofs_per_component; ++i)
             input[i] =
@@ -2059,12 +2066,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
     {
       if (is_face)
         {
-          const unsigned int size_input  = 3 * dofs_per_component_face;
-          const unsigned int size_output = dofs_per_component;
-          AlignedVector<VectorizedArrayType> scratch_data(size_input +
-                                                          size_output);
-          VectorizedArrayType *              input  = scratch_data.begin();
-          VectorizedArrayType *              output = input + size_input;
+          const unsigned int   size_input  = 3 * dofs_per_component_face;
+          const unsigned int   size_output = dofs_per_component;
+          VectorizedArrayType *input       = scratch_data_vectorized.begin();
+          VectorizedArrayType *output      = input + size_input;
 
           for (unsigned int i = 0; i < 3 * dofs_per_component_face; ++i)
             ETT::write_value(input[i], comp, solution_renumbered_vectorized[i]);
