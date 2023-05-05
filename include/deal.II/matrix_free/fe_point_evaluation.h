@@ -1617,10 +1617,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
     {
       if (is_face)
         {
-          const unsigned int size_input  = dofs_per_component;
-          const unsigned int size_output = 3 * dofs_per_component_face;
-          ScalarNumber *     input       = scratch_data_scalar.begin();
-          ScalarNumber *     output      = input + size_input;
+          const unsigned int size_input = dofs_per_component;
+          ScalarNumber *     input      = scratch_data_scalar.begin();
+          ScalarNumber *     output     = input + size_input;
 
           for (unsigned int i = 0; i < dofs_per_component; ++i)
             input[i] =
@@ -2055,10 +2054,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
     {
       if (is_face)
         {
-          const unsigned int   size_input  = 3 * dofs_per_component_face;
-          const unsigned int   size_output = dofs_per_component;
-          VectorizedArrayType *input       = scratch_data_vectorized.begin();
-          VectorizedArrayType *output      = input + size_input;
+          const unsigned int   size_input = 3 * dofs_per_component_face;
+          VectorizedArrayType *input      = scratch_data_vectorized.begin();
+          VectorizedArrayType *output     = input + size_input;
 
           for (unsigned int i = 0; i < 3 * dofs_per_component_face; ++i)
             ETT::write_value(input[i], comp, solution_renumbered_vectorized[i]);
@@ -2073,7 +2071,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
 
           for (unsigned int i = 0; i < dofs_per_component; ++i)
             {
-              VectorizedArrayType result = output[i];
+              VectorizedArrayType &result = output[i];
               for (unsigned int lane = n_lanes_internal / 2; lane > 0;
                    lane /= 2)
                 for (unsigned int j = 0; j < lane; ++j)
