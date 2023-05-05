@@ -1617,9 +1617,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
     {
       if (is_face)
         {
-          const unsigned int size_input = dofs_per_component;
-          ScalarNumber *     input      = scratch_data_scalar.begin();
-          ScalarNumber *     output     = input + size_input;
+          ScalarNumber *input  = scratch_data_scalar.begin();
+          ScalarNumber *output = input + dofs_per_component;
 
           for (unsigned int i = 0; i < dofs_per_component; ++i)
             input[i] =
@@ -1664,38 +1663,42 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
       const auto val_and_grad = [&]() {
         if (is_face)
           {
+            const auto interpolated_value =
+              polynomials_are_hat_functions ?
+                internal::evaluate_tensor_product_value_and_gradient_linear(
+                  poly, &solution_renumbered[0], unit_point_faces_ptr[qb]) :
+                internal::evaluate_tensor_product_value_and_gradient_shapes<
+                  dim - 1,
+                  scalar_value_type,
+                  VectorizedArrayType>(make_array_view(shapes_faces,
+                                                       qb * n_shapes,
+                                                       n_shapes),
+                                       n_shapes,
+                                       &solution_renumbered[0]);
+
             const unsigned int size_scalar =
               n_components * dofs_per_component_face;
-
-            auto compute_codim1_result = [&](const unsigned int derivative) {
-              const scalar_value_type *solution_codim1 =
-                &solution_renumbered[derivative * size_scalar];
-
-              if (polynomials_are_hat_functions)
-                return internal::
-                  evaluate_tensor_product_value_and_gradient_linear(
-                    poly, solution_codim1, unit_point_faces_ptr[qb]);
-              else
-                return internal::
-                  evaluate_tensor_product_value_and_gradient_shapes<
-                    dim - 1,
-                    scalar_value_type,
-                    VectorizedArrayType>(make_array_view(shapes_faces,
-                                                         qb * n_shapes,
-                                                         n_shapes),
-                                         n_shapes,
-                                         solution_codim1);
-            };
-
-            const auto interpolated_value           = compute_codim1_result(0);
-            const auto interpolated_normal_gradient = compute_codim1_result(1);
+            const auto interpolated_normal_gradient =
+              polynomials_are_hat_functions ?
+                internal::evaluate_tensor_product_value_linear(
+                  poly,
+                  &solution_renumbered[size_scalar],
+                  unit_point_faces_ptr[qb]) :
+                internal::evaluate_tensor_product_value_shapes<
+                  dim - 1,
+                  scalar_value_type,
+                  VectorizedArrayType>(make_array_view(shapes_faces,
+                                                       qb * n_shapes,
+                                                       n_shapes),
+                                       n_shapes,
+                                       &solution_renumbered[size_scalar]);
 
             std::pair<vectorized_value_type, interface_vectorized_gradient_type>
               val_and_grad;
             val_and_grad.first = interpolated_value.first;
             if (current_face_number / 2 == 0)
               {
-                val_and_grad.second[0] = interpolated_normal_gradient.first;
+                val_and_grad.second[0] = interpolated_normal_gradient;
                 if (dim > 1)
                   val_and_grad.second[1] = interpolated_value.second[0];
                 if (dim > 2)
@@ -1703,7 +1706,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
               }
             else if (current_face_number / 2 == 1)
               {
-                val_and_grad.second[1] = interpolated_normal_gradient.first;
+                val_and_grad.second[1] = interpolated_normal_gradient;
                 if (dim > 2)
                   {
                     val_and_grad.second[0] = interpolated_value.second[1];
@@ -1718,7 +1721,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
               {
                 val_and_grad.second[0] = interpolated_value.second[0];
                 val_and_grad.second[1] = interpolated_value.second[1];
-                val_and_grad.second[2] = interpolated_normal_gradient.first;
+                val_and_grad.second[2] = interpolated_normal_gradient;
               }
             else
               AssertThrow(false, ExcInternalError());

@@ -3004,6 +3004,152 @@ namespace internal
   }
 
 
+  template <int dim, int length, typename Number2, typename Number>
+  inline typename ProductTypeNoPoint<Number, Number2>::type
+  do_interpolate_xy_value(
+    const Number *                                     values,
+    const std::vector<unsigned int> &                  renumber,
+    const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
+    const int                                          n_shapes_runtime,
+    int &                                              i)
+  {
+    const int n_shapes = length > 0 ? length : n_shapes_runtime;
+    using Number3      = typename ProductTypeNoPoint<Number, Number2>::type;
+    Number3 result     = {};
+    for (int i1 = 0; i1 < (dim > 1 ? n_shapes : 1); ++i1)
+      {
+        // Interpolation x direction
+        Number3 value = {};
+
+        // Distinguish the inner loop based on whether we have a
+        // renumbering or not
+        if (renumber.empty())
+          for (int i0 = 0; i0 < n_shapes; ++i0, ++i)
+            value += shapes[i0][0][0] * values[i];
+        else
+          for (int i0 = 0; i0 < n_shapes; ++i0, ++i)
+            value += shapes[i0][0][0] * values[renumber[i]];
+
+        if (dim > 1)
+          result += value * shapes[i1][0][1];
+        else
+          result = value;
+      }
+    return result;
+  }
+
+
+  template <int dim, typename Number, typename Number2>
+  inline typename ProductTypeNoPoint<Number, Number2>::type
+  evaluate_tensor_product_value_shapes(
+    const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
+    const int                                          n_shapes,
+    const Number *                                     values,
+    const std::vector<unsigned int> &                  renumber = {})
+  {
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
+
+    // we only need the value on faces of a 1d element
+    if (dim == 0)
+      {
+        return values[0];
+      }
+
+    using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
+
+    // Go through the tensor product of shape functions and interpolate
+    // with optimal algorithm
+    Number3 result = {};
+    for (int i2 = 0, i = 0; i2 < (dim > 2 ? n_shapes : 1); ++i2)
+      {
+        Number3 inner_result;
+        // Generate separate code with known loop bounds for the most common
+        // cases
+        if (n_shapes == 2)
+          inner_result = do_interpolate_xy_value<dim, 2, Number2, Number>(
+            values, renumber, shapes, n_shapes, i);
+        else if (n_shapes == 3)
+          inner_result = do_interpolate_xy_value<dim, 3, Number2, Number>(
+            values, renumber, shapes, n_shapes, i);
+        else if (n_shapes == 4)
+          inner_result = do_interpolate_xy_value<dim, 4, Number2, Number>(
+            values, renumber, shapes, n_shapes, i);
+        else if (n_shapes == 5)
+          inner_result = do_interpolate_xy_value<dim, 5, Number2, Number>(
+            values, renumber, shapes, n_shapes, i);
+        else if (n_shapes == 6)
+          inner_result = do_interpolate_xy_value<dim, 6, Number2, Number>(
+            values, renumber, shapes, n_shapes, i);
+        else
+          inner_result = do_interpolate_xy_value<dim, -1, Number2, Number>(
+            values, renumber, shapes, n_shapes, i);
+        if (dim == 3)
+          {
+            // Interpolation + derivative in z direction
+            result += inner_result * shapes[i2][0][2];
+          }
+        else
+          {
+            result = inner_result;
+          }
+      }
+
+    return result;
+  }
+
+  template <int dim, typename Number, typename Number2>
+  inline typename ProductTypeNoPoint<Number, Number2>::type
+  evaluate_tensor_product_value_linear(
+    const std::vector<Polynomials::Polynomial<double>> &poly,
+    const Number *                                      values,
+    const Point<dim, Number2> &                         p,
+    const std::vector<unsigned int> &                   renumber = {})
+  {
+    (void)poly;
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
+
+    using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
+
+    AssertDimension(poly.size(), 2);
+    for (unsigned int i = 0; i < renumber.size(); ++i)
+      AssertDimension(renumber[i], i);
+
+    if (dim == 0)
+      {
+        // we only need the value on faces of a 1d element
+        return values[0];
+      }
+    else if (dim == 1)
+      {
+        return (1. - p[0]) * values[0] + p[0] * values[1];
+      }
+    else if (dim == 2)
+      {
+        const Number2 x0 = 1. - p[0], x1 = p[0];
+        const Number3 tmp0   = x0 * values[0] + x1 * values[1];
+        const Number3 tmp1   = x0 * values[2] + x1 * values[3];
+        const Number3 mapped = (1. - p[1]) * tmp0 + p[1] * tmp1;
+        return mapped;
+      }
+    else if (dim == 3)
+      {
+        const Number2 x0 = 1. - p[0], x1 = p[0], y0 = 1. - p[1], y1 = p[1],
+                      z0 = 1. - p[2], z1 = p[2];
+        const Number3 tmp0   = x0 * values[0] + x1 * values[1];
+        const Number3 tmp1   = x0 * values[2] + x1 * values[3];
+        const Number3 tmpy0  = y0 * tmp0 + y1 * tmp1;
+        const Number3 tmp2   = x0 * values[4] + x1 * values[5];
+        const Number3 tmp3   = x0 * values[6] + x1 * values[7];
+        const Number3 tmpy1  = y0 * tmp2 + y1 * tmp3;
+        const Number3 mapped = z0 * tmpy0 + z1 * tmpy1;
+        return mapped;
+      }
+
+    // work around a compile error: missing return statement
+    return Number3();
+  }
+
+
 
   /**
    * Interpolate inner dimensions of tensor product shape functions.
