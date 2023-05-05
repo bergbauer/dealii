@@ -1532,9 +1532,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::do_reinit()
       return;
     }
 
-  // if(n_q_points_scalar == 0)
-  //  return;
-
   is_face = mapping_info->state ==
             NonMatching::MappingInfo<dim, spacedim, Number>::State::
               faces_on_cells_in_vector;
@@ -1582,17 +1579,10 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::do_reinit()
       shapes_faces.resize_fast(n_batches * n_shapes);
       for (unsigned int qb = 0; qb < n_batches; ++qb)
         if (is_face)
-          {
-            internal::compute_values_of_array<dim - 1>(
-              make_array_view(shapes_faces, qb * n_shapes, n_shapes),
-              poly,
-              unit_point_faces_ptr[qb]);
-            internal::compute_values_of_array(make_array_view(shapes,
-                                                              qb * n_shapes,
-                                                              n_shapes),
-                                              poly,
-                                              unit_point_ptr[qb]);
-          }
+          internal::compute_values_of_array<dim - 1>(
+            make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+            poly,
+            unit_point_faces_ptr[qb]);
         else
           internal::compute_values_of_array(make_array_view(shapes,
                                                             qb * n_shapes,
