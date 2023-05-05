@@ -1679,9 +1679,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
               n_components * dofs_per_component_face;
 
             auto compute_codim1_result = [&](const unsigned int derivative) {
-              const std::vector<scalar_value_type> solution_codim1(
-                solution_renumbered.begin() + derivative * size_scalar,
-                solution_renumbered.begin() + (derivative + 1) * size_scalar);
+              const scalar_value_type *solution_codim1 =
+                &solution_renumbered[derivative * size_scalar];
 
               if (polynomials_are_hat_functions)
                 return internal::
@@ -1742,7 +1741,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
             if (polynomials_are_hat_functions)
               return internal::
                 evaluate_tensor_product_value_and_gradient_linear(
-                  poly, solution_renumbered, unit_point_ptr[qb]);
+                  poly, solution_renumbered.data(), unit_point_ptr[qb]);
             else
               return internal::
                 evaluate_tensor_product_value_and_gradient_shapes<
@@ -1752,7 +1751,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
                                                        qb * n_shapes,
                                                        n_shapes),
                                        n_shapes,
-                                       solution_renumbered);
+                                       solution_renumbered.data());
           }
       }();
 

@@ -3010,7 +3010,7 @@ namespace internal
    */
   template <int dim, int length, typename Number2, typename Number>
   inline std::array<typename ProductTypeNoPoint<Number, Number2>::type, 3>
-  do_interpolate_xy(const std::vector<Number> &                        values,
+  do_interpolate_xy(const Number *                                     values,
                     const std::vector<unsigned int> &                  renumber,
                     const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
                     const int n_shapes_runtime,
@@ -3068,16 +3068,12 @@ namespace internal
   evaluate_tensor_product_value_and_gradient_shapes(
     const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
     const int                                          n_shapes,
-    const std::vector<Number> &                        values,
+    const Number *                                     values,
     const std::vector<unsigned int> &                  renumber = {})
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
-
-    AssertDimension(Utilities::pow(n_shapes, dim), values.size());
-    Assert(renumber.empty() || renumber.size() == values.size(),
-           ExcDimensionMismatch(renumber.size(), values.size()));
 
     // we only need the value on faces of a 1d element
     if (dim == 0)
@@ -3143,7 +3139,7 @@ namespace internal
     Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
   evaluate_tensor_product_value_and_gradient_linear(
     const std::vector<Polynomials::Polynomial<double>> &poly,
-    const std::vector<Number> &                         values,
+    const Number *                                      values,
     const Point<dim, Number2> &                         p,
     const std::vector<unsigned int> &                   renumber = {})
   {
@@ -3151,10 +3147,6 @@ namespace internal
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
-
-    AssertDimension(Utilities::pow(poly.size(), dim), values.size());
-    Assert(renumber.empty() || renumber.size() == values.size(),
-           ExcDimensionMismatch(renumber.size(), values.size()));
 
     AssertDimension(poly.size(), 2);
     for (unsigned int i = 0; i < renumber.size(); ++i)
