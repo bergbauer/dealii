@@ -3228,11 +3228,11 @@ namespace internal
     std::array<typename ProductTypeNoPoint<Number, Number2>::type, 2>,
     Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
   evaluate_tensor_product_value_and_gradient_shapes(
-    const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
-    const int                                          n_shapes,
-    const Number *                                     values,
-    const Number *                                     values_2,
-    const std::vector<unsigned int> &                  renumber = {})
+    const ArrayView<dealii::ndarray<Number2, 2, dim>> shapes,
+    const int                                         n_shapes,
+    const Number *                                    values,
+    const Number *                                    values_2,
+    const std::vector<unsigned int> &                 renumber = {})
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
@@ -3342,11 +3342,15 @@ namespace internal
         derivative[0]    = values[1] - values[0];
         const Number2 x0 = 1. - p[0], x1 = p[0];
         const Number3 value = x0 * values[0] + x1 * values[1];
-        Number3       value_2;
         if (interpolate_2)
-          value_2 = x0 * values_2[0] + x1 * values_2[1];
-        return std::make_pair(std::array<Number3, 2>{{value, value_2}},
-                              derivative);
+          {
+            const Number3 value_2 = x0 * values_2[0] + x1 * values_2[1];
+            return std::make_pair(std::array<Number3, 2>{{value, value_2}},
+                                  derivative);
+          }
+        else
+          return std::make_pair(std::array<Number3, 2>{{value, value}},
+                                derivative);
       }
     else if (dim == 2)
       {
@@ -3354,19 +3358,21 @@ namespace internal
         const Number3 tmp0   = x0 * values[0] + x1 * values[1];
         const Number3 tmp1   = x0 * values[2] + x1 * values[3];
         const Number3 mapped = y0 * tmp0 + y1 * tmp1;
-        Number3       mapped_2;
-        if (interpolate_2)
-          {
-            const Number3 tmp0_2 = x0 * values_2[0] + x1 * values_2[1];
-            const Number3 tmp1_2 = x0 * values_2[2] + x1 * values_2[3];
-            mapped_2             = y0 * tmp0_2 + y1 * tmp1_2;
-          }
         Tensor<1, dim, Number3> derivative;
         derivative[0] =
           y0 * (values[1] - values[0]) + y1 * (values[3] - values[2]);
         derivative[1] = tmp1 - tmp0;
-        return std::make_pair(std::array<Number3, 2>{{mapped, mapped_2}},
-                              derivative);
+        if (interpolate_2)
+          {
+            const Number3 tmp0_2   = x0 * values_2[0] + x1 * values_2[1];
+            const Number3 tmp1_2   = x0 * values_2[2] + x1 * values_2[3];
+            const Number3 mapped_2 = y0 * tmp0_2 + y1 * tmp1_2;
+            return std::make_pair(std::array<Number3, 2>{{mapped, mapped_2}},
+                                  derivative);
+          }
+        else
+          return std::make_pair(std::array<Number3, 2>{{mapped, mapped}},
+                                derivative);
       }
     else if (dim == 3)
       {
@@ -3451,17 +3457,16 @@ namespace internal
     else
       {
         std::array<dealii::ndarray<Number2, 2, dim>, 200> shapes;
-
-        auto view = make_array_view(shapes);
-
-        compute_values_of_array(view, poly, p);
-
+        compute_values_of_array(make_array_view(shapes), poly, p);
         const auto result =
           evaluate_tensor_product_value_and_gradient_shapes<dim,
                                                             Number,
                                                             Number2>(
-            view, poly.size(), values.data(), values.data(), renumber);
-
+            make_array_view(shapes),
+            poly.size(),
+            values.data(),
+            values.data(),
+            renumber);
         return std::make_pair(result.first[0], result.second);
       }
   }
@@ -3768,7 +3773,7 @@ namespace internal
     static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
     // as in evaluate, use `int` type to produce better code in this context
-    //AssertDimension(Utilities::pow(n_shapes, dim), values.size());
+    // AssertDimension(Utilities::pow(n_shapes, dim), values.size());
 
     Number2 value = value_ptr[0];
     Number2 value_2;
@@ -3845,7 +3850,7 @@ namespace internal
     (void)poly;
     static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
-    //AssertDimension(Utilities::pow(poly.size(), dim), values.size());
+    // AssertDimension(Utilities::pow(poly.size(), dim), values.size());
 
     AssertDimension(poly.size(), 2);
 
