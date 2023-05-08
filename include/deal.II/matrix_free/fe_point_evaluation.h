@@ -1612,16 +1612,16 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
     }
   for (unsigned int comp = 0; comp < n_components; ++comp)
     {
+      const unsigned int *renumber_ptr =
+        renumber.data() +
+        (component_in_base_element + comp) * dofs_per_component;
       if (is_face)
         {
           ScalarNumber *input  = scratch_data_scalar.begin();
           ScalarNumber *output = input + dofs_per_component;
 
           for (unsigned int i = 0; i < dofs_per_component; ++i)
-            input[i] =
-              solution_values[renumber[(component_in_base_element + comp) *
-                                         dofs_per_component +
-                                       i]];
+            input[i] = solution_values[renumber_ptr[i]];
 
           internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
             template interpolate<true, false>(1,
@@ -1637,12 +1637,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
       else
         {
           for (unsigned int i = 0; i < dofs_per_component; ++i)
-            ETT::read_value(
-              solution_values[renumber[(component_in_base_element + comp) *
-                                         dofs_per_component +
-                                       i]],
-              comp,
-              solution_renumbered[i]);
+            ETT::read_value(solution_values[renumber_ptr[i]],
+                            comp,
+                            solution_renumbered[i]);
         }
     }
 
