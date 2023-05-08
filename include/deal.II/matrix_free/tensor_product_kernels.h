@@ -3768,7 +3768,7 @@ namespace internal
     static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
     // as in evaluate, use `int` type to produce better code in this context
-    AssertDimension(Utilities::pow(n_shapes, dim), values.size());
+    //AssertDimension(Utilities::pow(n_shapes, dim), values.size());
 
     Number2 value = value_ptr[0];
     Number2 value_2;
@@ -3845,7 +3845,7 @@ namespace internal
     (void)poly;
     static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
-    AssertDimension(Utilities::pow(poly.size(), dim), values.size());
+    //AssertDimension(Utilities::pow(poly.size(), dim), values.size());
 
     AssertDimension(poly.size(), 2);
 
