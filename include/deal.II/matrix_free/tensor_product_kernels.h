@@ -3353,13 +3353,13 @@ namespace internal
         const Number2 x0 = 1. - p[0], x1 = p[0], y0 = 1. - p[1], y1 = p[1];
         const Number3 tmp0   = x0 * values[0] + x1 * values[1];
         const Number3 tmp1   = x0 * values[2] + x1 * values[3];
-        const Number3 mapped = y0 * tmp0 + y0 * tmp1;
+        const Number3 mapped = y0 * tmp0 + y1 * tmp1;
         Number3       mapped_2;
         if (interpolate_2)
           {
             const Number3 tmp0_2 = x0 * values_2[0] + x1 * values_2[1];
             const Number3 tmp1_2 = x0 * values_2[2] + x1 * values_2[3];
-            mapped_2             = y0 * tmp0_2 + y0 * tmp1_2;
+            mapped_2             = y0 * tmp0_2 + y1 * tmp1_2;
           }
         Tensor<1, dim, Number3> derivative;
         derivative[0] =
