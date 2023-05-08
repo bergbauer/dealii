@@ -1950,15 +1950,13 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
       // compute
       if (is_face)
         {
-          vectorized_value_type                     value_face;
+          std::array<vectorized_value_type, 2>      value_face;
           Tensor<1, dim - 1, vectorized_value_type> gradient_in_face;
 
-          vectorized_value_type normal_gradient_face;
-
-          value_face = value;
+          value_face[0] = value;
           if (current_face_number / 2 == 0)
             {
-              normal_gradient_face = gradient[0];
+              value_face[1] = gradient[0];
               if (dim > 1)
                 gradient_in_face[0] = gradient[1];
               if (dim > 2)
@@ -1966,7 +1964,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
             }
           else if (current_face_number / 2 == 1)
             {
-              normal_gradient_face = gradient[1];
+              value_face[1] = gradient[1];
               if (dim > 2)
                 {
                   gradient_in_face[0] = gradient[2];
@@ -1979,9 +1977,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
             }
           else if (current_face_number / 2 == 2)
             {
-              normal_gradient_face = gradient[2];
-              gradient_in_face[0]  = gradient[0];
-              gradient_in_face[1]  = gradient[1];
+              value_face[1]       = gradient[2];
+              gradient_in_face[0] = gradient[0];
+              gradient_in_face[1] = gradient[1];
             }
           else
             AssertThrow(false, ExcInternalError());
@@ -1990,49 +1988,36 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
             n_components * dofs_per_component_face;
 
           if (polynomials_are_hat_functions)
-            internal::integrate_add_tensor_product_value_and_gradient_linear(
-              poly,
-              value_face,
-              gradient_in_face,
-              make_array_view(solution_renumbered_vectorized, 0, size_scalar),
-              unit_point_faces_ptr[qb]);
+            internal::integrate_add_tensor_product_value_and_gradient_linear<
+              dim - 1,
+              VectorizedArrayType,
+              vectorized_value_type,
+              true>(poly,
+                    value_face.data(),
+                    gradient_in_face,
+                    make_array_view(solution_renumbered_vectorized,
+                                    0,
+                                    2 * size_scalar),
+                    unit_point_faces_ptr[qb]);
           else
             internal::integrate_add_tensor_product_value_and_gradient_shapes<
               dim - 1,
               VectorizedArrayType,
-              vectorized_value_type>(
-              make_array_view(shapes_faces, qb * n_shapes, n_shapes),
-              n_shapes,
-              value_face,
-              gradient_in_face,
-              make_array_view(solution_renumbered_vectorized, 0, size_scalar));
-
-          if (polynomials_are_hat_functions)
-            internal::integrate_add_tensor_product_value_linear(
-              poly,
-              normal_gradient_face,
-              make_array_view(solution_renumbered_vectorized,
-                              size_scalar,
-                              size_scalar),
-              unit_point_faces_ptr[qb]);
-          else
-            internal::integrate_add_tensor_product_value_shapes<
-              dim - 1,
-              VectorizedArrayType,
-              vectorized_value_type>(
-              make_array_view(shapes_faces, qb * n_shapes, n_shapes),
-              n_shapes,
-              normal_gradient_face,
-              make_array_view(solution_renumbered_vectorized,
-                              size_scalar,
-                              size_scalar));
+              vectorized_value_type,
+              true>(make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+                    n_shapes,
+                    value_face.data(),
+                    gradient_in_face,
+                    make_array_view(solution_renumbered_vectorized,
+                                    0,
+                                    2 * size_scalar));
         }
       else
         {
           if (polynomials_are_hat_functions)
             internal::integrate_add_tensor_product_value_and_gradient_linear(
               poly,
-              value,
+              &value,
               gradient,
               make_array_view(solution_renumbered_vectorized),
               unit_point_ptr[qb]);
@@ -2043,7 +2028,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
               vectorized_value_type>(
               make_array_view(shapes, qb * n_shapes, n_shapes),
               n_shapes,
-              value,
+              &value,
               gradient,
               make_array_view(solution_renumbered_vectorized));
         }
