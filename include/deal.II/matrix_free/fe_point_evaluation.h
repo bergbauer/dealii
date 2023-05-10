@@ -1888,9 +1888,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
         solution_renumbered_vectorized.resize(dofs_per_component);
     }
 
-  // zero content
-  solution_renumbered_vectorized.fill(vectorized_value_type());
-
   // loop over quadrature batches qb / points q
   const unsigned int n_shapes = poly.size();
   for (unsigned int qb = 0, q = 0; q < n_q_points_scalar;
@@ -1985,51 +1982,121 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
 
           const unsigned int size_scalar =
             n_components * dofs_per_component_face;
-
-          if (polynomials_are_hat_functions)
-            internal::integrate_add_tensor_product_value_and_gradient_linear<
-              dim - 1,
-              VectorizedArrayType,
-              vectorized_value_type,
-              true>(poly,
-                    value_face.data(),
-                    gradient_in_face,
-                    make_array_view(solution_renumbered_vectorized,
-                                    0,
-                                    2 * size_scalar),
-                    unit_point_faces_ptr[qb]);
+          if (qb == 0)
+            {
+              if (polynomials_are_hat_functions)
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_linear<
+                    dim - 1,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    false,
+                    true>(poly,
+                          value_face.data(),
+                          gradient_in_face,
+                          make_array_view(solution_renumbered_vectorized,
+                                          0,
+                                          2 * size_scalar),
+                          unit_point_faces_ptr[qb]);
+              else
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_shapes<
+                    dim - 1,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    false,
+                    true>(shapes_faces.data() + qb * n_shapes,
+                          n_shapes,
+                          value_face.data(),
+                          gradient_in_face,
+                          make_array_view(solution_renumbered_vectorized,
+                                          0,
+                                          2 * size_scalar));
+            }
           else
-            internal::integrate_add_tensor_product_value_and_gradient_shapes<
-              dim - 1,
-              VectorizedArrayType,
-              vectorized_value_type,
-              true>(shapes_faces.data() + qb * n_shapes,
-                    n_shapes,
-                    value_face.data(),
-                    gradient_in_face,
-                    make_array_view(solution_renumbered_vectorized,
-                                    0,
-                                    2 * size_scalar));
+            {
+              if (polynomials_are_hat_functions)
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_linear<
+                    dim - 1,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    true,
+                    true>(poly,
+                          value_face.data(),
+                          gradient_in_face,
+                          make_array_view(solution_renumbered_vectorized,
+                                          0,
+                                          2 * size_scalar),
+                          unit_point_faces_ptr[qb]);
+              else
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_shapes<
+                    dim - 1,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    true,
+                    true>(shapes_faces.data() + qb * n_shapes,
+                          n_shapes,
+                          value_face.data(),
+                          gradient_in_face,
+                          make_array_view(solution_renumbered_vectorized,
+                                          0,
+                                          2 * size_scalar));
+            }
         }
       else
         {
-          if (polynomials_are_hat_functions)
-            internal::integrate_add_tensor_product_value_and_gradient_linear(
-              poly,
-              &value,
-              gradient,
-              make_array_view(solution_renumbered_vectorized),
-              unit_point_ptr[qb]);
+          if (qb == 0)
+            {
+              if (polynomials_are_hat_functions)
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_linear<
+                    dim,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    false>(poly,
+                           &value,
+                           gradient,
+                           make_array_view(solution_renumbered_vectorized),
+                           unit_point_ptr[qb]);
+              else
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_shapes<
+                    dim,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    false>(shapes.data() + qb * n_shapes,
+                           n_shapes,
+                           &value,
+                           gradient,
+                           make_array_view(solution_renumbered_vectorized));
+            }
           else
-            internal::integrate_add_tensor_product_value_and_gradient_shapes<
-              dim,
-              VectorizedArrayType,
-              vectorized_value_type>(shapes.data() + qb * n_shapes,
-                                     n_shapes,
-                                     &value,
-                                     gradient,
-                                     make_array_view(
-                                       solution_renumbered_vectorized));
+            {
+              if (polynomials_are_hat_functions)
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_linear<
+                    dim,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    true>(poly,
+                          &value,
+                          gradient,
+                          make_array_view(solution_renumbered_vectorized),
+                          unit_point_ptr[qb]);
+              else
+                internal::
+                  integrate_add_tensor_product_value_and_gradient_shapes<
+                    dim,
+                    VectorizedArrayType,
+                    vectorized_value_type,
+                    true>(shapes.data() + qb * n_shapes,
+                          n_shapes,
+                          &value,
+                          gradient,
+                          make_array_view(solution_renumbered_vectorized));
+            }
         }
     }
 

@@ -3689,6 +3689,7 @@ namespace internal
             int length,
             typename Number2,
             typename Number,
+            bool add,
             bool interpolate_2>
   inline void
   do_apply_test_functions_xy(ArrayView<Number2>                     values,
@@ -3726,10 +3727,16 @@ namespace internal
             Number2 *values_ptr_2 = values_ptr + values.size() / 2;
             for (unsigned int i0 = 0; i0 < length; ++i0)
               {
-                values_ptr[i0] += shape_values_x[i0] * test_value_y;
+                if (add)
+                  values_ptr[i0] += shape_values_x[i0] * test_value_y;
+                else
+                  values_ptr[i0] = shape_values_x[i0] * test_value_y;
                 values_ptr[i0] += shape_derivs_x[i0] * test_grad_xy;
                 if (interpolate_2)
-                  values_ptr_2[i0] += shape_values_x[i0] * test_value_y_2;
+                  if (add)
+                    values_ptr_2[i0] += shape_values_x[i0] * test_value_y_2;
+                  else
+                    values_ptr_2[i0] = shape_values_x[i0] * test_value_y_2;
               }
           }
         i += (dim > 1 ? length * length : length);
@@ -3754,10 +3761,16 @@ namespace internal
             Number2 *values_ptr_2 = values_ptr + values.size() / 2;
             for (int i0 = 0; i0 < n_shapes_runtime; ++i0)
               {
-                values_ptr[i0] += shapes[i0][0][0] * test_value_y;
+                if (add)
+                  values_ptr[i0] += shapes[i0][0][0] * test_value_y;
+                else
+                  values_ptr[i0] = shapes[i0][0][0] * test_value_y;
                 values_ptr[i0] += shapes[i0][1][0] * test_grad_xy;
                 if (interpolate_2)
-                  values_ptr_2[i0] += shapes[i0][0][0] * test_value_y_2;
+                  if (add)
+                    values_ptr_2[i0] += shapes[i0][0][0] * test_value_y_2;
+                  else
+                    values_ptr_2[i0] = shapes[i0][0][0] * test_value_y_2;
               }
           }
         i += (dim > 1 ? n_shapes_runtime * n_shapes_runtime : n_shapes_runtime);
@@ -3772,6 +3785,7 @@ namespace internal
   template <int dim,
             typename Number,
             typename Number2,
+            bool add,
             bool interpolate_2 = false>
   inline void
   integrate_add_tensor_product_value_and_gradient_shapes(
@@ -3793,9 +3807,15 @@ namespace internal
 
     if (dim == 0)
       {
-        values[0] = value;
+        if (add)
+          values[0] += value;
+        else
+          values[0] = value;
         if (interpolate_2)
-          values[1] = value_2;
+          if (add)
+            values[1] += value_2;
+          else
+            values[1] = value_2;
         return;
       }
 
@@ -3820,22 +3840,52 @@ namespace internal
         // Generate separate code with known loop bounds for the most common
         // cases
         if (n_shapes == 2)
-          do_apply_test_functions_xy<dim, 2, Number2, Number, interpolate_2>(
+          do_apply_test_functions_xy<dim,
+                                     2,
+                                     Number2,
+                                     Number,
+                                     add,
+                                     interpolate_2>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 3)
-          do_apply_test_functions_xy<dim, 3, Number2, Number, interpolate_2>(
+          do_apply_test_functions_xy<dim,
+                                     3,
+                                     Number2,
+                                     Number,
+                                     add,
+                                     interpolate_2>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 4)
-          do_apply_test_functions_xy<dim, 4, Number2, Number, interpolate_2>(
+          do_apply_test_functions_xy<dim,
+                                     4,
+                                     Number2,
+                                     Number,
+                                     add,
+                                     interpolate_2>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 5)
-          do_apply_test_functions_xy<dim, 5, Number2, Number, interpolate_2>(
+          do_apply_test_functions_xy<dim,
+                                     5,
+                                     Number2,
+                                     Number,
+                                     add,
+                                     interpolate_2>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 6)
-          do_apply_test_functions_xy<dim, 6, Number2, Number, interpolate_2>(
+          do_apply_test_functions_xy<dim,
+                                     6,
+                                     Number2,
+                                     Number,
+                                     add,
+                                     interpolate_2>(
             values, shapes, test_grads_value, n_shapes, i);
         else
-          do_apply_test_functions_xy<dim, -1, Number2, Number, interpolate_2>(
+          do_apply_test_functions_xy<dim,
+                                     -1,
+                                     Number2,
+                                     Number,
+                                     add,
+                                     interpolate_2>(
             values, shapes, test_grads_value, n_shapes, i);
       }
   }
@@ -3849,6 +3899,7 @@ namespace internal
   template <int dim,
             typename Number,
             typename Number2,
+            bool add,
             bool interpolate_2 = false>
   inline void
   integrate_add_tensor_product_value_and_gradient_linear(
@@ -3872,20 +3923,41 @@ namespace internal
 
     if (dim == 0)
       {
-        values[0] = value;
+        if (add)
+          values[0] += value;
+        else
+          values[0] = value;
         if (interpolate_2)
-          values[1] = value_2;
+          if (add)
+            values[1] += value_2;
+          else
+            values[1] = value_2;
       }
     else if (dim == 1)
       {
         const auto x0 = 1. - p[0], x1 = p[0];
-
-        values[0] += value * x0 - gradient[0];
-        values[1] += value * x1 + gradient[0];
+        if (add)
+          {
+            values[0] += value * x0 - gradient[0];
+            values[1] += value * x1 + gradient[0];
+          }
+        else
+          {
+            values[0] = value * x0 - gradient[0];
+            values[1] = value * x1 + gradient[0];
+          }
         if (interpolate_2)
           {
-            values[2] += value_2 * x0;
-            values[3] += value_2 * x1;
+            if (add)
+              {
+                values[2] += value_2 * x0;
+                values[3] += value_2 * x1;
+              }
+            else
+              {
+                values[2] = value_2 * x0;
+                values[3] = value_2 * x1;
+              }
           }
       }
     else if (dim == 2)
@@ -3897,19 +3969,40 @@ namespace internal
         const auto test_value_y1 = value * y1 + gradient[1];
         const auto test_grad_xy1 = gradient[0] * y1;
 
-        values[0] += x0 * test_value_y0 - test_grad_xy0;
-        values[1] += x1 * test_value_y0 + test_grad_xy0;
-        values[2] += x0 * test_value_y1 - test_grad_xy1;
-        values[3] += x1 * test_value_y1 + test_grad_xy1;
+        if (add)
+          {
+            values[0] += x0 * test_value_y0 - test_grad_xy0;
+            values[1] += x1 * test_value_y0 + test_grad_xy0;
+            values[2] += x0 * test_value_y1 - test_grad_xy1;
+            values[3] += x1 * test_value_y1 + test_grad_xy1;
+          }
+        else
+          {
+            values[0] = x0 * test_value_y0 - test_grad_xy0;
+            values[1] = x1 * test_value_y0 + test_grad_xy0;
+            values[2] = x0 * test_value_y1 - test_grad_xy1;
+            values[3] = x1 * test_value_y1 + test_grad_xy1;
+          }
+
         if (interpolate_2)
           {
             const auto test_value_y0_2 = value_2 * y0;
             const auto test_value_y1_2 = value_2 * y1;
 
-            values[4] += x0 * test_value_y0_2;
-            values[5] += x1 * test_value_y0_2;
-            values[6] += x0 * test_value_y1_2;
-            values[7] += x1 * test_value_y1_2;
+            if (add)
+              {
+                values[4] += x0 * test_value_y0_2;
+                values[5] += x1 * test_value_y0_2;
+                values[6] += x0 * test_value_y1_2;
+                values[7] += x1 * test_value_y1_2;
+              }
+            else
+              {
+                values[4] = x0 * test_value_y0_2;
+                values[5] = x1 * test_value_y0_2;
+                values[6] = x0 * test_value_y1_2;
+                values[7] = x1 * test_value_y1_2;
+              }
           }
       }
     else if (dim == 3)
@@ -3934,14 +4027,28 @@ namespace internal
         const auto test_value_y11 = test_value_z1 * y1 + test_grad_y1;
         const auto test_grad_xy11 = test_grad_x1 * y1;
 
-        values[0] += x0 * test_value_y00 - test_grad_xy00;
-        values[1] += x1 * test_value_y00 + test_grad_xy00;
-        values[2] += x0 * test_value_y01 - test_grad_xy01;
-        values[3] += x1 * test_value_y01 + test_grad_xy01;
-        values[4] += x0 * test_value_y10 - test_grad_xy10;
-        values[5] += x1 * test_value_y10 + test_grad_xy10;
-        values[6] += x0 * test_value_y11 - test_grad_xy11;
-        values[7] += x1 * test_value_y11 + test_grad_xy11;
+        if (add)
+          {
+            values[0] += x0 * test_value_y00 - test_grad_xy00;
+            values[1] += x1 * test_value_y00 + test_grad_xy00;
+            values[2] += x0 * test_value_y01 - test_grad_xy01;
+            values[3] += x1 * test_value_y01 + test_grad_xy01;
+            values[4] += x0 * test_value_y10 - test_grad_xy10;
+            values[5] += x1 * test_value_y10 + test_grad_xy10;
+            values[6] += x0 * test_value_y11 - test_grad_xy11;
+            values[7] += x1 * test_value_y11 + test_grad_xy11;
+          }
+        else
+          {
+            values[0] = x0 * test_value_y00 - test_grad_xy00;
+            values[1] = x1 * test_value_y00 + test_grad_xy00;
+            values[2] = x0 * test_value_y01 - test_grad_xy01;
+            values[3] = x1 * test_value_y01 + test_grad_xy01;
+            values[4] = x0 * test_value_y10 - test_grad_xy10;
+            values[5] = x1 * test_value_y10 + test_grad_xy10;
+            values[6] = x0 * test_value_y11 - test_grad_xy11;
+            values[7] = x1 * test_value_y11 + test_grad_xy11;
+          }
       }
   }
 
