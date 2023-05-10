@@ -1734,7 +1734,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
 
       if (evaluation_flags & EvaluationFlags::values)
         {
-          for (unsigned int v = 0; v < stride && q + v < n_q_points_scalar; ++v)
+          for (unsigned int v = 0;
+               v < stride && (stride == 1 || q + v < n_q_points_scalar);
+               ++v)
             ETT::set_value(val_and_grad.first[0], v, values[qb * stride + v]);
         }
       if (evaluation_flags & EvaluationFlags::gradients)
@@ -1743,7 +1745,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
                    update_flags & update_inverse_jacobians,
                  ExcNotInitialized());
 
-          for (unsigned int v = 0; v < stride && q + v < n_q_points_scalar; ++v)
+          for (unsigned int v = 0;
+               v < stride && (stride == 1 || q + v < n_q_points_scalar);
+               ++v)
             {
               const unsigned int offset = qb * stride + v;
               ETT::set_gradient(val_and_grad.second, v, unit_gradients[offset]);
@@ -1911,7 +1915,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                 ETT::set_zero_value(values[qb], v);
             }
 
-          for (unsigned int v = 0; v < stride && q + v < n_q_points_scalar; ++v)
+          for (unsigned int v = 0;
+               v < stride && (stride == 1 || q + v < n_q_points_scalar);
+               ++v)
             ETT::get_value(value, v, values[qb * stride + v]);
         }
       if (integration_flags & EvaluationFlags::gradients)
@@ -1927,7 +1933,9 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                 ETT::set_zero_gradient(gradients[qb], v);
             }
 
-          for (unsigned int v = 0; v < stride && q + v < n_q_points_scalar; ++v)
+          for (unsigned int v = 0;
+               v < stride && (stride == 1 || q + v < n_q_points_scalar);
+               ++v)
             {
               const unsigned int offset = qb * stride + v;
               ETT::get_gradient(
