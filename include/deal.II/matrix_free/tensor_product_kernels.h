@@ -3005,7 +3005,7 @@ namespace internal
   template <int dim, typename Number>
   inline void
   compute_values_of_array(
-    ArrayView<dealii::ndarray<Number, 2, dim>>          shapes,
+    dealii::ndarray<Number, 2, dim> *                   shapes,
     const std::vector<Polynomials::Polynomial<double>> &poly,
     const Point<dim, Number> &                          p)
   {
@@ -3022,12 +3022,11 @@ namespace internal
 
   template <int dim, int length, typename Number2, typename Number>
   inline typename ProductTypeNoPoint<Number, Number2>::type
-  do_interpolate_xy_value(
-    const Number *                                     values,
-    const std::vector<unsigned int> &                  renumber,
-    const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
-    const int                                          n_shapes_runtime,
-    int &                                              i)
+  do_interpolate_xy_value(const Number *                         values,
+                          const std::vector<unsigned int> &      renumber,
+                          const dealii::ndarray<Number2, 2, dim> shapes,
+                          const int n_shapes_runtime,
+                          int &     i)
   {
     const int n_shapes = length > 0 ? length : n_shapes_runtime;
     using Number3      = typename ProductTypeNoPoint<Number, Number2>::type;
@@ -3058,10 +3057,10 @@ namespace internal
   template <int dim, typename Number, typename Number2>
   inline typename ProductTypeNoPoint<Number, Number2>::type
   evaluate_tensor_product_value_shapes(
-    const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
-    const int                                          n_shapes,
-    const Number *                                     values,
-    const std::vector<unsigned int> &                  renumber = {})
+    const dealii::ndarray<Number2, 2, dim> *shapes,
+    const int                               n_shapes,
+    const Number *                          values,
+    const std::vector<unsigned int> &       renumber = {})
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
@@ -3176,12 +3175,12 @@ namespace internal
             typename Number,
             bool interpolate_2>
   inline std::array<typename ProductTypeNoPoint<Number, Number2>::type, 4>
-  do_interpolate_xy(const Number *                                     values,
-                    const Number *                                     values_2,
-                    const std::vector<unsigned int> &                  renumber,
-                    const ArrayView<dealii::ndarray<Number2, 2, dim>> &shapes,
-                    const int n_shapes_runtime,
-                    int &     i)
+  do_interpolate_xy(const Number *                          values,
+                    const Number *                          values_2,
+                    const std::vector<unsigned int> &       renumber,
+                    const dealii::ndarray<Number2, 2, dim> *shapes,
+                    const int                               n_shapes_runtime,
+                    int &                                   i)
   {
     const int n_shapes = length > 0 ? length : n_shapes_runtime;
     using Number3      = typename ProductTypeNoPoint<Number, Number2>::type;
@@ -3244,11 +3243,11 @@ namespace internal
     std::array<typename ProductTypeNoPoint<Number, Number2>::type, 2>,
     Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
   evaluate_tensor_product_value_and_gradient_shapes(
-    const ArrayView<dealii::ndarray<Number2, 2, dim>> shapes,
-    const int                                         n_shapes,
-    const Number *                                    values,
-    const Number *                                    values_2,
-    const std::vector<unsigned int> &                 renumber = {})
+    const dealii::ndarray<Number2, 2, dim> *shapes,
+    const int                               n_shapes,
+    const Number *                          values,
+    const Number *                          values_2,
+    const std::vector<unsigned int> &       renumber = {})
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
@@ -3472,17 +3471,14 @@ namespace internal
       }
     else
       {
+        AssertIndexRange(poly.size(), 200);
         std::array<dealii::ndarray<Number2, 2, dim>, 200> shapes;
-        compute_values_of_array(make_array_view(shapes), poly, p);
+        compute_values_of_array(shapes.data(), poly, p);
         const auto result =
           evaluate_tensor_product_value_and_gradient_shapes<dim,
                                                             Number,
                                                             Number2>(
-            make_array_view(shapes),
-            poly.size(),
-            values.data(),
-            values.data(),
-            renumber);
+            shapes.data(), poly.size(), values.data(), values.data(), renumber);
         return std::make_pair(result.first[0], result.second);
       }
   }
@@ -3695,12 +3691,11 @@ namespace internal
             typename Number,
             bool interpolate_2>
   inline void
-  do_apply_test_functions_xy(
-    ArrayView<Number2>                               values,
-    const ArrayView<dealii::ndarray<Number, 2, dim>> shapes,
-    const std::array<Number2, 4> &                   test_grads_value,
-    const int                                        n_shapes_runtime,
-    int &                                            i)
+  do_apply_test_functions_xy(ArrayView<Number2>                     values,
+                             const dealii::ndarray<Number, 2, dim> *shapes,
+                             const std::array<Number2, 4> &test_grads_value,
+                             const int                     n_shapes_runtime,
+                             int &                         i)
   {
     Number2 test_value_y_2;
     if (length > 0)
@@ -3780,11 +3775,11 @@ namespace internal
             bool interpolate_2 = false>
   inline void
   integrate_add_tensor_product_value_and_gradient_shapes(
-    const ArrayView<dealii::ndarray<Number, 2, dim>> shapes,
-    const int                                        n_shapes,
-    const Number2 *                                  value_ptr,
-    const Tensor<1, dim, Number2> &                  gradient,
-    ArrayView<Number2>                               values)
+    const dealii::ndarray<Number, 2, dim> *shapes,
+    const int                              n_shapes,
+    const Number2 *                        value_ptr,
+    const Tensor<1, dim, Number2> &        gradient,
+    ArrayView<Number2>                     values)
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 
@@ -4026,11 +4021,11 @@ namespace internal
   template <int dim, int length, typename Number2, typename Number>
   inline void
   do_apply_test_functions_xy_value(
-    ArrayView<Number2>                                values,
-    const ArrayView<dealii::ndarray<Number, 2, dim>> &shapes,
-    const Number2 &                                   test_value,
-    const int                                         n_shapes_runtime,
-    int &                                             i)
+    ArrayView<Number2>                     values,
+    const dealii::ndarray<Number, 2, dim> *shapes,
+    const Number2 &                        test_value,
+    const int                              n_shapes_runtime,
+    int &                                  i)
   {
     if (length > 0)
       {
@@ -4072,10 +4067,10 @@ namespace internal
   template <int dim, typename Number, typename Number2>
   inline void
   integrate_add_tensor_product_value_shapes(
-    const ArrayView<dealii::ndarray<Number, 2, dim>> &shapes,
-    const int                                         n_shapes,
-    const Number2 &                                   value,
-    ArrayView<Number2>                                values)
+    const dealii::ndarray<Number, 2, dim> *shapes,
+    const int                              n_shapes,
+    const Number2 &                        value,
+    ArrayView<Number2>                     values)
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
 

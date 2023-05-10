@@ -1569,23 +1569,25 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::do_reinit()
   if (fast_path && !polynomials_are_hat_functions)
     {
       const std::size_t n_batches =
-        n_q_points_scalar / n_lanes_internal +
-        (n_q_points_scalar % n_lanes_internal > 0 ? 1 : 0);
+        (n_q_points_scalar + n_lanes_internal - 1) / n_lanes_internal;
       const std::size_t n_shapes = poly.size();
-      shapes.resize_fast(n_batches * n_shapes);
-      shapes_faces.resize_fast(n_batches * n_shapes);
+
       for (unsigned int qb = 0; qb < n_batches; ++qb)
         if (is_face)
-          internal::compute_values_of_array<dim - 1>(
-            make_array_view(shapes_faces, qb * n_shapes, n_shapes),
-            poly,
-            unit_point_faces_ptr[qb]);
+          {
+            shapes_faces.resize_fast(n_batches * n_shapes);
+            internal::compute_values_of_array(shapes_faces.data() +
+                                                qb * n_shapes,
+                                              poly,
+                                              unit_point_faces_ptr[qb]);
+          }
         else
-          internal::compute_values_of_array(make_array_view(shapes,
-                                                            qb * n_shapes,
-                                                            n_shapes),
-                                            poly,
-                                            unit_point_ptr[qb]);
+          {
+            shapes.resize_fast(n_batches * n_shapes);
+            internal::compute_values_of_array(shapes.data() + qb * n_shapes,
+                                              poly,
+                                              unit_point_ptr[qb]);
+          }
     }
 
   is_reinitialized = true;
@@ -1674,7 +1676,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
-                true>(make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+                true>(shapes_faces.data() + qb * n_shapes,
                       n_shapes,
                       &solution_renumbered[0],
                       &solution_renumbered[size_scalar]);
@@ -1724,9 +1726,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim,
                 scalar_value_type,
-                VectorizedArrayType>(make_array_view(shapes,
-                                                     qb * n_shapes,
-                                                     n_shapes),
+                VectorizedArrayType>(shapes.data() + qb * n_shapes,
                                      n_shapes,
                                      solution_renumbered.data(),
                                      solution_renumbered.data());
@@ -1995,7 +1995,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
               dim - 1,
               VectorizedArrayType,
               vectorized_value_type,
-              true>(make_array_view(shapes_faces, qb * n_shapes, n_shapes),
+              true>(shapes_faces.data() + qb * n_shapes,
                     n_shapes,
                     value_face.data(),
                     gradient_in_face,
@@ -2016,12 +2016,12 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
             internal::integrate_add_tensor_product_value_and_gradient_shapes<
               dim,
               VectorizedArrayType,
-              vectorized_value_type>(
-              make_array_view(shapes, qb * n_shapes, n_shapes),
-              n_shapes,
-              &value,
-              gradient,
-              make_array_view(solution_renumbered_vectorized));
+              vectorized_value_type>(shapes.data() + qb * n_shapes,
+                                     n_shapes,
+                                     &value,
+                                     gradient,
+                                     make_array_view(
+                                       solution_renumbered_vectorized));
         }
     }
 
