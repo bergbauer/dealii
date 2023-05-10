@@ -3115,17 +3115,17 @@ namespace internal
   template <int dim, typename Number, typename Number2>
   inline typename ProductTypeNoPoint<Number, Number2>::type
   evaluate_tensor_product_value_linear(
-    const std::vector<Polynomials::Polynomial<double>> &poly,
-    const Number *                                      values,
-    const Point<dim, Number2> &                         p,
-    const std::vector<unsigned int> &                   renumber = {})
+    const unsigned int               n_shapes,
+    const Number *                   values,
+    const Point<dim, Number2> &      p,
+    const std::vector<unsigned int> &renumber = {})
   {
-    (void)poly;
+    (void)n_shapes;
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
-    AssertDimension(poly.size(), 2);
+    AssertDimension(n_shapes, 2);
     for (unsigned int i = 0; i < renumber.size(); ++i)
       AssertDimension(renumber[i], i);
 
@@ -3330,18 +3330,18 @@ namespace internal
     std::array<typename ProductTypeNoPoint<Number, Number2>::type, 2>,
     Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
   evaluate_tensor_product_value_and_gradient_linear(
-    const std::vector<Polynomials::Polynomial<double>> &poly,
-    const Number *                                      values,
-    const Number *                                      values_2,
-    const Point<dim, Number2> &                         p,
-    const std::vector<unsigned int> &                   renumber = {})
+    const unsigned int               n_shapes,
+    const Number *                   values,
+    const Number *                   values_2,
+    const Point<dim, Number2> &      p,
+    const std::vector<unsigned int> &renumber = {})
   {
-    (void)poly;
+    (void)n_shapes;
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
-    AssertDimension(poly.size(), 2);
+    AssertDimension(n_shapes, 2);
     for (unsigned int i = 0; i < renumber.size(); ++i)
       AssertDimension(renumber[i], i);
 
@@ -3466,7 +3466,7 @@ namespace internal
     if (d_linear)
       {
         const auto result = evaluate_tensor_product_value_and_gradient_linear(
-          poly, values.data(), values.data(), p, renumber);
+          poly.size(), values.data(), values.data(), p, renumber);
         return std::make_pair(result.first[0], result.second);
       }
     else
@@ -3795,10 +3795,7 @@ namespace internal
     const Tensor<1, dim, Number2> &        gradient,
     ArrayView<Number2>                     values)
   {
-    static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
-
-    // as in evaluate, use `int` type to produce better code in this context
-    // AssertDimension(Utilities::pow(n_shapes, dim), values.size());
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     Number2 value = value_ptr[0];
     Number2 value_2;
@@ -3820,6 +3817,7 @@ namespace internal
       }
 
     // Implement the transpose of the function above
+    // as in evaluate, use `int` type to produce better code in this context
     std::array<Number2, 4> test_grads_value;
     for (int i2 = 0, i = 0; i2 < (dim > 2 ? n_shapes : 1); ++i2)
       {
@@ -3903,18 +3901,16 @@ namespace internal
             bool interpolate_2 = false>
   inline void
   integrate_add_tensor_product_value_and_gradient_linear(
-    const std::vector<Polynomials::Polynomial<double>> &poly,
-    const Number2 *                                     value_ptr,
-    const Tensor<1, dim, Number2> &                     gradient,
-    ArrayView<Number2>                                  values,
-    const Point<dim, Number> &                          p)
+    const unsigned int             n_shapes,
+    const Number2 *                value_ptr,
+    const Tensor<1, dim, Number2> &gradient,
+    ArrayView<Number2>             values,
+    const Point<dim, Number> &     p)
   {
-    (void)poly;
-    static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
+    (void)n_shapes;
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
-    // AssertDimension(Utilities::pow(poly.size(), dim), values.size());
-
-    AssertDimension(poly.size(), 2);
+    AssertDimension(n_shapes, 2);
 
     Number2 value = value_ptr[0];
     Number2 value_2;
@@ -4060,18 +4056,17 @@ namespace internal
    */
   template <int dim, typename Number, typename Number2>
   inline void
-  integrate_add_tensor_product_value_linear(
-    const std::vector<Polynomials::Polynomial<double>> &poly,
-    const Number2 &                                     value,
-    ArrayView<Number2>                                  values,
-    const Point<dim, Number> &                          p)
+  integrate_add_tensor_product_value_linear(const unsigned int        n_shapes,
+                                            const Number2 &           value,
+                                            ArrayView<Number2>        values,
+                                            const Point<dim, Number> &p)
   {
-    (void)poly;
-    static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
+    (void)n_shapes;
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     AssertDimension(Utilities::pow(poly.size(), dim), values.size());
 
-    AssertDimension(poly.size(), 2);
+    AssertDimension(n_shapes, 2);
 
     if (dim == 0)
       {
@@ -4179,7 +4174,7 @@ namespace internal
     const Number2 &                        value,
     ArrayView<Number2>                     values)
   {
-    static_assert(dim >= 0 && dim <= 3, "Only dim=1,2,3 implemented");
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     // as in evaluate, use `int` type to produce better code in this context
     AssertDimension(Utilities::pow(n_shapes, dim), values.size());

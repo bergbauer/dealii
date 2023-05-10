@@ -1668,7 +1668,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
-                true>(poly,
+                true>(n_shapes,
                       &solution_renumbered[0],
                       &solution_renumbered[size_scalar],
                       unit_point_faces_ptr[qb]) :
@@ -1717,7 +1717,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
           if (polynomials_are_hat_functions)
             val_and_grad =
               internal::evaluate_tensor_product_value_and_gradient_linear(
-                poly,
+                n_shapes,
                 solution_renumbered.data(),
                 solution_renumbered.data(),
                 unit_point_ptr[qb]);
@@ -1991,7 +1991,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     VectorizedArrayType,
                     vectorized_value_type,
                     false,
-                    true>(poly,
+                    true>(n_shapes,
                           value_face.data(),
                           gradient_in_face,
                           make_array_view(solution_renumbered_vectorized,
@@ -2022,7 +2022,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     VectorizedArrayType,
                     vectorized_value_type,
                     true,
-                    true>(poly,
+                    true>(n_shapes,
                           value_face.data(),
                           gradient_in_face,
                           make_array_view(solution_renumbered_vectorized,
@@ -2055,7 +2055,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     dim,
                     VectorizedArrayType,
                     vectorized_value_type,
-                    false>(poly,
+                    false>(n_shapes,
                            &value,
                            gradient,
                            make_array_view(solution_renumbered_vectorized),
@@ -2080,7 +2080,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     dim,
                     VectorizedArrayType,
                     vectorized_value_type,
-                    true>(poly,
+                    true>(n_shapes,
                           &value,
                           gradient,
                           make_array_view(solution_renumbered_vectorized),
