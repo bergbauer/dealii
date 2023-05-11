@@ -3182,9 +3182,17 @@ namespace internal
                     const int                               n_shapes_runtime,
                     int &                                   i)
   {
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
+    static_assert(n_values >= 1 && n_values <= 2,
+                  "Only n_values=1,2 implemented");
+
     const int     n_shapes = length > 0 ? length : n_shapes_runtime;
-    const Number *values_2 = values + Utilities::fixed_power<dim>(n_shapes);
-    using Number3          = typename ProductTypeNoPoint<Number, Number2>::type;
+    const Number *values_2 =
+      n_values > 1 ?
+        values + (length > 0 ? Utilities::pow(length, dim) :
+                               Utilities::fixed_power<dim>(n_shapes_runtime)) :
+        nullptr;
+    using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
     std::array<Number3, 2 + n_values> result = {};
     for (int i1 = 0; i1 < (dim > 1 ? n_shapes : 1); ++i1)
       {
@@ -3346,14 +3354,14 @@ namespace internal
     const Point<dim, Number2> &      p,
     const std::vector<unsigned int> &renumber = {})
   {
-    (void)n_shapes;
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
     static_assert(n_values >= 1 && n_values <= 2,
                   "Only n_values=1,2 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
-    const Number *values_2 = values + Utilities::fixed_power<dim>(n_shapes);
+    const Number *values_2 =
+      n_values > 1 ? values + Utilities::fixed_power<dim>(n_shapes) : nullptr;
 
     AssertDimension(n_shapes, 2);
     for (unsigned int i = 0; i < renumber.size(); ++i)
@@ -3698,12 +3706,17 @@ namespace internal
             bool add,
             int  n_values = 1>
   inline void
-  do_apply_test_functions_xy(Number2 *                              values,
-                             const dealii::ndarray<Number, 2, dim> *shapes,
-                             const std::array<Number2, 4> &test_grads_value,
-                             const int                     n_shapes_runtime,
-                             int &                         i)
+  do_apply_test_functions_xy(
+    Number2 *                                values,
+    const dealii::ndarray<Number, 2, dim> *  shapes,
+    const std::array<Number2, 2 + n_values> &test_grads_value,
+    const int                                n_shapes_runtime,
+    int &                                    i)
   {
+    static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
+    static_assert(n_values >= 1 && n_values <= 2,
+                  "Only n_values=1,2 implemented");
+
     if (length > 0)
       {
         constexpr unsigned int         array_size = length > 0 ? length : 1;
@@ -3729,8 +3742,9 @@ namespace internal
                                  test_grads_value[3] * shapes[i1][0][1] :
                                  test_grads_value[3];
 
-            Number2 *values_ptr   = values + i + i1 * length;
-            Number2 *values_ptr_2 = values_ptr + Utilities::pow(length, dim);
+            Number2 *values_ptr = values + i + i1 * length;
+            Number2 *values_ptr_2 =
+              n_values > 1 ? values_ptr + Utilities::pow(length, dim) : nullptr;
             for (unsigned int i0 = 0; i0 < length; ++i0)
               {
                 if (add)
@@ -3766,7 +3780,9 @@ namespace internal
 
             Number2 *values_ptr = values + i + i1 * n_shapes_runtime;
             Number2 *values_ptr_2 =
-              values_ptr + Utilities::fixed_power<dim>(n_shapes_runtime);
+              n_values > 1 ?
+                values_ptr + Utilities::fixed_power<dim>(n_shapes_runtime) :
+                nullptr;
             for (int i0 = 0; i0 < n_shapes_runtime; ++i0)
               {
                 if (add)
@@ -3823,7 +3839,7 @@ namespace internal
 
     // Implement the transpose of the function above
     // as in evaluate, use `int` type to produce better code in this context
-    std::array<Number2, 4> test_grads_value;
+    std::array<Number2, 2 + n_values> test_grads_value;
     for (int i2 = 0, i = 0; i2 < (dim > 2 ? n_shapes : 1); ++i2)
       {
         // test grad x
