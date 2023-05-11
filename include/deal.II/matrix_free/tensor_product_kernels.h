@@ -3166,6 +3166,44 @@ namespace internal
 
 
 
+  template <int dim, typename Number, typename Number2>
+  inline std::pair<
+    typename ProductTypeNoPoint<Number, Number2>::type,
+    Tensor<1, dim, typename ProductTypeNoPoint<Number, Number2>::type>>
+  evaluate_tensor_product_value(
+    const std::vector<Polynomials::Polynomial<double>> &poly,
+    const std::vector<Number> &                         values,
+    const Point<dim, Number2> &                         p,
+    const bool                                          d_linear = false,
+    const std::vector<unsigned int> &                   renumber = {})
+  {
+    typename ProductTypeNoPoint<Number, Number2>::type result;
+    if (d_linear)
+      {
+        result = evaluate_tensor_product_value_linear(poly.size(),
+                                                      values.data(),
+                                                      p,
+                                                      renumber);
+      }
+    else
+      {
+        AssertIndexRange(poly.size(), 200);
+        std::array<dealii::ndarray<Number2, 1, dim>, 200> shapes;
+        const int               n_shapes = poly.size();
+        std::array<Number, dim> point;
+        for (unsigned int d = 0; d < dim; ++d)
+          point[d] = p[d];
+        for (int i = 0; i < n_shapes; ++i)
+          poly[i].values_of_array(point, 0, &shapes[i][0]);
+        compute_values_of_array(shapes.data(), poly, p);
+        result = evaluate_tensor_product_value_shapes<dim, Number, Number2>(
+          shapes.data(), n_shapes, values.data(), renumber);
+      }
+    return result;
+  }
+
+
+
   /**
    * Interpolate inner dimensions of tensor product shape functions.
    */
@@ -3480,7 +3518,7 @@ namespace internal
     if (d_linear)
       {
         result = evaluate_tensor_product_value_and_gradient_linear(
-          poly.size(), values.data(), values.data(), p, renumber);
+          poly.size(), values.data(), p, renumber);
       }
     else
       {
@@ -3490,7 +3528,7 @@ namespace internal
         result = evaluate_tensor_product_value_and_gradient_shapes<dim,
                                                                    Number,
                                                                    Number2>(
-          shapes.data(), poly.size(), values.data(), values.data(), renumber);
+          shapes.data(), poly.size(), values.data(), renumber);
       }
     return std::make_pair(result[dim],
                           Tensor<1, dim, Number3>(
