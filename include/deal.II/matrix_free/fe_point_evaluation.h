@@ -1985,11 +1985,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     VectorizedArrayType,
                     vectorized_value_type,
                     false,
-                    true>(n_shapes,
-                          value_face.data(),
-                          gradient_in_face,
-                          solution_renumbered_vectorized.data(),
-                          unit_point_faces_ptr[qb]);
+                    2>(n_shapes,
+                       value_face.data(),
+                       gradient_in_face,
+                       solution_renumbered_vectorized.data(),
+                       unit_point_faces_ptr[qb]);
               else
                 internal::
                   integrate_add_tensor_product_value_and_gradient_shapes<
@@ -1997,11 +1997,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     VectorizedArrayType,
                     vectorized_value_type,
                     false,
-                    true>(shapes_faces.data() + qb * n_shapes,
-                          n_shapes,
-                          value_face.data(),
-                          gradient_in_face,
-                          solution_renumbered_vectorized.data());
+                    2>(shapes_faces.data() + qb * n_shapes,
+                       n_shapes,
+                       value_face.data(),
+                       gradient_in_face,
+                       solution_renumbered_vectorized.data());
             }
           else
             {
@@ -2012,11 +2012,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     VectorizedArrayType,
                     vectorized_value_type,
                     true,
-                    true>(n_shapes,
-                          value_face.data(),
-                          gradient_in_face,
-                          solution_renumbered_vectorized.data(),
-                          unit_point_faces_ptr[qb]);
+                    2>(n_shapes,
+                       value_face.data(),
+                       gradient_in_face,
+                       solution_renumbered_vectorized.data(),
+                       unit_point_faces_ptr[qb]);
               else
                 internal::
                   integrate_add_tensor_product_value_and_gradient_shapes<
@@ -2024,11 +2024,11 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     VectorizedArrayType,
                     vectorized_value_type,
                     true,
-                    true>(shapes_faces.data() + qb * n_shapes,
-                          n_shapes,
-                          value_face.data(),
-                          gradient_in_face,
-                          solution_renumbered_vectorized.data());
+                    2>(shapes_faces.data() + qb * n_shapes,
+                       n_shapes,
+                       value_face.data(),
+                       gradient_in_face,
+                       solution_renumbered_vectorized.data());
             }
         }
       else

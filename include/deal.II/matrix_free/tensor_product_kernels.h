@@ -3255,7 +3255,7 @@ namespace internal
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
     static_assert(n_values >= 1 && n_values <= 2,
-                  "Only n_values=0,1,2 implemented");
+                  "Only n_values=1,2 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
@@ -3349,7 +3349,7 @@ namespace internal
     (void)n_shapes;
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
     static_assert(n_values >= 1 && n_values <= 2,
-                  "Only n_values=0,1,2 implemented");
+                  "Only n_values=1,2 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
@@ -3696,7 +3696,7 @@ namespace internal
             typename Number2,
             typename Number,
             bool add,
-            bool interpolate_2>
+            int  n_values = 1>
   inline void
   do_apply_test_functions_xy(Number2 *                              values,
                              const dealii::ndarray<Number, 2, dim> *shapes,
@@ -3704,7 +3704,6 @@ namespace internal
                              const int                     n_shapes_runtime,
                              int &                         i)
   {
-    Number2 test_value_y_2;
     if (length > 0)
       {
         constexpr unsigned int         array_size = length > 0 ? length : 1;
@@ -3724,7 +3723,8 @@ namespace internal
             const Number2 test_grad_xy =
               dim > 1 ? test_grads_value[0] * shapes[i1][0][1] :
                         test_grads_value[0];
-            if (interpolate_2)
+            Number2 test_value_y_2;
+            if (n_values > 1)
               test_value_y_2 = dim > 1 ?
                                  test_grads_value[3] * shapes[i1][0][1] :
                                  test_grads_value[3];
@@ -3738,7 +3738,7 @@ namespace internal
                 else
                   values_ptr[i0] = shape_values_x[i0] * test_value_y;
                 values_ptr[i0] += shape_derivs_x[i0] * test_grad_xy;
-                if (interpolate_2)
+                if (n_values > 1)
                   if (add)
                     values_ptr_2[i0] += shape_values_x[i0] * test_value_y_2;
                   else
@@ -3758,7 +3758,8 @@ namespace internal
             const Number2 test_grad_xy =
               dim > 1 ? test_grads_value[0] * shapes[i1][0][1] :
                         test_grads_value[0];
-            if (interpolate_2)
+            Number2 test_value_y_2;
+            if (n_values > 1)
               test_value_y_2 = dim > 1 ?
                                  test_grads_value[3] * shapes[i1][0][1] :
                                  test_grads_value[3];
@@ -3773,7 +3774,7 @@ namespace internal
                 else
                   values_ptr[i0] = shapes[i0][0][0] * test_value_y;
                 values_ptr[i0] += shapes[i0][1][0] * test_grad_xy;
-                if (interpolate_2)
+                if (n_values > 1)
                   if (add)
                     values_ptr_2[i0] += shapes[i0][0][0] * test_value_y_2;
                   else
@@ -3793,33 +3794,30 @@ namespace internal
             typename Number,
             typename Number2,
             bool add,
-            bool interpolate_2 = false>
+            int  n_values = 1>
   inline void
   integrate_add_tensor_product_value_and_gradient_shapes(
     const dealii::ndarray<Number, 2, dim> *shapes,
     const int                              n_shapes,
-    const Number2 *                        value_ptr,
+    const Number2 *                        value,
     const Tensor<1, dim, Number2> &        gradient,
     Number2 *                              values)
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
-
-    Number2 value = value_ptr[0];
-    Number2 value_2;
-    if (interpolate_2)
-      value_2 = value_ptr[1];
+    static_assert(n_values >= 1 && n_values <= 2,
+                  "Only n_values=1,2 implemented");
 
     if (dim == 0)
       {
         if (add)
-          values[0] += value;
+          values[0] += value[0];
         else
-          values[0] = value;
-        if (interpolate_2)
+          values[0] = value[0];
+        if (n_values > 1)
           if (add)
-            values[1] += value_2;
+            values[1] += value[1];
           else
-            values[1] = value_2;
+            values[1] = value[1];
         return;
       }
 
@@ -3837,60 +3835,31 @@ namespace internal
         // test value z
         test_grads_value[2] =
           dim > 2 ?
-            (value * shapes[i2][0][2] + gradient[2] * shapes[i2][1][2]) :
-            value;
+            (value[0] * shapes[i2][0][2] + gradient[2] * shapes[i2][1][2]) :
+            value[0];
 
-        if (interpolate_2)
-          test_grads_value[3] = dim > 2 ? value_2 * shapes[i2][0][2] : value_2;
+        if (n_values > 1)
+          test_grads_value[3] =
+            dim > 2 ? value[1] * shapes[i2][0][2] : value[1];
         // Generate separate code with known loop bounds for the most common
         // cases
         if (n_shapes == 2)
-          do_apply_test_functions_xy<dim,
-                                     2,
-                                     Number2,
-                                     Number,
-                                     add,
-                                     interpolate_2>(
+          do_apply_test_functions_xy<dim, 2, Number2, Number, add, n_values>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 3)
-          do_apply_test_functions_xy<dim,
-                                     3,
-                                     Number2,
-                                     Number,
-                                     add,
-                                     interpolate_2>(
+          do_apply_test_functions_xy<dim, 3, Number2, Number, add, n_values>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 4)
-          do_apply_test_functions_xy<dim,
-                                     4,
-                                     Number2,
-                                     Number,
-                                     add,
-                                     interpolate_2>(
+          do_apply_test_functions_xy<dim, 4, Number2, Number, add, n_values>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 5)
-          do_apply_test_functions_xy<dim,
-                                     5,
-                                     Number2,
-                                     Number,
-                                     add,
-                                     interpolate_2>(
+          do_apply_test_functions_xy<dim, 5, Number2, Number, add, n_values>(
             values, shapes, test_grads_value, n_shapes, i);
         else if (n_shapes == 6)
-          do_apply_test_functions_xy<dim,
-                                     6,
-                                     Number2,
-                                     Number,
-                                     add,
-                                     interpolate_2>(
+          do_apply_test_functions_xy<dim, 6, Number2, Number, add, n_values>(
             values, shapes, test_grads_value, n_shapes, i);
         else
-          do_apply_test_functions_xy<dim,
-                                     -1,
-                                     Number2,
-                                     Number,
-                                     add,
-                                     interpolate_2>(
+          do_apply_test_functions_xy<dim, -1, Number2, Number, add, n_values>(
             values, shapes, test_grads_value, n_shapes, i);
       }
   }
@@ -3905,61 +3874,58 @@ namespace internal
             typename Number,
             typename Number2,
             bool add,
-            bool interpolate_2 = false>
+            int  n_values = 1>
   inline void
   integrate_add_tensor_product_value_and_gradient_linear(
     const unsigned int             n_shapes,
-    const Number2 *                value_ptr,
+    const Number2 *                value,
     const Tensor<1, dim, Number2> &gradient,
     Number2 *                      values,
     const Point<dim, Number> &     p)
   {
     (void)n_shapes;
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
+    static_assert(n_values >= 1 && n_values <= 2,
+                  "Only n_values=1,2 implemented");
 
     AssertDimension(n_shapes, 2);
-
-    Number2 value = value_ptr[0];
-    Number2 value_2;
-    if (interpolate_2)
-      value_2 = value_ptr[1];
 
     if (dim == 0)
       {
         if (add)
-          values[0] += value;
+          values[0] += value[0];
         else
-          values[0] = value;
-        if (interpolate_2)
+          values[0] = value[0];
+        if (n_values > 1)
           if (add)
-            values[1] += value_2;
+            values[1] += value[1];
           else
-            values[1] = value_2;
+            values[1] = value[1];
       }
     else if (dim == 1)
       {
         const auto x0 = 1. - p[0], x1 = p[0];
         if (add)
           {
-            values[0] += value * x0 - gradient[0];
-            values[1] += value * x1 + gradient[0];
+            values[0] += value[0] * x0 - gradient[0];
+            values[1] += value[0] * x1 + gradient[0];
           }
         else
           {
-            values[0] = value * x0 - gradient[0];
-            values[1] = value * x1 + gradient[0];
+            values[0] = value[0] * x0 - gradient[0];
+            values[1] = value[0] * x1 + gradient[0];
           }
-        if (interpolate_2)
+        if (n_values > 1)
           {
             if (add)
               {
-                values[2] += value_2 * x0;
-                values[3] += value_2 * x1;
+                values[2] += value[1] * x0;
+                values[3] += value[1] * x1;
               }
             else
               {
-                values[2] = value_2 * x0;
-                values[3] = value_2 * x1;
+                values[2] = value[1] * x0;
+                values[3] = value[1] * x1;
               }
           }
       }
@@ -3967,9 +3933,9 @@ namespace internal
       {
         const auto x0 = 1. - p[0], x1 = p[0], y0 = 1. - p[1], y1 = p[1];
 
-        const auto test_value_y0 = value * y0 - gradient[1];
+        const auto test_value_y0 = value[0] * y0 - gradient[1];
         const auto test_grad_xy0 = gradient[0] * y0;
-        const auto test_value_y1 = value * y1 + gradient[1];
+        const auto test_value_y1 = value[0] * y1 + gradient[1];
         const auto test_grad_xy1 = gradient[0] * y1;
 
         if (add)
@@ -3987,10 +3953,10 @@ namespace internal
             values[3] = x1 * test_value_y1 + test_grad_xy1;
           }
 
-        if (interpolate_2)
+        if (n_values > 1)
           {
-            const auto test_value_y0_2 = value_2 * y0;
-            const auto test_value_y1_2 = value_2 * y1;
+            const auto test_value_y0_2 = value[1] * y0;
+            const auto test_value_y1_2 = value[1] * y1;
 
             if (add)
               {
@@ -4010,14 +3976,14 @@ namespace internal
       }
     else if (dim == 3)
       {
-        Assert(!interpolate_2, ExcNotImplemented());
+        Assert(n_values == 1, ExcNotImplemented());
         const auto x0 = 1. - p[0], x1 = p[0], y0 = 1. - p[1], y1 = p[1],
                    z0 = 1. - p[2], z1 = p[2];
 
-        const auto test_value_z0 = value * z0 - gradient[2];
+        const auto test_value_z0 = value[0] * z0 - gradient[2];
         const auto test_grad_x0  = gradient[0] * z0;
         const auto test_grad_y0  = gradient[1] * z0;
-        const auto test_value_z1 = value * z1 + gradient[2];
+        const auto test_value_z1 = value[0] * z1 + gradient[2];
         const auto test_grad_x1  = gradient[0] * z1;
         const auto test_grad_y1  = gradient[1] * z1;
 
