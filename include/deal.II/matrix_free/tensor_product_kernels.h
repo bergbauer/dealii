@@ -3728,7 +3728,7 @@ namespace internal
                                  test_grads_value[3];
 
             Number2 *values_ptr   = values.data() + i + i1 * length;
-            Number2 *values_ptr_2 = values_ptr + values.size() / 2;
+            Number2 *values_ptr_2 = values_ptr + Utilities::pow(length, dim);
             for (unsigned int i0 = 0; i0 < length; ++i0)
               {
                 if (add)
@@ -3761,8 +3761,9 @@ namespace internal
                                  test_grads_value[3] * shapes[i1][0][1] :
                                  test_grads_value[3];
 
-            Number2 *values_ptr   = values.data() + i + i1 * n_shapes_runtime;
-            Number2 *values_ptr_2 = values_ptr + values.size() / 2;
+            Number2 *values_ptr = values.data() + i + i1 * n_shapes_runtime;
+            Number2 *values_ptr_2 =
+              values_ptr + Utilities::fixed_power<dim>(n_shapes_runtime);
             for (int i0 = 0; i0 < n_shapes_runtime; ++i0)
               {
                 if (add)
