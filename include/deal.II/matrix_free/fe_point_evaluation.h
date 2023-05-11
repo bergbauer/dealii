@@ -1651,9 +1651,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
   unit_gradients.resize(n_q_points, numbers::signaling_nan<gradient_type>());
 
   // loop over quadrature batches qb / points q
-  const unsigned int    n_shapes    = poly.size();
-  const unsigned int    size_scalar = n_components * dofs_per_component_face;
-  vectorized_value_type value;
+  const unsigned int                 n_shapes = poly.size();
+  vectorized_value_type              value;
   interface_vectorized_gradient_type gradient;
   for (unsigned int qb = 0, q = 0; q < n_q_points_scalar;
        ++qb, q += n_lanes_internal)
@@ -1661,15 +1660,15 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
       // compute
       if (is_face)
         {
-          const auto interpolated_value =
+          const std::array<vectorized_value_type, dim + 1> interpolated_value =
             polynomials_are_hat_functions ?
               internal::evaluate_tensor_product_value_and_gradient_linear<
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
                 2>(n_shapes,
-                   &solution_renumbered[0],
-                   &solution_renumbered[size_scalar],
+                   solution_renumbered.data(),
+                   solution_renumbered.data() + dofs_per_component_face,
                    unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim - 1,
@@ -1677,8 +1676,8 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::evaluate_fast(
                 VectorizedArrayType,
                 2>(shapes_faces.data() + qb * n_shapes,
                    n_shapes,
-                   &solution_renumbered[0],
-                   &solution_renumbered[size_scalar]);
+                   solution_renumbered.data(),
+                   solution_renumbered.data() + dofs_per_component_face);
 
           value = interpolated_value[dim - 1];
           if (current_face_number / 2 == 0)
@@ -1983,8 +1982,6 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
           else
             AssertThrow(false, ExcInternalError());
 
-          const unsigned int size_scalar =
-            n_components * dofs_per_component_face;
           if (qb == 0)
             {
               if (polynomials_are_hat_functions)
@@ -1999,7 +1996,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           gradient_in_face,
                           make_array_view(solution_renumbered_vectorized,
                                           0,
-                                          2 * size_scalar),
+                                          2 * dofs_per_component_face),
                           unit_point_faces_ptr[qb]);
               else
                 internal::
@@ -2014,7 +2011,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           gradient_in_face,
                           make_array_view(solution_renumbered_vectorized,
                                           0,
-                                          2 * size_scalar));
+                                          2 * dofs_per_component_face));
             }
           else
             {
@@ -2030,7 +2027,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           gradient_in_face,
                           make_array_view(solution_renumbered_vectorized,
                                           0,
-                                          2 * size_scalar),
+                                          2 * dofs_per_component_face),
                           unit_point_faces_ptr[qb]);
               else
                 internal::
@@ -2045,7 +2042,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           gradient_in_face,
                           make_array_view(solution_renumbered_vectorized,
                                           0,
-                                          2 * size_scalar));
+                                          2 * dofs_per_component_face));
             }
         }
       else
