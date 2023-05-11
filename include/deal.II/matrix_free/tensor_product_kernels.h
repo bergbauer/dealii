@@ -4031,13 +4031,11 @@ namespace internal
   inline void
   integrate_add_tensor_product_value_linear(const unsigned int        n_shapes,
                                             const Number2 &           value,
-                                            ArrayView<Number2>        values,
+                                            Number2 *                 values,
                                             const Point<dim, Number> &p)
   {
     (void)n_shapes;
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
-
-    AssertDimension(Utilities::pow(n_shapes, dim), values.size());
 
     AssertDimension(n_shapes, 2);
 
@@ -4096,7 +4094,7 @@ namespace internal
   template <int dim, int length, typename Number2, typename Number>
   inline void
   do_apply_test_functions_xy_value(
-    ArrayView<Number2>                     values,
+    Number2 *                              values,
     const dealii::ndarray<Number, 2, dim> *shapes,
     const Number2 &                        test_value,
     const int                              n_shapes_runtime,
@@ -4113,7 +4111,7 @@ namespace internal
             const Number2 test_value_y =
               dim > 1 ? test_value * shapes[i1][0][1] : test_value;
 
-            Number2 *values_ptr = values.data() + i + i1 * length;
+            Number2 *values_ptr = values + i + i1 * length;
             for (unsigned int i0 = 0; i0 < length; ++i0)
               values_ptr[i0] += shape_values_x[i0] * test_value_y;
           }
@@ -4126,7 +4124,7 @@ namespace internal
             const Number2 test_value_y =
               dim > 1 ? test_value * shapes[i1][0][1] : test_value;
 
-            Number2 *values_ptr = values.data() + i + i1 * n_shapes_runtime;
+            Number2 *values_ptr = values + i + i1 * n_shapes_runtime;
             for (int i0 = 0; i0 < n_shapes_runtime; ++i0)
               values_ptr[i0] += shapes[i0][0][0] * test_value_y;
           }
@@ -4145,12 +4143,11 @@ namespace internal
     const dealii::ndarray<Number, 2, dim> *shapes,
     const int                              n_shapes,
     const Number2 &                        value,
-    ArrayView<Number2>                     values)
+    Number2 *                              values)
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
     // as in evaluate, use `int` type to produce better code in this context
-    AssertDimension(Utilities::pow(n_shapes, dim), values.size());
 
     if (dim == 0)
       {
