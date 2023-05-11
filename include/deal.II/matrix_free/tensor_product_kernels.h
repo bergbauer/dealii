@@ -3698,7 +3698,7 @@ namespace internal
             bool add,
             bool interpolate_2>
   inline void
-  do_apply_test_functions_xy(ArrayView<Number2>                     values,
+  do_apply_test_functions_xy(Number2 *                              values,
                              const dealii::ndarray<Number, 2, dim> *shapes,
                              const std::array<Number2, 4> &test_grads_value,
                              const int                     n_shapes_runtime,
@@ -3729,7 +3729,7 @@ namespace internal
                                  test_grads_value[3] * shapes[i1][0][1] :
                                  test_grads_value[3];
 
-            Number2 *values_ptr   = values.data() + i + i1 * length;
+            Number2 *values_ptr   = values + i + i1 * length;
             Number2 *values_ptr_2 = values_ptr + Utilities::pow(length, dim);
             for (unsigned int i0 = 0; i0 < length; ++i0)
               {
@@ -3763,7 +3763,7 @@ namespace internal
                                  test_grads_value[3] * shapes[i1][0][1] :
                                  test_grads_value[3];
 
-            Number2 *values_ptr = values.data() + i + i1 * n_shapes_runtime;
+            Number2 *values_ptr = values + i + i1 * n_shapes_runtime;
             Number2 *values_ptr_2 =
               values_ptr + Utilities::fixed_power<dim>(n_shapes_runtime);
             for (int i0 = 0; i0 < n_shapes_runtime; ++i0)
@@ -3800,7 +3800,7 @@ namespace internal
     const int                              n_shapes,
     const Number2 *                        value_ptr,
     const Tensor<1, dim, Number2> &        gradient,
-    ArrayView<Number2>                     values)
+    Number2 *                              values)
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
 
@@ -3911,7 +3911,7 @@ namespace internal
     const unsigned int             n_shapes,
     const Number2 *                value_ptr,
     const Tensor<1, dim, Number2> &gradient,
-    ArrayView<Number2>             values,
+    Number2 *                      values,
     const Point<dim, Number> &     p)
   {
     (void)n_shapes;

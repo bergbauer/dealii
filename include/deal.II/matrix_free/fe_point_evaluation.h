@@ -1988,9 +1988,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     true>(n_shapes,
                           value_face.data(),
                           gradient_in_face,
-                          make_array_view(solution_renumbered_vectorized,
-                                          0,
-                                          2 * dofs_per_component_face),
+                          solution_renumbered_vectorized.data(),
                           unit_point_faces_ptr[qb]);
               else
                 internal::
@@ -2003,9 +2001,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           n_shapes,
                           value_face.data(),
                           gradient_in_face,
-                          make_array_view(solution_renumbered_vectorized,
-                                          0,
-                                          2 * dofs_per_component_face));
+                          solution_renumbered_vectorized.data());
             }
           else
             {
@@ -2019,9 +2015,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     true>(n_shapes,
                           value_face.data(),
                           gradient_in_face,
-                          make_array_view(solution_renumbered_vectorized,
-                                          0,
-                                          2 * dofs_per_component_face),
+                          solution_renumbered_vectorized.data(),
                           unit_point_faces_ptr[qb]);
               else
                 internal::
@@ -2034,9 +2028,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           n_shapes,
                           value_face.data(),
                           gradient_in_face,
-                          make_array_view(solution_renumbered_vectorized,
-                                          0,
-                                          2 * dofs_per_component_face));
+                          solution_renumbered_vectorized.data());
             }
         }
       else
@@ -2052,7 +2044,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     false>(n_shapes,
                            &value,
                            gradient,
-                           make_array_view(solution_renumbered_vectorized),
+                           solution_renumbered_vectorized.data(),
                            unit_point_ptr[qb]);
               else
                 internal::
@@ -2064,7 +2056,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                            n_shapes,
                            &value,
                            gradient,
-                           make_array_view(solution_renumbered_vectorized));
+                           solution_renumbered_vectorized.data());
             }
           else
             {
@@ -2077,7 +2069,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                     true>(n_shapes,
                           &value,
                           gradient,
-                          make_array_view(solution_renumbered_vectorized),
+                          solution_renumbered_vectorized.data(),
                           unit_point_ptr[qb]);
               else
                 internal::
@@ -2089,7 +2081,7 @@ FEPointEvaluation<n_components, dim, spacedim, Number>::integrate_fast(
                           n_shapes,
                           &value,
                           gradient,
-                          make_array_view(solution_renumbered_vectorized));
+                          solution_renumbered_vectorized.data());
             }
         }
     }
