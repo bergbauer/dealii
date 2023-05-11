@@ -3484,7 +3484,9 @@ namespace internal
                                                                    Number2>(
           shapes.data(), poly.size(), values.data(), values.data(), renumber);
       }
-    return std::make_pair(result[dim], ArrayView<Number3>(result.data(), dim));
+    return std::make_pair(result[dim],
+                          Tensor<1, dim, Number3>(
+                            ArrayView<Number3>(result.data(), dim)));
   }
 
 
