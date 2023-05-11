@@ -3177,14 +3177,14 @@ namespace internal
   inline std::array<typename ProductTypeNoPoint<Number, Number2>::type,
                     2 + n_values>
   do_interpolate_xy(const Number *                          values,
-                    const Number *                          values_2,
                     const std::vector<unsigned int> &       renumber,
                     const dealii::ndarray<Number2, 2, dim> *shapes,
                     const int                               n_shapes_runtime,
                     int &                                   i)
   {
-    const int n_shapes = length > 0 ? length : n_shapes_runtime;
-    using Number3      = typename ProductTypeNoPoint<Number, Number2>::type;
+    const int     n_shapes = length > 0 ? length : n_shapes_runtime;
+    const Number *values_2 = values + Utilities::fixed_power<dim>(n_shapes);
+    using Number3          = typename ProductTypeNoPoint<Number, Number2>::type;
     std::array<Number3, 2 + n_values> result = {};
     for (int i1 = 0; i1 < (dim > 1 ? n_shapes : 1); ++i1)
       {
@@ -3251,7 +3251,6 @@ namespace internal
     const dealii::ndarray<Number2, 2, dim> *shapes,
     const int                               n_shapes,
     const Number *                          values,
-    const Number *                          values_2,
     const std::vector<unsigned int> &       renumber = {})
   {
     static_assert(dim >= 0 && dim <= 3, "Only dim=0,1,2,3 implemented");
@@ -3267,7 +3266,7 @@ namespace internal
         // we only need the value on faces of a 1d element
         result[0] = values[0];
         if (n_values > 1)
-          result[1] = values_2[0];
+          result[1] = values[1];
         return result;
       }
 
@@ -3280,22 +3279,22 @@ namespace internal
         // cases
         if (n_shapes == 2)
           inner_result = do_interpolate_xy<dim, 2, Number2, Number, n_values>(
-            values, values_2, renumber, shapes, n_shapes, i);
+            values, renumber, shapes, n_shapes, i);
         else if (n_shapes == 3)
           inner_result = do_interpolate_xy<dim, 3, Number2, Number, n_values>(
-            values, values_2, renumber, shapes, n_shapes, i);
+            values, renumber, shapes, n_shapes, i);
         else if (n_shapes == 4)
           inner_result = do_interpolate_xy<dim, 4, Number2, Number, n_values>(
-            values, values_2, renumber, shapes, n_shapes, i);
+            values, renumber, shapes, n_shapes, i);
         else if (n_shapes == 5)
           inner_result = do_interpolate_xy<dim, 5, Number2, Number, n_values>(
-            values, values_2, renumber, shapes, n_shapes, i);
+            values, renumber, shapes, n_shapes, i);
         else if (n_shapes == 6)
           inner_result = do_interpolate_xy<dim, 6, Number2, Number, n_values>(
-            values, values_2, renumber, shapes, n_shapes, i);
+            values, renumber, shapes, n_shapes, i);
         else
           inner_result = do_interpolate_xy<dim, -1, Number2, Number, n_values>(
-            values, values_2, renumber, shapes, n_shapes, i);
+            values, renumber, shapes, n_shapes, i);
         if (dim == 3)
           {
             // derivative + interpolation in z direction
@@ -3344,7 +3343,6 @@ namespace internal
   evaluate_tensor_product_value_and_gradient_linear(
     const unsigned int               n_shapes,
     const Number *                   values,
-    const Number *                   values_2,
     const Point<dim, Number2> &      p,
     const std::vector<unsigned int> &renumber = {})
   {
@@ -3354,6 +3352,8 @@ namespace internal
                   "Only n_values=0,1,2 implemented");
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
+
+    const Number *values_2 = values + Utilities::fixed_power<dim>(n_shapes);
 
     AssertDimension(n_shapes, 2);
     for (unsigned int i = 0; i < renumber.size(); ++i)
