@@ -4185,7 +4185,7 @@ namespace internal
   /**
    * Test inner dimensions of tensor product shape functions and accumulate.
    */
-  template <int dim, int length, typename Number2, typename Number>
+  template <int dim, int length, typename Number2, typename Number, bool add>
   inline
 #ifndef DEBUG
     DEAL_II_ALWAYS_INLINE
@@ -4211,7 +4211,12 @@ namespace internal
 
             Number2 *values_ptr = values + i + i1 * length;
             for (unsigned int i0 = 0; i0 < length; ++i0)
-              values_ptr[i0] += shape_values_x[i0] * test_value_y;
+              {
+                if (add)
+                  values_ptr[i0] += shape_values_x[i0] * test_value_y;
+                else
+                  values_ptr[i0] = shape_values_x[i0] * test_value_y;
+              }
           }
         i += (dim > 1 ? length * length : length);
       }
@@ -4224,7 +4229,12 @@ namespace internal
 
             Number2 *values_ptr = values + i + i1 * n_shapes_runtime;
             for (int i0 = 0; i0 < n_shapes_runtime; ++i0)
-              values_ptr[i0] += shapes[i0][0][0] * test_value_y;
+              {
+                if (add)
+                  values_ptr[i0] += shapes[i0][0][0] * test_value_y;
+                else
+                  values_ptr[i0] = shapes[i0][0][0] * test_value_y;
+              }
           }
         i += (dim > 1 ? n_shapes_runtime * n_shapes_runtime : n_shapes_runtime);
       }
@@ -4233,9 +4243,9 @@ namespace internal
 
 
   /**
-   * Same as evaluate_tensor_product_value_and_gradient() but for integration.
+   * Same as evaluate_tensor_product_value_shapes() but for integration.
    */
-  template <int dim, typename Number, typename Number2>
+  template <int dim, typename Number, typename Number2, bool add>
   inline void
   integrate_add_tensor_product_value_shapes(
     const dealii::ndarray<Number, 2, dim> *shapes,
@@ -4249,7 +4259,10 @@ namespace internal
 
     if (dim == 0)
       {
-        values[0] = value;
+        if (add)
+          values[0] += value;
+        else
+          values[0] = value;
         return;
       }
 
@@ -4263,22 +4276,22 @@ namespace internal
         // Generate separate code with known loop bounds for the most common
         // cases
         if (n_shapes == 2)
-          do_apply_test_functions_xy_value<dim, 2, Number2, Number>(
+          do_apply_test_functions_xy_value<dim, 2, Number2, Number, add>(
             values, shapes, test_value, n_shapes, i);
         else if (n_shapes == 3)
-          do_apply_test_functions_xy_value<dim, 3, Number2, Number>(
+          do_apply_test_functions_xy_value<dim, 3, Number2, Number, add>(
             values, shapes, test_value, n_shapes, i);
         else if (n_shapes == 4)
-          do_apply_test_functions_xy_value<dim, 4, Number2, Number>(
+          do_apply_test_functions_xy_value<dim, 4, Number2, Number, add>(
             values, shapes, test_value, n_shapes, i);
         else if (n_shapes == 5)
-          do_apply_test_functions_xy_value<dim, 5, Number2, Number>(
+          do_apply_test_functions_xy_value<dim, 5, Number2, Number, add>(
             values, shapes, test_value, n_shapes, i);
         else if (n_shapes == 6)
-          do_apply_test_functions_xy_value<dim, 6, Number2, Number>(
+          do_apply_test_functions_xy_value<dim, 6, Number2, Number, add>(
             values, shapes, test_value, n_shapes, i);
         else
-          do_apply_test_functions_xy_value<dim, -1, Number2, Number>(
+          do_apply_test_functions_xy_value<dim, -1, Number2, Number, add>(
             values, shapes, test_value, n_shapes, i);
       }
   }
@@ -4286,10 +4299,10 @@ namespace internal
 
 
   /**
-   * Specializes @p evaluate_tensor_product_value_and_gradient() for linear
+   * Specializes @p integrate_tensor_product_value_shapes() for linear
    * polynomials which massively reduces the necessary instructions.
    */
-  template <int dim, typename Number, typename Number2>
+  template <int dim, typename Number, typename Number2, bool add>
   inline void
   integrate_add_tensor_product_value_linear(const unsigned int        n_shapes,
                                             const Number2 &           value,
@@ -4303,14 +4316,25 @@ namespace internal
 
     if (dim == 0)
       {
-        values[0] = value;
+        if (add)
+          values[0] += value;
+        else
+          values[0] = value;
       }
     else if (dim == 1)
       {
         const auto x0 = 1. - p[0], x1 = p[0];
 
-        values[0] += value * x0;
-        values[1] += value * x1;
+        if (add)
+          {
+            values[0] += value * x0;
+            values[1] += value * x1;
+          }
+        else
+          {
+            values[0] = value * x0;
+            values[1] = value * x1;
+          }
       }
     else if (dim == 2)
       {
@@ -4319,10 +4343,20 @@ namespace internal
         const auto test_value_y0 = value * y0;
         const auto test_value_y1 = value * y1;
 
-        values[0] += x0 * test_value_y0;
-        values[1] += x1 * test_value_y0;
-        values[2] += x0 * test_value_y1;
-        values[3] += x1 * test_value_y1;
+        if (add)
+          {
+            values[0] += x0 * test_value_y0;
+            values[1] += x1 * test_value_y0;
+            values[2] += x0 * test_value_y1;
+            values[3] += x1 * test_value_y1;
+          }
+        else
+          {
+            values[0] = x0 * test_value_y0;
+            values[1] = x1 * test_value_y0;
+            values[2] = x0 * test_value_y1;
+            values[3] = x1 * test_value_y1;
+          }
       }
     else if (dim == 3)
       {
@@ -4337,14 +4371,85 @@ namespace internal
         const auto test_value_y10 = test_value_z1 * y0;
         const auto test_value_y11 = test_value_z1 * y1;
 
-        values[0] += x0 * test_value_y00;
-        values[1] += x1 * test_value_y00;
-        values[2] += x0 * test_value_y01;
-        values[3] += x1 * test_value_y01;
-        values[4] += x0 * test_value_y10;
-        values[5] += x1 * test_value_y10;
-        values[6] += x0 * test_value_y11;
-        values[7] += x1 * test_value_y11;
+        if (add)
+          {
+            values[0] += x0 * test_value_y00;
+            values[1] += x1 * test_value_y00;
+            values[2] += x0 * test_value_y01;
+            values[3] += x1 * test_value_y01;
+            values[4] += x0 * test_value_y10;
+            values[5] += x1 * test_value_y10;
+            values[6] += x0 * test_value_y11;
+            values[7] += x1 * test_value_y11;
+          }
+        else
+          {
+            values[0] = x0 * test_value_y00;
+            values[1] = x1 * test_value_y00;
+            values[2] = x0 * test_value_y01;
+            values[3] = x1 * test_value_y01;
+            values[4] = x0 * test_value_y10;
+            values[5] = x1 * test_value_y10;
+            values[6] = x0 * test_value_y11;
+            values[7] = x1 * test_value_y11;
+          }
+      }
+  }
+
+
+
+  /**
+   * Calls the correct @p integrate_add_tensor_product_value_...()
+   * function depending on if values should be added to or set and if
+   * polynomials are linear.
+   */
+  template <int dim, typename Number, typename Number2>
+  inline void
+  integrate_tensor_product_value(const dealii::ndarray<Number, 2, dim> *shapes,
+                                 const unsigned int        n_shapes,
+                                 const Number2 &           value,
+                                 Number2 *                 values,
+                                 const Point<dim, Number> &p,
+                                 const bool                is_linear,
+                                 const bool                do_add)
+  {
+    if (do_add)
+      {
+        if (is_linear)
+          internal::integrate_add_tensor_product_value_linear<dim,
+                                                              Number,
+                                                              Number2,
+                                                              true>(n_shapes,
+                                                                    value,
+                                                                    values,
+                                                                    p);
+        else
+          internal::integrate_add_tensor_product_value_shapes<dim,
+                                                              Number,
+                                                              Number2,
+                                                              true>(shapes,
+                                                                    n_shapes,
+                                                                    value,
+                                                                    values);
+      }
+    else
+      {
+        if (is_linear)
+          internal::integrate_add_tensor_product_value_linear<dim,
+                                                              Number,
+                                                              Number2,
+                                                              false>(n_shapes,
+                                                                     value,
+                                                                     values,
+                                                                     p);
+        else
+          internal::integrate_add_tensor_product_value_shapes<dim,
+                                                              Number,
+                                                              Number2,
+                                                              false>(shapes,
+                                                                     n_shapes,
+                                                                     value,
+                                                                     values);
       }
   }
 
