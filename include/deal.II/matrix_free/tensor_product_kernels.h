@@ -3007,7 +3007,8 @@ namespace internal
   compute_values_of_array(
     dealii::ndarray<Number, 2, dim> *                   shapes,
     const std::vector<Polynomials::Polynomial<double>> &poly,
-    const Point<dim, Number> &                          p)
+    const Point<dim, Number> &                          p,
+    const unsigned int derivative = 1)
   {
     const int n_shapes = poly.size();
 
@@ -3016,7 +3017,7 @@ namespace internal
     for (unsigned int d = 0; d < dim; ++d)
       point[d] = p[d];
     for (int i = 0; i < n_shapes; ++i)
-      poly[i].values_of_array(point, 1, shapes[i].data());
+      poly[i].values_of_array(point, derivative, shapes[i].data());
   }
 
 

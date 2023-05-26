@@ -1649,18 +1649,21 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
             if (dim > 1)
               {
                 shapes_faces.resize_fast(n_batches * n_shapes);
-                internal::compute_values_of_array(shapes_faces.data() +
-                                                    qb * n_shapes,
-                                                  poly,
-                                                  unit_point_faces_ptr[qb]);
+                internal::compute_values_of_array(
+                  shapes_faces.data() + qb * n_shapes,
+                  poly,
+                  unit_point_faces_ptr[qb],
+                  update_flags & UpdateFlags::update_gradients ? 1 : 0);
               }
           }
         else
           {
             shapes.resize_fast(n_batches * n_shapes);
-            internal::compute_values_of_array(shapes.data() + qb * n_shapes,
-                                              poly,
-                                              unit_point_ptr[qb]);
+            internal::compute_values_of_array(
+              shapes.data() + qb * n_shapes,
+              poly,
+              unit_point_ptr[qb],
+              update_flags & UpdateFlags::update_gradients ? 1 : 0);
           }
     }
 
