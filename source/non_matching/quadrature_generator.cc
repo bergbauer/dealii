@@ -1517,11 +1517,11 @@ namespace NonMatching
           {
             // TODO: this could be extended to a component that is not zero
             return dealii::internal::evaluate_tensor_product_value(
-                     poly,
-                     local_dof_values,
-                     point,
-                     polynomials_are_hat_functions,
-                     renumber);
+              poly,
+              local_dof_values,
+              point,
+              polynomials_are_hat_functions,
+              renumber);
           }
         else
           {

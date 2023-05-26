@@ -3008,7 +3008,7 @@ namespace internal
     dealii::ndarray<Number, 2, dim> *                   shapes,
     const std::vector<Polynomials::Polynomial<double>> &poly,
     const Point<dim, Number> &                          p,
-    const unsigned int derivative = 1)
+    const unsigned int                                  derivative = 1)
   {
     const int n_shapes = poly.size();
 
