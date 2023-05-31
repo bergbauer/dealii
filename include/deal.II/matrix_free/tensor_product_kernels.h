@@ -3504,28 +3504,29 @@ namespace internal
       }
     else if (dim == 1)
       {
-        return (1. - p[0]) * values[0] + p[0] * values[1];
+        return Number3(values[0]) + p[0] * (values[1] - values[0]);
       }
     else if (dim == 2)
       {
-        const Number2 x0 = 1. - p[0], x1 = p[0];
-        const Number3 tmp0   = x0 * values[0] + x1 * values[1];
-        const Number3 tmp1   = x0 * values[2] + x1 * values[3];
-        const Number3 mapped = (1. - p[1]) * tmp0 + p[1] * tmp1;
-        return mapped;
+        const Number3 tmp0 =
+          Number3(values[0]) + p[0] * (values[1] - values[0]);
+        const Number3 tmp1 =
+          Number3(values[2]) + p[0] * (values[3] - values[2]);
+        return tmp0 + p[1] * (tmp1 - tmp0);
       }
     else if (dim == 3)
       {
-        const Number2 x0 = 1. - p[0], x1 = p[0], y0 = 1. - p[1], y1 = p[1],
-                      z0 = 1. - p[2], z1 = p[2];
-        const Number3 tmp0   = x0 * values[0] + x1 * values[1];
-        const Number3 tmp1   = x0 * values[2] + x1 * values[3];
-        const Number3 tmpy0  = y0 * tmp0 + y1 * tmp1;
-        const Number3 tmp2   = x0 * values[4] + x1 * values[5];
-        const Number3 tmp3   = x0 * values[6] + x1 * values[7];
-        const Number3 tmpy1  = y0 * tmp2 + y1 * tmp3;
-        const Number3 mapped = z0 * tmpy0 + z1 * tmpy1;
-        return mapped;
+        const Number3 tmp0 =
+          Number3(values[0]) + p[0] * (values[1] - values[0]);
+        const Number3 tmp1 =
+          Number3(values[2]) + p[0] * (values[3] - values[2]);
+        const Number3 tmpy0 = tmp0 + p[1] * (tmp1 - tmp0);
+        const Number3 tmp2 =
+          Number3(values[4]) + p[0] * (values[5] - values[4]);
+        const Number3 tmp3 =
+          Number3(values[6]) + p[0] * (values[7] - values[6]);
+        const Number3 tmpy1 = tmp2 + p[1] * (tmp3 - tmp2);
+        return tmpy0 + p[2] * (tmpy1 - tmpy0);
       }
 
     // work around a compile error: missing return statement
