@@ -245,6 +245,12 @@ public:
              const std::vector<double> &    weights);
 
   /**
+   * Clears weights and points vectors.
+   */
+  void
+  clear();
+
+  /**
    * Number of quadrature points.
    */
   unsigned int
@@ -457,6 +463,15 @@ public:
 #ifndef DOXYGEN
 
 // -------------------  inline and template functions ----------------
+
+template <int dim>
+inline void
+Quadrature<dim>::clear()
+{
+  weights.clear();
+  quadrature_points.clear();
+}
+
 
 
 template <int dim>
