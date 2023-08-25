@@ -63,15 +63,10 @@ main(int argc, char **argv)
       constraints.add_entry(0, 3, 0.5);
     }
 
-  deallog << "Output 0" << std::endl;
-  constraints.print(deallog.get_file_stream());
   constraints.make_consistent_in_parallel(owned_elements,
                                           relevant_elements,
                                           MPI_COMM_WORLD);
-  deallog << "Output 1" << std::endl;
-  constraints.print(deallog.get_file_stream());
   constraints.close();
-  deallog << "Output 2" << std::endl;
   constraints.print(deallog.get_file_stream());
 
   return 0;
