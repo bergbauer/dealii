@@ -915,6 +915,24 @@ public:
             const EvaluationFlags::EvaluationFlags &integration_flags,
             const bool                              sum_into_values = false);
 
+  template <std::size_t stride_view>
+  void
+  integrate_add(
+    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags            &integration_flags)
+  {
+    do_integrate<true>(solution_values, integration_flags, true);
+  }
+
+  void
+  integrate_add(const ArrayView<ScalarNumber>          &solution_values,
+                const EvaluationFlags::EvaluationFlags &integration_flags)
+  {
+    integrate_add(StridedArrayView<ScalarNumber, 1>(solution_values.data(),
+                                                    solution_values.size()),
+                  integration_flags);
+  }
+
   /**
    * This function multiplies the quantities passed in by previous
    * submit_value() or submit_gradient() calls by the value or gradient of the
