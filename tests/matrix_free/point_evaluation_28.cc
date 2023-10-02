@@ -119,9 +119,9 @@ test(const unsigned int degree)
         deallog << i << ' ';
       deallog << std::endl;
 
-      evaluator.integrate_add(solution_values,
-                              EvaluationFlags::values |
-                                EvaluationFlags::gradients);
+      evaluator.integrate(solution_values,
+                          EvaluationFlags::values | EvaluationFlags::gradients,
+                          true);
 
       for (const auto i : solution_values)
         deallog << i << ' ';
