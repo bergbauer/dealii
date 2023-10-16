@@ -1089,6 +1089,7 @@ private:
     internal::VectorizedArrayTrait<VectorizedArrayType>::width();
   static constexpr std::size_t stride =
     internal::VectorizedArrayTrait<Number>::stride();
+  static constexpr bool is_fully_vectorized = stride == 1;
 
   /**
    * Common setup function for both constructors. Does the setup for both fast
@@ -1216,12 +1217,7 @@ private:
   /**
    * Number of quadrature batches of the current cell/face.
    */
-  const unsigned int n_q_batches;
-
-  /**
-   * Number of quadrature points/batches of the current cell/face.
-   */
-  const unsigned int n_q_points;
+  const unsigned short int n_q_batches;
 
   /**
    * Number of quadrature points of the current cell/face.
@@ -1442,7 +1438,6 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   const UpdateFlags         update_flags,
   const unsigned int        first_selected_component)
   : n_q_batches(numbers::invalid_unsigned_int)
-  , n_q_points(numbers::invalid_unsigned_int)
   , n_q_points_scalar(numbers::invalid_unsigned_int)
   , mapping(&mapping)
   , fe(&fe)
@@ -1469,7 +1464,6 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   const FiniteElement<dim>                        &fe,
   const unsigned int                               first_selected_component)
   : n_q_batches(numbers::invalid_unsigned_int)
-  , n_q_points(numbers::invalid_unsigned_int)
   , n_q_points_scalar(numbers::invalid_unsigned_int)
   , mapping(&mapping_info.get_mapping())
   , fe(&fe)
@@ -1492,7 +1486,6 @@ template <int n_components_, int dim, int spacedim, typename Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   FEPointEvaluation<n_components_, dim, spacedim, Number> &other) noexcept
   : n_q_batches(other.n_q_batches)
-  , n_q_points(other.n_q_points)
   , n_q_points_scalar(other.n_q_points_scalar)
   , mapping(other.mapping)
   , fe(other.fe)
@@ -1534,7 +1527,6 @@ template <int n_components_, int dim, int spacedim, typename Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   FEPointEvaluation<n_components_, dim, spacedim, Number> &&other) noexcept
   : n_q_batches(other.n_q_batches)
-  , n_q_points(other.n_q_points)
   , n_q_points_scalar(other.n_q_points_scalar)
   , mapping(other.mapping)
   , fe(other.fe)
@@ -1769,17 +1761,18 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
 
   cell_type = mapping_info->get_cell_type(geometry_index);
 
+  const unsigned int n_q_points_before =
+    is_fully_vectorized ? n_q_batches : n_q_points_scalar;
+
   const_cast<unsigned int &>(n_q_points_scalar) =
     mapping_info->get_n_q_points_unvectorized(geometry_index);
 
   // round up n_q_points_scalar / n_lanes_internal
-  const_cast<unsigned int &>(n_q_batches) =
+  const_cast<unsigned short int &>(n_q_batches) =
     (n_q_points_scalar + n_lanes_internal - 1) / n_lanes_internal;
 
-  const unsigned int n_q_points_before = n_q_points;
-
-  const_cast<unsigned int &>(n_q_points) =
-    (stride == 1) ? n_q_batches : n_q_points_scalar;
+  const unsigned int n_q_points =
+    is_fully_vectorized ? n_q_batches : n_q_points_scalar;
 
   if (n_q_points != n_q_points_before)
     {
@@ -1797,8 +1790,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
 
   // use face path if mapping_info in face state and number of quadrature points
   // is large enough
-  use_face_path =
-    is_face && (mapping_info->is_face_state() && n_q_points_scalar >= 6);
+  use_face_path = is_face && (n_q_batches > 1);
 
   // set unit point pointer
   const unsigned int unit_point_offset =
@@ -1830,8 +1822,6 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
   if (update_flags_mapping & UpdateFlags::update_JxW_values)
     JxW_ptr = mapping_info->get_JxW(data_offset);
 #else
-  real_point_ptr = mapping_info->get_real_point(data_offset);
-  jacobian_ptr   = mapping_info->get_jacobian(compressed_data_offset);
   inverse_jacobian_ptr =
     mapping_info->get_inverse_jacobian(compressed_data_offset);
   normal_ptr = mapping_info->get_normal_vector(data_offset);
@@ -2117,7 +2107,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
       if (evaluation_flags & EvaluationFlags::values)
         {
           for (unsigned int v = 0, offset = qb * stride;
-               v < stride && (stride == 1 || offset < n_q_points_scalar);
+               v < stride &&
+               (is_fully_vectorized || offset < n_q_points_scalar);
                ++v, ++offset)
             ETT::set_value(value, v, values[offset]);
         }
@@ -2128,7 +2119,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
                  ExcNotInitialized());
 
           for (unsigned int v = 0, offset = qb * stride;
-               v < stride && (stride == 1 || offset < n_q_points_scalar);
+               v < stride &&
+               (is_fully_vectorized || offset < n_q_points_scalar);
                ++v, ++offset)
             {
               gradient_type unit_gradient;
@@ -2169,7 +2161,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
 
   if (evaluation_flags & EvaluationFlags::values)
     {
-      values.resize(n_q_points);
+      values.resize(n_points);
       std::fill(values.begin(), values.end(), value_type());
       for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
         {
@@ -2202,7 +2194,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
 
   if (evaluation_flags & EvaluationFlags::gradients)
     {
-      gradients.resize(n_q_points);
+      gradients.resize(n_points);
       std::fill(gradients.begin(), gradients.end(), gradient_type());
       for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
         {
@@ -2246,7 +2238,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
   if (!is_reinitialized)
     reinit();
 
-  if (n_q_points == 0)
+  if (n_q_batches == 0)
     return;
 
   Assert(!(evaluation_flags & EvaluationFlags::hessians), ExcNotImplemented());
@@ -2506,7 +2498,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
   const bool                                         sum_into_values)
 {
   // zero out lanes of incomplete last quadrature point batch
-  if constexpr (stride == 1)
+  if constexpr (is_fully_vectorized)
     if (const unsigned int n_filled_lanes =
           n_q_points_scalar & (n_lanes_internal - 1);
         n_filled_lanes > 0)
@@ -2539,7 +2531,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
 
       if (integration_flags & EvaluationFlags::values)
         for (unsigned int v = 0, offset = qb * stride;
-             v < stride && (stride == 1 || offset < n_q_points_scalar);
+             v < stride && (is_fully_vectorized || offset < n_q_points_scalar);
              ++v, ++offset)
           ETT::get_value(value,
                          v,
@@ -2548,7 +2540,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
 
       if (integration_flags & EvaluationFlags::gradients)
         for (unsigned int v = 0, offset = qb * stride;
-             v < stride && (stride == 1 || offset < n_q_points_scalar);
+             v < stride && (is_fully_vectorized || offset < n_q_points_scalar);
              ++v, ++offset)
           {
             const auto grad_w =
@@ -2601,7 +2593,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
 
   if (integration_flags & EvaluationFlags::values)
     {
-      AssertIndexRange(n_q_points, values.size() + 1);
+      AssertIndexRange(n_points, values.size() + 1);
       for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
         {
           for (unsigned int d = 0; d < n_components; ++d)
@@ -2630,7 +2622,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
 
   if (integration_flags & EvaluationFlags::gradients)
     {
-      AssertIndexRange(n_q_points, gradients.size() + 1);
+      AssertIndexRange(n_points, gradients.size() + 1);
       for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
         {
           for (unsigned int d = 0; d < n_components; ++d)
@@ -2673,7 +2665,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
 
   Assert(!(integration_flags & EvaluationFlags::hessians), ExcNotImplemented());
 
-  if (n_q_points == 0 || // no evaluation points provided
+  if (n_q_batches == 0 || // no evaluation points provided
       !((integration_flags & EvaluationFlags::values) ||
         (integration_flags &
          EvaluationFlags::gradients))) // no integration flags
@@ -2807,7 +2799,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::submit_value(
   const value_type  &value,
   const unsigned int point_index)
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   values[point_index] = value;
 }
 
@@ -2819,7 +2812,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::submit_gradient(
   const gradient_type &gradient,
   const unsigned int   point_index)
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   gradients[point_index] = gradient;
 }
 
@@ -2830,7 +2824,8 @@ inline DerivativeForm<1, dim, spacedim, Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::jacobian(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   Assert(jacobian_ptr != nullptr,
          internal::FEPointEvaluation::
            ExcFEPointEvaluationAccessToUninitializedMappingField(
@@ -2848,7 +2843,8 @@ inline DerivativeForm<1, spacedim, dim, Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::inverse_jacobian(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   Assert(inverse_jacobian_ptr != nullptr,
          internal::FEPointEvaluation::
            ExcFEPointEvaluationAccessToUninitializedMappingField(
@@ -2867,7 +2863,8 @@ inline Number
 FEPointEvaluation<n_components_, dim, spacedim, Number>::JxW(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   Assert(JxW_ptr != nullptr,
          internal::FEPointEvaluation::
            ExcFEPointEvaluationAccessToUninitializedMappingField(
@@ -2882,7 +2879,8 @@ inline Tensor<1, spacedim, Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::normal_vector(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   Assert(normal_ptr != nullptr,
          internal::FEPointEvaluation::
            ExcFEPointEvaluationAccessToUninitializedMappingField(
@@ -2897,7 +2895,8 @@ inline Point<spacedim, Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::real_point(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   Assert(real_point_ptr != nullptr,
          internal::FEPointEvaluation::
            ExcFEPointEvaluationAccessToUninitializedMappingField(
@@ -2912,7 +2911,8 @@ inline Point<dim, Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::unit_point(
   const unsigned int point_index) const
 {
-  AssertIndexRange(point_index, n_q_points);
+  AssertIndexRange(point_index,
+                   is_fully_vectorized ? n_q_batches : n_q_points_scalar);
   Assert(unit_point_ptr != nullptr, ExcMessage("unit_point_ptr is not set!"));
   Point<dim, Number> unit_point;
   for (unsigned int d = 0; d < dim; ++d)
@@ -2928,7 +2928,7 @@ inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::
   quadrature_point_indices() const
 {
-  return {0U, n_q_points};
+  return {0U, is_fully_vectorized ? n_q_batches : n_q_points_scalar};
 }
 
 DEAL_II_NAMESPACE_CLOSE
