@@ -379,6 +379,18 @@ namespace NonMatching
       const unsigned int n_unfiltered_cells = numbers::invalid_unsigned_int);
 
     /**
+     * Compute the mapping information incoming vector of faces and
+     * corresponding vector of quadratures.
+     */
+    template <typename CellIteratorType>
+    void
+    reinit_faces(const std::vector<std::pair<CellIteratorType, unsigned int>>
+                   &face_iterator_range_interior,
+                 const std::vector<std::pair<CellIteratorType, unsigned int>>
+                   &face_iterator_range_exterior,
+                 const std::vector<Quadrature<dim - 1>> &quadrature_vector);
+
+    /**
      * Return if this MappingInfo object is reinitialized for faces (by
      * reinit_faces()) or not.
      */
@@ -605,7 +617,8 @@ namespace NonMatching
       invalid,
       single_cell,
       cell_vector,
-      faces_on_cells_in_vector
+      faces_on_cells_in_vector,
+      face_vector
     };
 
     /**
@@ -1459,6 +1472,228 @@ namespace NonMatching
       }
 
     state = State::faces_on_cells_in_vector;
+    is_reinitialized();
+  }
+
+
+
+  template <int dim, int spacedim, typename Number>
+  template <typename CellIteratorType>
+  void
+  MappingInfo<dim, spacedim, Number>::reinit_faces(
+    const std::vector<std::pair<CellIteratorType, unsigned int>>
+      &face_iterator_range_interior,
+    const std::vector<std::pair<CellIteratorType, unsigned int>>
+                                           &face_iterator_range_exterior,
+    const std::vector<Quadrature<dim - 1>> &quadrature_vector)
+  {
+    clear();
+
+    Assert(additional_data.store_cells == false, ExcNotImplemented());
+
+
+    const unsigned int n_faces = quadrature_vector.size();
+    AssertDimension(n_faces,
+                    std::distance(face_iterator_range_interior.begin(),
+                                  face_iterator_range_interior.end()));
+    AssertDimension(n_faces,
+                    std::distance(face_iterator_range_exterior.begin(),
+                                  face_iterator_range_exterior.end()));
+
+    n_q_points_unvectorized.reserve(n_faces);
+
+    cell_type.reserve(n_faces);
+
+    // fill unit points index offset vector
+    unit_points_index.reserve(n_faces + 1);
+    unit_points_index.push_back(0);
+    data_index_offsets.reserve(n_faces + 1);
+    data_index_offsets.push_back(0);
+    for (const auto &quadrature : quadrature_vector)
+      {
+        const unsigned int n_points = quadrature.size();
+        n_q_points_unvectorized.push_back(n_points);
+
+        const unsigned int n_q_points =
+          compute_n_q_points<VectorizedArrayType>(n_points);
+        unit_points_index.push_back(unit_points_index.back() + n_q_points);
+
+        const unsigned int n_q_points_data =
+          compute_n_q_points<Number>(n_points);
+        data_index_offsets.push_back(data_index_offsets.back() +
+                                     n_q_points_data);
+      }
+
+    const unsigned int n_unit_points = unit_points_index.back();
+    const unsigned int n_data_points = data_index_offsets.back();
+
+    // resize data vectors
+    resize_unit_points(n_unit_points);
+    resize_unit_points_faces(n_unit_points);
+    resize_data_fields(n_data_points);
+
+    MappingData     mapping_data;
+    MappingData     mapping_data_previous_cell;
+    MappingData     mapping_data_first;
+    bool            first_set            = false;
+    unsigned int    size_compressed_data = 0;
+    unsigned int    face_index           = 0;
+    QProjector<dim> q_projector;
+    for (const auto &cell_and_f : face_iterator_range_interior)
+      {
+        const auto &quadrature_on_face = quadrature_vector[face_index];
+        const bool  empty              = quadrature_on_face.empty();
+
+        const auto &cell_m = cell_and_f.first;
+        const auto  f_m    = cell_and_f.second;
+
+        const auto quadrature_on_cell_m =
+          q_projector.project_to_face(cell_m->reference_cell(),
+                                      quadrature_on_face,
+                                      f_m);
+
+        const unsigned int current_face_index = face_index;
+
+        // store unit points
+        const unsigned int n_q_points = compute_n_q_points<VectorizedArrayType>(
+          n_q_points_unvectorized[current_face_index]);
+        store_unit_points(unit_points_index[current_face_index],
+                          n_q_points,
+                          n_q_points_unvectorized[current_face_index],
+                          quadrature_on_cell_m.get_points());
+
+        store_unit_points_faces(unit_points_index[current_face_index],
+                                n_q_points,
+                                n_q_points_unvectorized[current_face_index],
+                                quadrature_on_face.get_points());
+
+        internal::ComputeMappingDataHelper<dim, spacedim>::
+          compute_mapping_data_for_face_quadrature(mapping,
+                                                   update_flags_mapping,
+                                                   cell_m,
+                                                   f_m,
+                                                   quadrature_on_face,
+                                                   internal_mapping_data,
+                                                   mapping_data);
+
+        // check for cartesian/affine cell
+        if (!empty &&
+            update_flags_mapping & UpdateFlags::update_inverse_jacobians)
+          {
+            cell_type.push_back(
+              internal::compute_geometry_type(cell_m->diameter(),
+                                              mapping_data.inverse_jacobians));
+
+            if (!first_set)
+              {
+                mapping_data_first = mapping_data;
+                first_set          = true;
+              }
+          }
+        else
+          cell_type.push_back(
+            dealii::internal::MatrixFreeFunctions::GeometryType::general);
+
+        if (current_face_index > 0)
+          {
+            // check if current and previous cell are affine
+            const bool affine_cells =
+              cell_type[current_face_index] <=
+                dealii::internal::MatrixFreeFunctions::affine &&
+              cell_type[current_face_index - 1] <=
+                dealii::internal::MatrixFreeFunctions::affine;
+
+            // create a comparator to compare inverse Jacobian of current
+            // and previous cell
+            FloatingPointComparator<double> comparator(
+              1e4 / cell_m->diameter() *
+              std::numeric_limits<double>::epsilon() * 1024.);
+
+            // we can only compare if current and previous cell have at
+            // least one quadrature point and both cells are at least affine
+            const auto comparison_result =
+              (!affine_cells || mapping_data.inverse_jacobians.empty() ||
+               mapping_data_previous_cell.inverse_jacobians.empty()) ?
+                FloatingPointComparator<double>::ComparisonResult::less :
+                comparator.compare(
+                  mapping_data.inverse_jacobians[0],
+                  mapping_data_previous_cell.inverse_jacobians[0]);
+
+            // we can compress the Jacobians and inverse Jacobians if
+            // inverse Jacobians are equal and cells are affine
+            if (affine_cells &&
+                comparison_result ==
+                  FloatingPointComparator<double>::ComparisonResult::equal)
+              {
+                compressed_data_index_offsets.push_back(
+                  compressed_data_index_offsets.back());
+              }
+            else if (first_set &&
+                     (cell_type[current_face_index] <=
+                      dealii::internal::MatrixFreeFunctions::affine) &&
+                     (comparator.compare(
+                        mapping_data.inverse_jacobians[0],
+                        mapping_data_first.inverse_jacobians[0]) ==
+                      FloatingPointComparator<double>::ComparisonResult::equal))
+              {
+                compressed_data_index_offsets.push_back(0);
+              }
+            else
+              {
+                const unsigned int n_compressed_data_last_cell =
+                  cell_type[current_face_index - 1] <=
+                      dealii::internal::MatrixFreeFunctions::affine ?
+                    1 :
+                    compute_n_q_points<Number>(
+                      n_q_points_unvectorized[current_face_index - 1]);
+
+                compressed_data_index_offsets.push_back(
+                  compressed_data_index_offsets.back() +
+                  n_compressed_data_last_cell);
+              }
+          }
+        else
+          compressed_data_index_offsets.push_back(0);
+
+        // cache mapping_data from previous cell
+        mapping_data_previous_cell = mapping_data;
+
+        const unsigned int n_q_points_data = compute_n_q_points<Number>(
+          n_q_points_unvectorized[current_face_index]);
+        store_mapping_data(data_index_offsets[current_face_index],
+                           n_q_points_data,
+                           n_q_points_unvectorized[current_face_index],
+                           mapping_data,
+                           quadrature_on_face.get_weights(),
+                           data_index_offsets[current_face_index],
+                           cell_type[current_face_index] <=
+                             dealii::internal::MatrixFreeFunctions::affine);
+
+        // update size of compressed data depending on cell type and handle
+        // empty quadratures
+        if (cell_type[current_face_index] <=
+            dealii::internal::MatrixFreeFunctions::affine)
+          size_compressed_data = compressed_data_index_offsets.back() + 1;
+        else
+          size_compressed_data =
+            std::max(size_compressed_data,
+                     compressed_data_index_offsets.back() + n_q_points_data);
+
+        ++face_index;
+      }
+
+    if (update_flags_mapping & UpdateFlags::update_jacobians)
+      {
+        jacobians.resize(size_compressed_data);
+        jacobians.shrink_to_fit();
+      }
+    if (update_flags_mapping & UpdateFlags::update_inverse_jacobians)
+      {
+        inverse_jacobians.resize(size_compressed_data);
+        inverse_jacobians.shrink_to_fit();
+      }
+
+    state = State::face_vector;
     is_reinitialized();
   }
 
