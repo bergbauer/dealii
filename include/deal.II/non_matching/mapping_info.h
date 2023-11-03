@@ -1552,19 +1552,17 @@ namespace NonMatching
                                       quadrature_on_face,
                                       f_m);
 
-        const unsigned int current_face_index = face_index;
-
         // store unit points
         const unsigned int n_q_points = compute_n_q_points<VectorizedArrayType>(
-          n_q_points_unvectorized[current_face_index]);
-        store_unit_points(unit_points_index[current_face_index],
+          n_q_points_unvectorized[face_index]);
+        store_unit_points(unit_points_index[face_index],
                           n_q_points,
-                          n_q_points_unvectorized[current_face_index],
+                          n_q_points_unvectorized[face_index],
                           quadrature_on_cell_m.get_points());
 
-        store_unit_points_faces(unit_points_index[current_face_index],
+        store_unit_points_faces(unit_points_index[face_index],
                                 n_q_points,
-                                n_q_points_unvectorized[current_face_index],
+                                n_q_points_unvectorized[face_index],
                                 quadrature_on_face.get_points());
 
         internal::ComputeMappingDataHelper<dim, spacedim>::
@@ -1594,13 +1592,13 @@ namespace NonMatching
           cell_type.push_back(
             dealii::internal::MatrixFreeFunctions::GeometryType::general);
 
-        if (current_face_index > 0)
+        if (face_index > 0)
           {
             // check if current and previous cell are affine
             const bool affine_cells =
-              cell_type[current_face_index] <=
+              cell_type[face_index] <=
                 dealii::internal::MatrixFreeFunctions::affine &&
-              cell_type[current_face_index - 1] <=
+              cell_type[face_index - 1] <=
                 dealii::internal::MatrixFreeFunctions::affine;
 
             // create a comparator to compare inverse Jacobian of current
@@ -1629,7 +1627,7 @@ namespace NonMatching
                   compressed_data_index_offsets.back());
               }
             else if (first_set &&
-                     (cell_type[current_face_index] <=
+                     (cell_type[face_index] <=
                       dealii::internal::MatrixFreeFunctions::affine) &&
                      (comparator.compare(
                         mapping_data.inverse_jacobians[0],
@@ -1641,11 +1639,11 @@ namespace NonMatching
             else
               {
                 const unsigned int n_compressed_data_last_cell =
-                  cell_type[current_face_index - 1] <=
+                  cell_type[face_index - 1] <=
                       dealii::internal::MatrixFreeFunctions::affine ?
                     1 :
                     compute_n_q_points<Number>(
-                      n_q_points_unvectorized[current_face_index - 1]);
+                      n_q_points_unvectorized[face_index - 1]);
 
                 compressed_data_index_offsets.push_back(
                   compressed_data_index_offsets.back() +
@@ -1659,19 +1657,19 @@ namespace NonMatching
         mapping_data_previous_cell = mapping_data;
 
         const unsigned int n_q_points_data = compute_n_q_points<Number>(
-          n_q_points_unvectorized[current_face_index]);
-        store_mapping_data(data_index_offsets[current_face_index],
+          n_q_points_unvectorized[face_index]);
+        store_mapping_data(data_index_offsets[face_index],
                            n_q_points_data,
-                           n_q_points_unvectorized[current_face_index],
+                           n_q_points_unvectorized[face_index],
                            mapping_data,
                            quadrature_on_face.get_weights(),
-                           data_index_offsets[current_face_index],
-                           cell_type[current_face_index] <=
+                           data_index_offsets[face_index],
+                           cell_type[face_index] <=
                              dealii::internal::MatrixFreeFunctions::affine);
 
         // update size of compressed data depending on cell type and handle
         // empty quadratures
-        if (cell_type[current_face_index] <=
+        if (cell_type[face_index] <=
             dealii::internal::MatrixFreeFunctions::affine)
           size_compressed_data = compressed_data_index_offsets.back() + 1;
         else
