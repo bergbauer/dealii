@@ -1489,6 +1489,8 @@ namespace NonMatching
   {
     clear();
 
+    do_cell_index_compression = false;
+
     Assert(additional_data.store_cells == false, ExcNotImplemented());
 
 
@@ -1783,10 +1785,13 @@ namespace NonMatching
         Assert(cell_index != numbers::invalid_unsigned_int,
                ExcMessage(
                  "cell_index has to be set if face_number is specified!"));
-        Assert(state == State::faces_on_cells_in_vector,
+        Assert(state == State::faces_on_cells_in_vector || state == State::face_vector,
                ExcMessage("This mapping info is not reinitialized for faces"
                           " on cells in a vector!"));
-        return cell_index_offset[compressed_cell_index] + face_number;
+        if(state == State::faces_on_cells_in_vector)
+          return cell_index_offset[compressed_cell_index] + face_number;
+        else if(state == State::face_vector)
+          return cell_index;
       }
   }
 

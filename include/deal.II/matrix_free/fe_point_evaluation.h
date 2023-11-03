@@ -832,6 +832,13 @@ public:
   reinit(const unsigned int cell_index, const unsigned int face_number);
 
   /**
+   * Reinitialize the evaluator to point to the correct precomputed mapping of
+   * the face in the MappingInfo object.
+   */
+  void
+  reinit_face(const unsigned int face_index, const unsigned int local_face_number);
+
+  /**
    * This function interpolates the finite element solution, represented by
    * `solution_values`, on the cell and `unit_points` passed to reinit().
    *
@@ -1758,6 +1765,23 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
 
 
 
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit_face(
+  const unsigned int face_index, const unsigned int local_face_number)
+{
+  current_cell_index  = face_index;
+  current_face_number  = local_face_number;
+
+  if (use_linear_path)
+    do_reinit<true, true>();
+  else
+    do_reinit<true, false>();
+}
+
+
+
 template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_face, bool is_linear>
 inline void
@@ -1797,8 +1821,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
 
   // use face path if mapping_info in face state and number of quadrature points
   // is large enough
-  use_face_path =
-    is_face && (mapping_info->is_face_state() && n_q_points_scalar >= 6);
+  use_face_path = is_face;
 
   // set unit point pointer
   const unsigned int unit_point_offset =
