@@ -1864,9 +1864,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
     JxW_ptr = mapping_info->get_JxW(data_offset);
 #else
   real_point_ptr = mapping_info->get_real_point(data_offset);
-  jacobian_ptr   = mapping_info->get_jacobian(compressed_data_offset);
+  jacobian_ptr   = mapping_info->get_jacobian(compressed_data_offset, is_interior);
   inverse_jacobian_ptr =
-    mapping_info->get_inverse_jacobian(compressed_data_offset);
+    mapping_info->get_inverse_jacobian(compressed_data_offset, is_interior);
   normal_ptr = mapping_info->get_normal_vector(data_offset);
   JxW_ptr    = mapping_info->get_JxW(data_offset);
 #endif
