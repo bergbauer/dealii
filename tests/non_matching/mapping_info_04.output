@@ -1,12 +1,24 @@
 
-DEAL::Working with FE_DGQ<2>(1) and 20164 dofs
-DEAL::FEPointEvaluation verification: 4.67542e-15
+DEAL::Working with FE_DGQ<2>(1) and 64 dofs
+DEAL::FEPointEvaluation verification: 0.0
 DEAL::
-DEAL::Working with FE_DGQ<2>(2) and 20736 dofs
-DEAL::FEPointEvaluation verification: 4.29265e-15
+DEAL::Working with FE_DGQ<2>(2) and 144 dofs
+DEAL::FEPointEvaluation verification: 0.0
 DEAL::
-DEAL::Working with FE_DGQ<3>(1) and 21952 dofs
-DEAL::FEPointEvaluation verification: 2.31088e-15
+DEAL::Working with FE_DGQ<3>(1) and 512 dofs
+DEAL::FEPointEvaluation verification: 0.0
 DEAL::
-DEAL::Working with FE_DGQ<3>(2) and 27000 dofs
-DEAL::FEPointEvaluation verification: 8.72807e-16
+DEAL::Working with FE_DGQ<3>(2) and 1728 dofs
+DEAL::FEPointEvaluation verification: 0.0
+DEAL::
+DEAL::Working with FE_DGQ<2>(1) and 96 dofs
+DEAL::FEPointEvaluation verification: 0.0
+DEAL::
+DEAL::Working with FE_DGQ<2>(2) and 216 dofs
+DEAL::FEPointEvaluation verification: 0.0
+DEAL::
+DEAL::Working with FE_DGQ<3>(1) and 384 dofs
+DEAL::FEPointEvaluation verification: 0.0
+DEAL::
+DEAL::Working with FE_DGQ<3>(2) and 1296 dofs
+DEAL::FEPointEvaluation verification: 0.0

@@ -78,41 +78,23 @@ do_flux_term(Integrator        &evaluator_m,
 
 template <int dim>
 void
-test_dg_fcl(const unsigned int degree, const unsigned int n_dofs)
+test_dg_fcl(const unsigned int degree, const bool curved_mesh)
 {
   const unsigned int n_q_points = degree + 1;
 
   parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
 
-  // calculate subdivisions/refinements
-  const unsigned int n_cells = n_dofs / Utilities::fixed_power<dim>(degree + 1);
-
-  const unsigned int child_cells_per_cell =
-    ReferenceCells::get_hypercube<dim>().n_isotropic_children();
-
-  unsigned int n_global_refinements = 0;
-  unsigned int n_subdivisions       = 0;
-  double       cells_on_coarse_grid = n_cells;
-  while (cells_on_coarse_grid > 8000)
-    {
-      cells_on_coarse_grid /= child_cells_per_cell;
-      n_global_refinements++;
-    }
-
-  if (dim == 2)
-    n_subdivisions = std::ceil(std::sqrt(cells_on_coarse_grid));
-  else if (dim == 3)
-    n_subdivisions = std::ceil(std::cbrt(cells_on_coarse_grid));
+  if (curved_mesh && dim > 1)
+    GridGenerator::hyper_shell(tria, Point<dim>(), 0.5, 1, 6);
   else
-    AssertThrow(false, ExcNotImplemented());
+    GridGenerator::subdivided_hyper_cube(tria, 2, 0, 1);
 
-  GridGenerator::subdivided_hyper_cube(tria, n_subdivisions);
-  tria.refine_global(n_global_refinements);
+  tria.refine_global(1);
 
   FE_DGQ<dim>     fe(degree);
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe);
-  MappingQGeneric<dim> mapping(1);
+  MappingQGeneric<dim> mapping(degree);
 
   AffineConstraints<double> constraints;
   VectorTools::interpolate_boundary_values(
@@ -133,15 +115,13 @@ test_dg_fcl(const unsigned int degree, const unsigned int n_dofs)
     deallog << "Working with " << fe.get_name() << " and "
             << dof_handler.n_dofs() << " dofs" << std::endl;
 
-  LinearAlgebra::distributed::Vector<double> src, dst, dst2, dst3;
+  LinearAlgebra::distributed::Vector<double> src, dst, dst2;
   matrix_free.initialize_dof_vector(src);
   for (auto &v : src)
     v = static_cast<double>(rand()) / RAND_MAX;
 
   matrix_free.initialize_dof_vector(dst);
   matrix_free.initialize_dof_vector(dst2);
-  matrix_free.initialize_dof_vector(dst3);
-
 
   matrix_free.template loop<LinearAlgebra::distributed::Vector<double>,
                             LinearAlgebra::distributed::Vector<double>>(
@@ -448,13 +428,19 @@ main(int argc, char **argv)
 
   initlog();
 
-  const unsigned int n_dofs = 20000;
-
-  test_dg_fcl<2>(1, n_dofs);
+  test_dg_fcl<2>(1, false);
   deallog << std::endl;
-  test_dg_fcl<2>(2, n_dofs);
+  test_dg_fcl<2>(2, false);
   deallog << std::endl;
-  test_dg_fcl<3>(1, n_dofs);
+  test_dg_fcl<3>(1, false);
   deallog << std::endl;
-  test_dg_fcl<3>(2, n_dofs);
+  test_dg_fcl<3>(2, false);
+  deallog << std::endl;
+  test_dg_fcl<2>(1, true);
+  deallog << std::endl;
+  test_dg_fcl<2>(2, true);
+  deallog << std::endl;
+  test_dg_fcl<3>(1, true);
+  deallog << std::endl;
+  test_dg_fcl<3>(2, true);
 }
