@@ -778,7 +778,8 @@ public:
   FEPointEvaluation(
     NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
     const FiniteElement<dim>                        &fe,
-    const unsigned int first_selected_component = 0);
+    const unsigned int first_selected_component = 0,
+    const bool         is_interior              = true);
 
   /**
    * Copy constructor.
@@ -836,7 +837,8 @@ public:
    * the face in the MappingInfo object.
    */
   void
-  reinit_face(const unsigned int face_index, const unsigned int local_face_number);
+  reinit_face(const unsigned int face_index,
+              const unsigned int local_face_number);
 
   /**
    * This function interpolates the finite element solution, represented by
@@ -1437,6 +1439,8 @@ private:
    * reinit()) at the vectorized unit points on faces.
    */
   AlignedVector<dealii::ndarray<VectorizedArrayType, 2, dim - 1>> shapes_faces;
+
+  const bool is_interior;
 };
 
 // ----------------------- template and inline function ----------------------
@@ -1464,6 +1468,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   , current_cell_index(numbers::invalid_unsigned_int)
   , current_face_number(numbers::invalid_unsigned_int)
   , is_reinitialized(false)
+  , is_interior(true)
 {
   setup(first_selected_component);
 }
@@ -1474,7 +1479,8 @@ template <int n_components_, int dim, int spacedim, typename Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
   const FiniteElement<dim>                        &fe,
-  const unsigned int                               first_selected_component)
+  const unsigned int                               first_selected_component,
+  const bool                                       is_interior)
   : n_q_batches(numbers::invalid_unsigned_int)
   , n_q_points(numbers::invalid_unsigned_int)
   , n_q_points_scalar(numbers::invalid_unsigned_int)
@@ -1487,6 +1493,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   , current_cell_index(numbers::invalid_unsigned_int)
   , current_face_number(numbers::invalid_unsigned_int)
   , is_reinitialized(false)
+  , is_interior(is_interior)
 {
   setup(first_selected_component);
   connection_is_reinitialized = mapping_info.connect_is_reinitialized(
@@ -1530,6 +1537,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   , is_reinitialized(false)
   , shapes(other.shapes)
   , shapes_faces(other.shapes_faces)
+  , is_interior(other.is_interior)
 {
   connection_is_reinitialized = mapping_info->connect_is_reinitialized(
     [this]() { this->is_reinitialized = false; });
@@ -1567,6 +1575,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   , is_reinitialized(false)
   , shapes(other.shapes)
   , shapes_faces(other.shapes_faces)
+  , is_interior(other.is_interior)
 {
   connection_is_reinitialized = mapping_info->connect_is_reinitialized(
     [this]() { this->is_reinitialized = false; });
@@ -1765,14 +1774,14 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
 
 
 
-
 template <int n_components_, int dim, int spacedim, typename Number>
 inline void
 FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit_face(
-  const unsigned int face_index, const unsigned int local_face_number)
+  const unsigned int face_index,
+  const unsigned int local_face_number)
 {
   current_cell_index  = face_index;
-  current_face_number  = local_face_number;
+  current_face_number = local_face_number;
 
   if (use_linear_path)
     do_reinit<true, true>();
@@ -1844,10 +1853,11 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
   if (update_flags_mapping & UpdateFlags::update_quadrature_points)
     real_point_ptr = mapping_info->get_real_point(data_offset);
   if (update_flags_mapping & UpdateFlags::update_jacobians)
-    jacobian_ptr = mapping_info->get_jacobian(compressed_data_offset);
+    jacobian_ptr =
+      mapping_info->get_jacobian(compressed_data_offset, is_interior);
   if (update_flags_mapping & UpdateFlags::update_inverse_jacobians)
     inverse_jacobian_ptr =
-      mapping_info->get_inverse_jacobian(compressed_data_offset);
+      mapping_info->get_inverse_jacobian(compressed_data_offset, is_interior);
   if (update_flags_mapping & UpdateFlags::update_normal_vectors)
     normal_ptr = mapping_info->get_normal_vector(data_offset);
   if (update_flags_mapping & UpdateFlags::update_JxW_values)
