@@ -2980,15 +2980,25 @@ public:
                   const EvaluationFlags::EvaluationFlags &evaluation_flags,
                   const unsigned int                      face_number);
 
-  template <bool is_linear>
   void
   evaluate_in_face(const unsigned int                      lane,
-                   const EvaluationFlags::EvaluationFlags &evaluation_flags);
+                   const EvaluationFlags::EvaluationFlags &evaluation_flags)
+  {
+    if (this->use_linear_path)
+      do_evaluate_in_face<true>(lane, evaluation_flags);
+    else
+      do_evaluate_in_face<false>(lane, evaluation_flags);
+  }
 
-  template <bool is_linear>
   void
   integrate_in_face(const unsigned int                      lane,
-                    const EvaluationFlags::EvaluationFlags &integration_flags);
+                    const EvaluationFlags::EvaluationFlags &integration_flags)
+  {
+    if (this->use_linear_path)
+      do_integrate_in_face<true>(lane, integration_flags);
+    else
+      do_integrate_in_face<false>(lane, integration_flags);
+  }
 
   void
   collect_from_face(VectorizedArrayType                    *solution_values,
@@ -3010,6 +3020,17 @@ private:
     internal::VectorizedArrayTrait<VectorizedArrayType>::width();
   static constexpr std::size_t stride =
     internal::VectorizedArrayTrait<Number>::stride();
+
+  template <bool is_linear>
+  void
+  do_evaluate_in_face(const unsigned int                      lane,
+                      const EvaluationFlags::EvaluationFlags &evaluation_flags);
+
+  template <bool is_linear>
+  void
+  do_integrate_in_face(
+    const unsigned int                      lane,
+    const EvaluationFlags::EvaluationFlags &integration_flags);
 
   AlignedVector<VectorizedArrayType> scratch_data_vectorized;
 
@@ -3057,9 +3078,9 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::collect_from_face(
 template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear>
 void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(
-  const unsigned int                      lane,
-  const EvaluationFlags::EvaluationFlags &evaluation_flags)
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  do_evaluate_in_face(const unsigned int                      lane,
+                      const EvaluationFlags::EvaluationFlags &evaluation_flags)
 {
   // loop over quadrature batches qb
   const unsigned int n_shapes = is_linear ? 2 : this->poly.size();
@@ -3192,9 +3213,10 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(
 template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear>
 void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::integrate_in_face(
-  const unsigned int                      lane,
-  const EvaluationFlags::EvaluationFlags &integration_flags)
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  do_integrate_in_face(
+    const unsigned int                      lane,
+    const EvaluationFlags::EvaluationFlags &integration_flags)
 {
   // zero out lanes of incomplete last quadrature point batch
   if constexpr (stride == 1)

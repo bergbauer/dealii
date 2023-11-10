@@ -335,16 +335,20 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
             {
               fe_peval_m.reinit(face * n_lanes + v);
               fe_peval_p.reinit(face * n_lanes + v);
-              fe_peval_m.template evaluate_in_face<true>(
-                v, EvaluationFlags::values | EvaluationFlags::gradients);
-              fe_peval_p.template evaluate_in_face<true>(
-                v, EvaluationFlags::values | EvaluationFlags::gradients);
+              fe_peval_m.evaluate_in_face(v,
+                                          EvaluationFlags::values |
+                                            EvaluationFlags::gradients);
+              fe_peval_p.evaluate_in_face(v,
+                                          EvaluationFlags::values |
+                                            EvaluationFlags::gradients);
               for (const unsigned int q : fe_peval_m.quadrature_point_indices())
                 do_flux_term(fe_peval_m, fe_peval_p, 1.0, q);
-              fe_peval_m.template integrate_in_face<true>(
-                v, EvaluationFlags::values | EvaluationFlags::gradients);
-              fe_peval_p.template integrate_in_face<true>(
-                v, EvaluationFlags::values | EvaluationFlags::gradients);
+              fe_peval_m.integrate_in_face(v,
+                                           EvaluationFlags::values |
+                                             EvaluationFlags::gradients);
+              fe_peval_p.integrate_in_face(v,
+                                           EvaluationFlags::values |
+                                             EvaluationFlags::gradients);
             }
 
           fe_peval_m.collect_from_face(fe_eval_m.begin_dof_values(),
@@ -417,17 +421,17 @@ main(int argc, char **argv)
 
   test_dg_fcl<2>(1, false);
   deallog << std::endl;
-  //test_dg_fcl<2>(2, false);
-  //deallog << std::endl;
-  test_dg_fcl<3>(1, false);
-  //deallog << std::endl;
-  //test_dg_fcl<3>(2, false);
+  test_dg_fcl<2>(2, false);
   deallog << std::endl;
-//  test_dg_fcl<2>(1, true);
-//  deallog << std::endl;
-//  test_dg_fcl<2>(2, true);
-//  deallog << std::endl;
-//  test_dg_fcl<3>(1, true);
-//  deallog << std::endl;
-//  test_dg_fcl<3>(2, true);
+  test_dg_fcl<3>(1, false);
+  deallog << std::endl;
+  test_dg_fcl<3>(2, false);
+  deallog << std::endl;
+  test_dg_fcl<2>(1, true);
+  deallog << std::endl;
+  test_dg_fcl<2>(2, true);
+  //  deallog << std::endl;
+  //  test_dg_fcl<3>(1, true);
+  //  deallog << std::endl;
+  //  test_dg_fcl<3>(2, true);
 }
