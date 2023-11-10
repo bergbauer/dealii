@@ -862,6 +862,7 @@ MatrixFree<dim, Number, VectorizedArrayType>::internal_reinit(
 
     for (unsigned int cell = 0;
          cell < n_cell_batches() + n_ghost_cell_batches();
+         cell < n_cell_batches() + n_ghost_cell_batches();
          ++cell)
       for (unsigned int v = 0; v < n_active_entries_per_cell_batch(cell); ++v)
         {

@@ -2293,9 +2293,6 @@ namespace internal
 
     using Number3 = typename ProductTypeNoPoint<Number, Number2>::type;
 
-    static_assert(
-      n_values == 1 || stride == 1,
-      "Either n_values or stride has to be one for correct data access!");
     // If n_values > 1, we want to interpolate from a second array,
     // placed in the same array immediately after the main data. This
     // is used to interpolate normal derivatives onto faces.
@@ -2306,7 +2303,7 @@ namespace internal
         // we only need the value on faces of a 1d element
         result[0] = values[0];
         if (n_values > 1)
-          result[1] = values[1];
+          result[1] = values[1 * stride];
       }
     else if (dim == 1)
       {
@@ -2315,7 +2312,8 @@ namespace internal
         // values
         result[1] = Number3(values[0]) + p[0] * result[0];
         if (n_values > 1)
-          result[2] = Number3(values[2]) + p[0] * (values[3] - values[2]);
+          result[2] = Number3(values[2 * stride]) +
+                      p[0] * (values[3 * stride] - values[2 * stride]);
       }
     else if (dim == 2)
       {
@@ -2334,9 +2332,11 @@ namespace internal
         if (n_values > 1)
           {
             const Number3 tmp0_2 =
-              Number3(values[4]) + p[0] * (values[5] - values[4]);
+              Number3(values[4 * stride]) +
+              p[0] * (values[5 * stride] - values[4 * stride]);
             const Number3 tmp1_2 =
-              Number3(values[6]) + p[0] * (values[7] - values[6]);
+              Number3(values[6 * stride]) +
+              p[0] * (values[7 * stride] - values[6 * stride]);
             result[3] = tmp0_2 + p[1] * (tmp1_2 - tmp0_2);
           }
       }

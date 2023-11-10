@@ -2957,6 +2957,11 @@ public:
     const unsigned int first_selected_component                  = 0);
 
   /**
+   * Destructor.
+   */
+  ~FEFacePointEvaluation();
+
+  /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
    * the face in the MappingInfo object.
    */
@@ -2970,23 +2975,25 @@ public:
   void
   reinit(const unsigned int face_index);
 
-  template <bool is_linear>
   void
-  project_to_face(const ArrayView<const VectorizedArrayType> &solution_values,
-                  const EvaluationFlags::EvaluationFlags     &evaluation_flags);
+  project_to_face(const VectorizedArrayType              *solution_values,
+                  const EvaluationFlags::EvaluationFlags &evaluation_flags,
+                  const unsigned int                      face_number);
 
   template <bool is_linear>
   void
-  evaluate_in_face(const unsigned int lane, const EvaluationFlags::EvaluationFlags &evaluation_flags);
+  evaluate_in_face(const unsigned int                      lane,
+                   const EvaluationFlags::EvaluationFlags &evaluation_flags);
 
   template <bool is_linear>
   void
-  integrate_in_face(const unsigned int lane, const EvaluationFlags::EvaluationFlags &evaluation_flags);
+  integrate_in_face(const unsigned int                      lane,
+                    const EvaluationFlags::EvaluationFlags &integration_flags);
 
-  template <bool is_linear>
   void
-  collect_from_face(const ArrayView<VectorizedArrayType>   &solution_values,
-                    const EvaluationFlags::EvaluationFlags &evaluation_flags);
+  collect_from_face(VectorizedArrayType                    *solution_values,
+                    const EvaluationFlags::EvaluationFlags &integration_flags,
+                    const unsigned int                      face_number);
 
   /**
    * Return the normal vector. This class or the MappingInfo object passed to
@@ -3015,42 +3022,34 @@ private:
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_linear>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::project_to_face(
-  const ArrayView<const VectorizedArrayType> &solution_values,
-  const EvaluationFlags::EvaluationFlags     &evaluation_flags)
+  const VectorizedArrayType              *solution_values,
+  const EvaluationFlags::EvaluationFlags &evaluation_flags,
+  const unsigned int                      face_number)
 {
-  const VectorizedArrayType *input  = solution_values.data();
+  const VectorizedArrayType *input  = solution_values;
   VectorizedArrayType       *output = scratch_data_vectorized.begin();
 
   internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
-    template interpolate<true, false>(n_components,
-                                      evaluation_flags,
-                                      shape_info,
-                                      input,
-                                      output,
-                                      this->current_face_number);
+    template interpolate<true, false>(
+      n_components, evaluation_flags, shape_info, input, output, face_number);
 }
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_linear>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::collect_from_face(
-  const ArrayView<VectorizedArrayType>   &solution_values,
-  const EvaluationFlags::EvaluationFlags &evaluation_flags)
+  VectorizedArrayType                    *solution_values,
+  const EvaluationFlags::EvaluationFlags &integration_flags,
+  const unsigned int                      face_number)
 {
   const VectorizedArrayType *input  = scratch_data_vectorized.begin();
-  VectorizedArrayType       *output = solution_values.data();
+  VectorizedArrayType       *output = solution_values;
 
   internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
-    template interpolate<false, false>(n_components,
-                                       evaluation_flags,
-                                       shape_info,
-                                       input,
-                                       output,
-                                       this->current_face_number);
+    template interpolate<false, false>(
+      n_components, integration_flags, shape_info, input, output, face_number);
 }
 
 
@@ -3058,7 +3057,8 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::collect_from_face(
 template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear>
 void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(const unsigned int lane,
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(
+  const unsigned int                      lane,
   const EvaluationFlags::EvaluationFlags &evaluation_flags)
 {
   // loop over quadrature batches qb
@@ -3078,7 +3078,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(co
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
-                n_lanes_internal>(&scratch_data_vectorized.data()[lane],
+                n_lanes_internal>(&scratch_data_vectorized[0][lane],
                                   this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim - 1,
@@ -3087,7 +3087,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(co
                 2,
                 false>(this->shapes_faces.data() + qb * n_shapes,
                        n_shapes,
-                       &scratch_data_vectorized.data()[lane]);
+                       &scratch_data_vectorized[0][lane]);
 
           value = interpolated_value[dim - 1];
           // reorder derivative from tangential/normal derivatives into tensor
@@ -3130,21 +3130,20 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(co
         }
       else
         {
-          value =
-            is_linear ?
-              internal::evaluate_tensor_product_value_linear<
-                dim - 1,
-                scalar_value_type,
-                VectorizedArrayType>(&scratch_data_vectorized.data()[lane],
-                                     this->unit_point_faces_ptr[qb]) :
-              internal::evaluate_tensor_product_value_shapes<
-                dim - 1,
-                scalar_value_type,
-                VectorizedArrayType,
-                false,
-                n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
-                                  n_shapes,
-                                  &scratch_data_vectorized.data()[lane]);
+          value = is_linear ?
+                    internal::evaluate_tensor_product_value_linear<
+                      dim - 1,
+                      scalar_value_type,
+                      VectorizedArrayType,
+                      n_lanes_internal>(&scratch_data_vectorized[0][lane],
+                                        this->unit_point_faces_ptr[qb]) :
+                    internal::evaluate_tensor_product_value_shapes<
+                      dim - 1,
+                      scalar_value_type,
+                      VectorizedArrayType,
+                      false>(this->shapes_faces.data() + qb * n_shapes,
+                             n_shapes,
+                             &scratch_data_vectorized[0][lane]);
         }
 
       if (evaluation_flags & EvaluationFlags::values)
@@ -3192,9 +3191,148 @@ template <bool is_linear>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::integrate_in_face(
   const unsigned int                      lane,
-  const EvaluationFlags::EvaluationFlags &evaluation_flags)
+  const EvaluationFlags::EvaluationFlags &integration_flags)
 {
+  // zero out lanes of incomplete last quadrature point batch
+  if constexpr (stride == 1)
+    if (const unsigned int n_filled_lanes =
+          this->n_q_points_scalar & (n_lanes_internal - 1);
+        n_filled_lanes > 0)
+      {
+        if (integration_flags & EvaluationFlags::values)
+          for (unsigned int v = n_filled_lanes; v < n_lanes_internal; ++v)
+            ETT::set_zero_value(this->values.back(), v);
+        if (integration_flags & EvaluationFlags::gradients)
+          for (unsigned int v = n_filled_lanes; v < n_lanes_internal; ++v)
+            ETT::set_zero_gradient(this->gradients.back(), v);
+      }
 
+  std::array<vectorized_value_type,
+             is_linear ? 2 * Utilities::pow(2, dim - 1) : 0>
+    solution_values_vectorized_linear = {};
+
+  // loop over quadrature batches qb
+  const unsigned int n_shapes = is_linear ? 2 : this->poly.size();
+
+  const bool cartesian_cell =
+    this->cell_type <= internal::MatrixFreeFunctions::GeometryType::cartesian;
+  const bool affine_cell =
+    this->cell_type <= internal::MatrixFreeFunctions::GeometryType::affine;
+  for (unsigned int qb = 0; qb < this->n_q_batches; ++qb)
+    {
+      vectorized_value_type                 value = {};
+      Tensor<1, dim, vectorized_value_type> gradient;
+
+      if (integration_flags & EvaluationFlags::values)
+        for (unsigned int v = 0, offset = qb * stride;
+             v < stride && (stride == 1 || offset < this->n_q_points_scalar);
+             ++v, ++offset)
+          ETT::get_value(value,
+                         v,
+                         this->values[offset] * this->JxW_ptr[offset]);
+
+      if (integration_flags & EvaluationFlags::gradients)
+        for (unsigned int v = 0, offset = qb * stride;
+             v < stride && (stride == 1 || offset < this->n_q_points_scalar);
+             ++v, ++offset)
+          {
+            const auto grad_w = this->gradients[offset] * this->JxW_ptr[offset];
+            ETT::get_gradient(
+              gradient,
+              v,
+              cartesian_cell ?
+                apply_diagonal_transformation(this->inverse_jacobian_ptr[0],
+                                              grad_w) :
+                apply_transformation(
+                  this->inverse_jacobian_ptr[affine_cell ? 0 : offset],
+                  grad_w));
+          }
+
+      if (integration_flags & EvaluationFlags::gradients)
+        {
+          std::array<vectorized_value_type, 2>      value_face = {};
+          Tensor<1, dim - 1, vectorized_value_type> gradient_in_face;
+
+          value_face[0] = value;
+          // fill derivative in physical coordinates into tangential/normal
+          // derivatives
+          if (this->current_face_number / 2 == 0)
+            {
+              value_face[1] = gradient[0];
+              if (dim > 1)
+                gradient_in_face[0] = gradient[1];
+              if (dim > 2)
+                gradient_in_face[1] = gradient[2];
+            }
+          else if (this->current_face_number / 2 == 1)
+            {
+              if (dim > 1)
+                value_face[1] = gradient[1];
+              if (dim == 3)
+                {
+                  gradient_in_face[0] = gradient[2];
+                  gradient_in_face[1] = gradient[0];
+                }
+              else if (dim == 2)
+                gradient_in_face[0] = gradient[0];
+              else
+                Assert(false, ExcInternalError());
+            }
+          else if (this->current_face_number / 2 == 2)
+            {
+              if (dim > 2)
+                {
+                  value_face[1]       = gradient[2];
+                  gradient_in_face[0] = gradient[0];
+                  gradient_in_face[1] = gradient[1];
+                }
+              else
+                Assert(false, ExcInternalError());
+            }
+          else
+            Assert(false, ExcInternalError());
+
+          internal::integrate_tensor_product_value_and_gradient<
+            is_linear,
+            dim - 1,
+            VectorizedArrayType,
+            vectorized_value_type,
+            2>(this->shapes_faces.data() + qb * n_shapes,
+               n_shapes,
+               value_face.data(),
+               gradient_in_face,
+               is_linear ? solution_values_vectorized_linear.data() :
+                           this->solution_renumbered_vectorized.data(),
+               this->unit_point_faces_ptr[qb],
+               qb != 0);
+        }
+      else
+        internal::integrate_tensor_product_value<is_linear,
+                                                 dim - 1,
+                                                 VectorizedArrayType,
+                                                 vectorized_value_type>(
+          this->shapes_faces.data() + qb * n_shapes,
+          n_shapes,
+          value,
+          is_linear ? solution_values_vectorized_linear.data() :
+                      this->solution_renumbered_vectorized.data(),
+          this->unit_point_faces_ptr[qb],
+          qb != 0);
+    }
+
+  const unsigned int dofs_per_comp_face =
+    is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
+
+  const unsigned int   size_input = 2 * dofs_per_comp_face;
+  VectorizedArrayType *input      = scratch_data_vectorized.data();
+
+  for (unsigned int comp = 0; comp < n_components; ++comp)
+    for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
+      input[i][lane] =
+        ETT::sum_value(comp,
+                       is_linear ?
+                         *(solution_values_vectorized_linear.data() + i) :
+                         this->solution_renumbered_vectorized[i]);
 }
 
 
@@ -3214,6 +3352,12 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
 {
   shape_info.reinit(QMidpoint<1>(), *this->fe);
   scratch_data_vectorized.resize(this->dofs_per_component_face * n_components);
+}
+
+template <int n_components_, int dim, int spacedim, typename Number>
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::~FEFacePointEvaluation()
+{
+  scratch_data_vectorized.clear();
 }
 
 
