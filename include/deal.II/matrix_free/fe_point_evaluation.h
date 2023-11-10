@@ -3085,9 +3085,10 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
-                false>(this->shapes_faces.data() + qb * n_shapes,
-                       n_shapes,
-                       &scratch_data_vectorized[0][lane]);
+                false,
+                n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
+                                  n_shapes,
+                                  &scratch_data_vectorized[0][lane]);
 
           value = interpolated_value[dim - 1];
           // reorder derivative from tangential/normal derivatives into tensor
@@ -3130,20 +3131,22 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(
         }
       else
         {
-          value = is_linear ?
-                    internal::evaluate_tensor_product_value_linear<
-                      dim - 1,
-                      scalar_value_type,
-                      VectorizedArrayType,
-                      n_lanes_internal>(&scratch_data_vectorized[0][lane],
-                                        this->unit_point_faces_ptr[qb]) :
-                    internal::evaluate_tensor_product_value_shapes<
-                      dim - 1,
-                      scalar_value_type,
-                      VectorizedArrayType,
-                      false>(this->shapes_faces.data() + qb * n_shapes,
-                             n_shapes,
-                             &scratch_data_vectorized[0][lane]);
+          value =
+            is_linear ?
+              internal::evaluate_tensor_product_value_linear<
+                dim - 1,
+                scalar_value_type,
+                VectorizedArrayType,
+                n_lanes_internal>(&scratch_data_vectorized[0][lane],
+                                  this->unit_point_faces_ptr[qb]) :
+              internal::evaluate_tensor_product_value_shapes<
+                dim - 1,
+                scalar_value_type,
+                VectorizedArrayType,
+                false,
+                n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
+                                  n_shapes,
+                                  &scratch_data_vectorized[0][lane]);
         }
 
       if (evaluation_flags & EvaluationFlags::values)
@@ -3323,8 +3326,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::integrate_in_face(
   const unsigned int dofs_per_comp_face =
     is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
 
-  const unsigned int   size_input = 2 * dofs_per_comp_face;
-  VectorizedArrayType *input      = scratch_data_vectorized.data();
+  VectorizedArrayType *input = scratch_data_vectorized.data();
 
   for (unsigned int comp = 0; comp < n_components; ++comp)
     for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
@@ -3351,11 +3353,13 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
       is_interior)
 {
   shape_info.reinit(QMidpoint<1>(), *this->fe);
-  scratch_data_vectorized.resize(this->dofs_per_component_face * n_components);
+  scratch_data_vectorized.resize(2 * this->dofs_per_component_face *
+                                 n_components);
 }
 
 template <int n_components_, int dim, int spacedim, typename Number>
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::~FEFacePointEvaluation()
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  ~FEFacePointEvaluation()
 {
   scratch_data_vectorized.clear();
 }
