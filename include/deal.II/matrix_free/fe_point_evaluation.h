@@ -2957,11 +2957,6 @@ public:
     const unsigned int first_selected_component                  = 0);
 
   /**
-   * Destructor.
-   */
-  ~FEFacePointEvaluation();
-
-  /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
    * the face in the MappingInfo object.
    */
@@ -3377,13 +3372,6 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   shape_info.reinit(QMidpoint<1>(), *this->fe);
   scratch_data_vectorized.resize(2 * this->dofs_per_component_face *
                                  n_components);
-}
-
-template <int n_components_, int dim, int spacedim, typename Number>
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
-  ~FEFacePointEvaluation()
-{
-  scratch_data_vectorized.clear();
 }
 
 
