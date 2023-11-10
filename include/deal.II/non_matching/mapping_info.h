@@ -386,8 +386,6 @@ namespace NonMatching
     void
     reinit_faces(const std::vector<std::pair<CellIteratorType, unsigned int>>
                    &face_iterator_range_interior,
-                 const std::vector<std::pair<CellIteratorType, unsigned int>>
-                   &face_iterator_range_exterior,
                  const std::vector<Quadrature<dim - 1>> &quadrature_vector);
 
     /**
@@ -396,6 +394,9 @@ namespace NonMatching
      */
     bool
     is_face_state() const;
+
+    unsigned int
+    get_face_number(const unsigned int offset, const bool is_interior) const;
 
     /**
      * Getter function for unit points. The offset can be obtained with
@@ -775,7 +776,19 @@ namespace NonMatching
      * vector is only filled if AdditionalData::store_cells is enabled.
      */
     std::vector<std::pair<int, int>> cell_level_and_indices;
+
+    std::vector<std::pair<unsigned char, unsigned char>> face_number;
   };
+
+  template <int dim, int spacedim, typename Number>
+  inline unsigned int
+  MappingInfo<dim, spacedim, Number>::get_face_number(
+    const unsigned int offset,
+    const bool         is_interior) const
+  {
+    const auto &face_pair = face_number[offset];
+    return is_interior ? face_pair.first : face_pair.second;
+  }
 
   // ----------------------- template functions ----------------------
 
@@ -1488,9 +1501,7 @@ namespace NonMatching
   void
   MappingInfo<dim, spacedim, Number>::reinit_faces(
     const std::vector<std::pair<CellIteratorType, unsigned int>>
-      &face_iterator_range_interior,
-    const std::vector<std::pair<CellIteratorType, unsigned int>>
-                                           &face_iterator_range_exterior,
+                                           &face_iterator_range_interior,
     const std::vector<Quadrature<dim - 1>> &quadrature_vector)
   {
     clear();
@@ -1504,13 +1515,11 @@ namespace NonMatching
     AssertDimension(n_faces,
                     std::distance(face_iterator_range_interior.begin(),
                                   face_iterator_range_interior.end()));
-    AssertDimension(n_faces,
-                    std::distance(face_iterator_range_exterior.begin(),
-                                  face_iterator_range_exterior.end()));
 
     n_q_points_unvectorized.reserve(n_faces);
 
     cell_type.reserve(n_faces);
+    face_number.reserve(n_faces);
 
     // fill unit points index offset vector
     unit_points_index.reserve(n_faces + 1);
@@ -1557,8 +1566,12 @@ namespace NonMatching
         const auto  f_m    = cell_and_f.second;
 
         // get exterior cell and face number
-        const auto &cell_p = face_iterator_range_exterior[face_index].first;
-        const auto  f_p    = face_iterator_range_exterior[face_index].second;
+        const auto &cell_p =
+          cell_m->at_boundary(f_m) ? cell_m : cell_m->neighbor(f_m);
+        const auto f_p =
+          cell_m->at_boundary(f_m) ? f_m : cell_m->neighbor_of_neighbor(f_m);
+
+        face_number.emplace_back(f_m, f_p);
 
         const auto quadrature_on_cell_m =
           q_projector.project_to_face(cell_m->reference_cell(),

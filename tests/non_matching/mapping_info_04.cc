@@ -80,6 +80,8 @@ template <int dim>
 void
 test_dg_fcl(const unsigned int degree, const bool curved_mesh)
 {
+  constexpr unsigned int n_lanes = VectorizedArray<double>::size();
+
   const unsigned int n_q_points = degree + 1;
 
   parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
@@ -193,18 +195,18 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
   std::vector<Quadrature<dim>> quad_vec_cells;
   quad_vec_cells.reserve(
     (matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches()) *
-    VectorizedArray<double>::size());
+    n_lanes);
 
 
   std::vector<typename DoFHandler<dim>::cell_iterator> vector_accessors;
   vector_accessors.reserve(
     (matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches()) *
-    VectorizedArray<double>::size());
+    n_lanes);
   for (unsigned int cell_batch = 0;
        cell_batch <
        matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches();
        ++cell_batch)
-    for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+    for (unsigned int v = 0; v < n_lanes; ++v)
       {
         if (v < matrix_free.n_active_entries_per_cell_batch(cell_batch))
           vector_accessors.push_back(
@@ -220,37 +222,24 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
   std::vector<Quadrature<dim - 1>> quad_vec_faces;
   quad_vec_faces.reserve((matrix_free.n_inner_face_batches() +
                           matrix_free.n_boundary_face_batches()) *
-                         VectorizedArray<double>::size());
+                         n_lanes);
   std::vector<std::pair<typename DoFHandler<dim>::cell_iterator, unsigned int>>
     vector_face_accessors_m;
   vector_face_accessors_m.reserve((matrix_free.n_inner_face_batches() +
                                    matrix_free.n_boundary_face_batches()) *
-                                  VectorizedArray<double>::size());
-  std::vector<std::pair<typename DoFHandler<dim>::cell_iterator, unsigned int>>
-    vector_face_accessors_p;
-  vector_face_accessors_p.reserve((matrix_free.n_inner_face_batches() +
-                                   matrix_free.n_boundary_face_batches()) *
-                                  VectorizedArray<double>::size());
+                                  n_lanes);
   // fill container for inner face batches
   unsigned int face_batch = 0;
   for (; face_batch < matrix_free.n_inner_face_batches(); ++face_batch)
     {
-      for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+      for (unsigned int v = 0; v < n_lanes; ++v)
         {
           if (v < matrix_free.n_active_entries_per_face_batch(face_batch))
-            {
-              vector_face_accessors_m.push_back(
-                matrix_free.get_face_iterator(face_batch, v, true));
-              vector_face_accessors_p.push_back(
-                matrix_free.get_face_iterator(face_batch, v, false));
-            }
+            vector_face_accessors_m.push_back(
+              matrix_free.get_face_iterator(face_batch, v));
           else
-            {
-              vector_face_accessors_m.push_back(
-                matrix_free.get_face_iterator(face_batch, 0, true));
-              vector_face_accessors_p.push_back(
-                matrix_free.get_face_iterator(face_batch, 0, false));
-            }
+            vector_face_accessors_m.push_back(
+              matrix_free.get_face_iterator(face_batch, 0));
 
           quad_vec_faces.push_back(quad_face);
         }
@@ -260,22 +249,14 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
                        matrix_free.n_boundary_face_batches());
        ++face_batch)
     {
-      for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+      for (unsigned int v = 0; v < n_lanes; ++v)
         {
           if (v < matrix_free.n_active_entries_per_face_batch(face_batch))
-            {
-              vector_face_accessors_m.push_back(
-                matrix_free.get_face_iterator(face_batch, v, true));
-              vector_face_accessors_p.push_back(
-                matrix_free.get_face_iterator(face_batch, v, true));
-            }
+            vector_face_accessors_m.push_back(
+              matrix_free.get_face_iterator(face_batch, v));
           else
-            {
-              vector_face_accessors_m.push_back(
-                matrix_free.get_face_iterator(face_batch, 0, true));
-              vector_face_accessors_p.push_back(
-                matrix_free.get_face_iterator(face_batch, 0, true));
-            }
+            vector_face_accessors_m.push_back(
+              matrix_free.get_face_iterator(face_batch, 0));
 
           quad_vec_faces.push_back(quad_face);
         }
@@ -291,9 +272,7 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
                                                      update_normal_vectors);
 
   mapping_info_cells.reinit_cells(vector_accessors, quad_vec_cells);
-  mapping_info_faces.reinit_faces(vector_face_accessors_m,
-                                  vector_face_accessors_p,
-                                  quad_vec_faces);
+  mapping_info_faces.reinit_faces(vector_face_accessors_m, quad_vec_faces);
 
   FEPointEvaluation<1, dim, dim, double> fe_peval(mapping_info_cells, fe);
   FEPointEvaluation<1, dim, dim, double> fe_peval_m(mapping_info_faces,
@@ -314,19 +293,19 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
         {
           fe_eval.reinit(cell);
           fe_eval.read_dof_values(src);
-          for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+          for (unsigned int v = 0; v < n_lanes; ++v)
             {
-              fe_peval.reinit(cell * VectorizedArray<double>::size() + v);
-              fe_peval.evaluate(
-                StridedArrayView<const double, VectorizedArray<double>::size()>(
-                  &fe_eval.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::gradients);
+              fe_peval.reinit(cell * n_lanes + v);
+              fe_peval.evaluate(StridedArrayView<const double, n_lanes>(
+                                  &fe_eval.begin_dof_values()[0][v],
+                                  fe.dofs_per_cell),
+                                EvaluationFlags::gradients);
               for (const unsigned int q : fe_peval.quadrature_point_indices())
                 fe_peval.submit_gradient(fe_peval.get_gradient(q), q);
-              fe_peval.integrate(
-                StridedArrayView<double, VectorizedArray<double>::size()>(
-                  &fe_eval.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::gradients);
+              fe_peval.integrate(StridedArrayView<double, n_lanes>(
+                                   &fe_eval.begin_dof_values()[0][v],
+                                   fe.dofs_per_cell),
+                                 EvaluationFlags::gradients);
             }
           fe_eval.distribute_local_to_global(dst);
         }
@@ -343,31 +322,32 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
           fe_eval_m.read_dof_values(src);
           fe_eval_p.read_dof_values(src);
 
-          const auto &face_info = matrix_free.get_face_info(face);
-          for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+          for (unsigned int v = 0; v < n_lanes; ++v)
             {
-              fe_peval_m.reinit_face(face * VectorizedArray<double>::size() + v,
-                                     face_info.interior_face_no);
-              fe_peval_p.reinit_face(face * VectorizedArray<double>::size() + v,
-                                     face_info.exterior_face_no);
-              fe_peval_m.evaluate(
-                StridedArrayView<const double, VectorizedArray<double>::size()>(
-                  &fe_eval_m.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::values | EvaluationFlags::gradients);
-              fe_peval_p.evaluate(
-                StridedArrayView<const double, VectorizedArray<double>::size()>(
-                  &fe_eval_p.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::values | EvaluationFlags::gradients);
+              fe_peval_m.reinit_face(face * n_lanes + v);
+              fe_peval_p.reinit_face(face * n_lanes + v);
+              fe_peval_m.evaluate(StridedArrayView<const double, n_lanes>(
+                                    &fe_eval_m.begin_dof_values()[0][v],
+                                    fe.dofs_per_cell),
+                                  EvaluationFlags::values |
+                                    EvaluationFlags::gradients);
+              fe_peval_p.evaluate(StridedArrayView<const double, n_lanes>(
+                                    &fe_eval_p.begin_dof_values()[0][v],
+                                    fe.dofs_per_cell),
+                                  EvaluationFlags::values |
+                                    EvaluationFlags::gradients);
               for (const unsigned int q : fe_peval_m.quadrature_point_indices())
                 do_flux_term(fe_peval_m, fe_peval_p, 1.0, q);
-              fe_peval_m.integrate(
-                StridedArrayView<double, VectorizedArray<double>::size()>(
-                  &fe_eval_m.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::values | EvaluationFlags::gradients);
-              fe_peval_p.integrate(
-                StridedArrayView<double, VectorizedArray<double>::size()>(
-                  &fe_eval_p.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::values | EvaluationFlags::gradients);
+              fe_peval_m.integrate(StridedArrayView<double, n_lanes>(
+                                     &fe_eval_m.begin_dof_values()[0][v],
+                                     fe.dofs_per_cell),
+                                   EvaluationFlags::values |
+                                     EvaluationFlags::gradients);
+              fe_peval_p.integrate(StridedArrayView<double, n_lanes>(
+                                     &fe_eval_p.begin_dof_values()[0][v],
+                                     fe.dofs_per_cell),
+                                   EvaluationFlags::values |
+                                     EvaluationFlags::gradients);
             }
           fe_eval_m.distribute_local_to_global(dst);
           fe_eval_p.distribute_local_to_global(dst);
@@ -382,15 +362,14 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
 
           fe_eval_m.read_dof_values(src);
 
-          const auto &face_info = matrix_free.get_face_info(face);
-          for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+          for (unsigned int v = 0; v < n_lanes; ++v)
             {
-              fe_peval_m.reinit_face(face * VectorizedArray<double>::size() + v,
-                                     face_info.interior_face_no);
-              fe_peval_m.evaluate(
-                StridedArrayView<const double, VectorizedArray<double>::size()>(
-                  &fe_eval_m.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::values | EvaluationFlags::gradients);
+              fe_peval_m.reinit_face(face * n_lanes + v);
+              fe_peval_m.evaluate(StridedArrayView<const double, n_lanes>(
+                                    &fe_eval_m.begin_dof_values()[0][v],
+                                    fe.dofs_per_cell),
+                                  EvaluationFlags::values |
+                                    EvaluationFlags::gradients);
               for (const unsigned int q : fe_peval_m.quadrature_point_indices())
                 {
                   const auto value    = fe_peval_m.get_value(q);
@@ -402,10 +381,11 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
                                                fe_peval_m.normal_vector(q),
                                              q);
                 }
-              fe_peval_m.integrate(
-                StridedArrayView<double, VectorizedArray<double>::size()>(
-                  &fe_eval_m.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::values | EvaluationFlags::gradients);
+              fe_peval_m.integrate(StridedArrayView<double, n_lanes>(
+                                     &fe_eval_m.begin_dof_values()[0][v],
+                                     fe.dofs_per_cell),
+                                   EvaluationFlags::values |
+                                     EvaluationFlags::gradients);
             }
           fe_eval_m.distribute_local_to_global(dst);
         }

@@ -837,8 +837,7 @@ public:
    * the face in the MappingInfo object.
    */
   void
-  reinit_face(const unsigned int face_index,
-              const unsigned int local_face_number);
+  reinit_face(const unsigned int face_index);
 
   /**
    * This function interpolates the finite element solution, represented by
@@ -1777,11 +1776,10 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
 template <int n_components_, int dim, int spacedim, typename Number>
 inline void
 FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit_face(
-  const unsigned int face_index,
-  const unsigned int local_face_number)
+  const unsigned int face_index)
 {
   current_cell_index  = face_index;
-  current_face_number = local_face_number;
+  current_face_number = mapping_info->get_face_number(face_index, is_interior);
 
   if (use_linear_path)
     do_reinit<true, true>();
