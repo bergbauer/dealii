@@ -681,6 +681,14 @@ namespace internal
 
 
 
+template <int n_components_,
+          int dim,
+          int spacedim    = dim,
+          typename Number = double>
+class FEFacePointEvaluation;
+
+
+
 /**
  * This class provides an interface to the evaluation of interpolated solution
  * values and gradients on cells on arbitrary reference point positions. These
@@ -824,20 +832,6 @@ public:
    */
   void
   reinit(const unsigned int cell_index);
-
-  /**
-   * Reinitialize the evaluator to point to the correct precomputed mapping of
-   * the face in the MappingInfo object.
-   */
-  void
-  reinit(const unsigned int cell_index, const unsigned int face_number);
-
-  /**
-   * Reinitialize the evaluator to point to the correct precomputed mapping of
-   * the face in the MappingInfo object.
-   */
-  void
-  reinit_face(const unsigned int face_index);
 
   /**
    * This function interpolates the finite element solution, represented by
@@ -1440,6 +1434,9 @@ private:
   AlignedVector<dealii::ndarray<VectorizedArrayType, 2, dim - 1>> shapes_faces;
 
   const bool is_interior;
+
+  template <int, int, int, typename>
+  friend class FEFacePointEvaluation;
 };
 
 // ----------------------- template and inline function ----------------------
@@ -1752,39 +1749,6 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
 
       fe_values->reinit(mapping_info->get_cell_iterator(current_cell_index));
     }
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
-  const unsigned int cell_index,
-  const unsigned int face_number)
-{
-  current_cell_index  = cell_index;
-  current_face_number = face_number;
-
-  if (use_linear_path)
-    do_reinit<true, true>();
-  else
-    do_reinit<true, false>();
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit_face(
-  const unsigned int face_index)
-{
-  current_cell_index  = face_index;
-  current_face_number = mapping_info->get_face_number(face_index, is_interior);
-
-  if (use_linear_path)
-    do_reinit<true, true>();
-  else
-    do_reinit<true, false>();
 }
 
 
@@ -2961,6 +2925,115 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::
   quadrature_point_indices() const
 {
   return {0U, n_q_points};
+}
+
+template <int n_components_, int dim, int spacedim, typename Number>
+class FEFacePointEvaluation
+  : public FEPointEvaluation<n_components_, dim, spacedim, Number>
+{
+public:
+  FEFacePointEvaluation(
+    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim>                        &fe,
+    const bool                                       is_interior = true,
+    const unsigned int first_selected_component                  = 0);
+
+  /**
+   * Reinitialize the evaluator to point to the correct precomputed mapping of
+   * the face in the MappingInfo object.
+   */
+  void
+  reinit(const unsigned int cell_index, const unsigned int face_number);
+
+  /**
+   * Reinitialize the evaluator to point to the correct precomputed mapping of
+   * the face in the MappingInfo object.
+   */
+  void
+  reinit(const unsigned int face_index);
+
+  /**
+   * Return the normal vector. This class or the MappingInfo object passed to
+   * this function needs to be constructed with UpdateFlags containing
+   * `update_normal_vectors`.
+   */
+  Tensor<1, spacedim, Number>
+  normal_vector_1(const unsigned int point_index) const;
+
+private:
+};
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  FEFacePointEvaluation(
+    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim>                        &fe,
+    const bool                                       is_interior,
+    const unsigned int                               first_selected_component)
+  : FEPointEvaluation<n_components_, dim, spacedim, Number>(
+      mapping_info,
+      fe,
+      first_selected_component,
+      is_interior)
+{}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
+  const unsigned int cell_index,
+  const unsigned int face_number)
+{
+  this->current_cell_index  = cell_index;
+  this->current_face_number = face_number;
+
+  if (this->use_linear_path)
+    this->template do_reinit<true, true>();
+  else
+    this->template do_reinit<true, false>();
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
+  const unsigned int face_index)
+{
+  this->current_cell_index = face_index;
+  this->current_face_number =
+    this->mapping_info->get_face_number(face_index, this->is_interior);
+
+  if (this->use_linear_path)
+    this->template do_reinit<true, true>();
+  else
+    this->template do_reinit<true, false>();
+}
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline Tensor<1, spacedim, Number>
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::normal_vector_1(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, this->n_q_points);
+  Assert(this->normal_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_normal_vectors"));
+  if (this->cell_type <= dealii::internal::MatrixFreeFunctions::affine)
+    {
+      Tensor<1, spacedim, Number> normal;
+      for (unsigned int d = 0; d < dim; ++d)
+        normal[d] =
+          internal::VectorizedArrayTrait<Number>::get(this->normal_ptr[0][d],
+                                                      0);
+      return normal;
+    }
+  else
+    return this->normal_ptr[point_index];
 }
 
 DEAL_II_NAMESPACE_CLOSE

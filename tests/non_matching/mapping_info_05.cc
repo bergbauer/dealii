@@ -243,9 +243,9 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
   mapping_info_cells.reinit_cells(vector_accessors, quad_vec_cells);
   mapping_info_faces.reinit_faces(vector_accessors, quad_vec_faces);
 
-  FEPointEvaluation<1, dim, dim, double> fe_peval(mapping_info_cells, fe);
-  FEPointEvaluation<1, dim, dim, double> fe_peval_m(mapping_info_faces, fe);
-  FEPointEvaluation<1, dim, dim, double> fe_peval_p(mapping_info_faces, fe);
+  FEPointEvaluation<1, dim, dim, double>     fe_peval(mapping_info_cells, fe);
+  FEFacePointEvaluation<1, dim, dim, double> fe_peval_m(mapping_info_faces, fe);
+  FEFacePointEvaluation<1, dim, dim, double> fe_peval_p(mapping_info_faces, fe);
 
   matrix_free.template loop_cell_centric<
     LinearAlgebra::distributed::Vector<double>,

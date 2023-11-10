@@ -274,15 +274,13 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
   mapping_info_cells.reinit_cells(vector_accessors, quad_vec_cells);
   mapping_info_faces.reinit_faces(vector_face_accessors_m, quad_vec_faces);
 
-  FEPointEvaluation<1, dim, dim, double> fe_peval(mapping_info_cells, fe);
-  FEPointEvaluation<1, dim, dim, double> fe_peval_m(mapping_info_faces,
-                                                    fe,
-                                                    0,
-                                                    true);
-  FEPointEvaluation<1, dim, dim, double> fe_peval_p(mapping_info_faces,
-                                                    fe,
-                                                    0,
-                                                    false);
+  FEPointEvaluation<1, dim, dim, double>     fe_peval(mapping_info_cells, fe);
+  FEFacePointEvaluation<1, dim, dim, double> fe_peval_m(mapping_info_faces,
+                                                        fe,
+                                                        true);
+  FEFacePointEvaluation<1, dim, dim, double> fe_peval_p(mapping_info_faces,
+                                                        fe,
+                                                        false);
 
   matrix_free.template loop<LinearAlgebra::distributed::Vector<double>,
                             LinearAlgebra::distributed::Vector<double>>(
@@ -324,8 +322,8 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
 
           for (unsigned int v = 0; v < n_lanes; ++v)
             {
-              fe_peval_m.reinit_face(face * n_lanes + v);
-              fe_peval_p.reinit_face(face * n_lanes + v);
+              fe_peval_m.reinit(face * n_lanes + v);
+              fe_peval_p.reinit(face * n_lanes + v);
               fe_peval_m.evaluate(StridedArrayView<const double, n_lanes>(
                                     &fe_eval_m.begin_dof_values()[0][v],
                                     fe.dofs_per_cell),
