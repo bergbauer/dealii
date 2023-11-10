@@ -373,14 +373,19 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
 
           fe_eval_m.read_dof_values(src);
 
+          const auto &face_info = matrix_free.get_face_info(face);
+
+          fe_peval_m.project_to_face(fe_eval_m.begin_dof_values(),
+                                     EvaluationFlags::values |
+                                       EvaluationFlags::gradients,
+                                     face_info.interior_face_no);
+
           for (unsigned int v = 0; v < n_lanes; ++v)
             {
               fe_peval_m.reinit(face * n_lanes + v);
-              fe_peval_m.evaluate(StridedArrayView<const double, n_lanes>(
-                                    &fe_eval_m.begin_dof_values()[0][v],
-                                    fe.dofs_per_cell),
-                                  EvaluationFlags::values |
-                                    EvaluationFlags::gradients);
+              fe_peval_m.evaluate_in_face(v,
+                                          EvaluationFlags::values |
+                                            EvaluationFlags::gradients);
               for (const unsigned int q : fe_peval_m.quadrature_point_indices())
                 {
                   const auto value    = fe_peval_m.get_value(q);
@@ -392,12 +397,14 @@ test_dg_fcl(const unsigned int degree, const bool curved_mesh)
                                                fe_peval_m.normal_vector(q),
                                              q);
                 }
-              fe_peval_m.integrate(StridedArrayView<double, n_lanes>(
-                                     &fe_eval_m.begin_dof_values()[0][v],
-                                     fe.dofs_per_cell),
-                                   EvaluationFlags::values |
-                                     EvaluationFlags::gradients);
+              fe_peval_m.integrate_in_face(v,
+                                           EvaluationFlags::values |
+                                             EvaluationFlags::gradients);
             }
+          fe_peval_m.collect_from_face(fe_eval_m.begin_dof_values(),
+                                       EvaluationFlags::values |
+                                         EvaluationFlags::gradients,
+                                       face_info.interior_face_no);
           fe_eval_m.distribute_local_to_global(dst);
         }
     },
