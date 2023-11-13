@@ -2927,6 +2927,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::
   return {0U, n_q_points};
 }
 
+
+
 template <int n_components_, int dim, int spacedim, typename Number>
 class FEFacePointEvaluation
   : public FEPointEvaluation<n_components_, dim, spacedim, Number>
@@ -2950,6 +2952,9 @@ public:
   using interface_vectorized_gradient_type =
     typename ETT::interface_vectorized_gradient_type;
 
+  /**
+   * Constructor. Allows to select if interior or exterior face is selected.
+   */
   FEFacePointEvaluation(
     NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
     const FiniteElement<dim>                        &fe,
@@ -2958,23 +2963,31 @@ public:
 
   /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
-   * the face in the MappingInfo object.
+   * the face in the MappingInfo object. Used in element-centric loops (ECL).
    */
   void
   reinit(const unsigned int cell_index, const unsigned int face_number);
 
   /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
-   * the face in the MappingInfo object.
+   * the face in the MappingInfo object. Used in face-centric loops (FCL).
    */
   void
   reinit(const unsigned int face_index);
 
+  /**
+   * Interpolate values and face normal derivatives into dof values at faces for
+   * the current face batch.
+   */
   void
   project_to_face(const VectorizedArrayType              *solution_values,
                   const EvaluationFlags::EvaluationFlags &evaluation_flags,
                   const unsigned int                      face_number);
 
+  /**
+   * Evaluate values and gradients in face for the selected face (lane) of the
+   * batch.
+   */
   void
   evaluate_in_face(const unsigned int                      lane,
                    const EvaluationFlags::EvaluationFlags &evaluation_flags)
@@ -2985,6 +2998,10 @@ public:
       do_evaluate_in_face<false>(lane, evaluation_flags);
   }
 
+  /**
+   * Integrate values and gradients in face for the selected face (lane) of the
+   * batch.
+   */
   void
   integrate_in_face(const unsigned int                      lane,
                     const EvaluationFlags::EvaluationFlags &integration_flags)
@@ -2995,6 +3012,10 @@ public:
       do_integrate_in_face<false>(lane, integration_flags);
   }
 
+  /**
+   * Collect and sum contributions from values and face normal derivatives at
+   * dof values at faces for the current face batch.
+   */
   void
   collect_from_face(VectorizedArrayType                    *solution_values,
                     const EvaluationFlags::EvaluationFlags &integration_flags,
@@ -3016,21 +3037,33 @@ private:
   static constexpr std::size_t stride =
     internal::VectorizedArrayTrait<Number>::stride();
 
+  /**
+   * Actually does the evaluation templated on the chosen code path (linear or
+   * higher order).
+   */
   template <bool is_linear>
   void
   do_evaluate_in_face(const unsigned int                      lane,
                       const EvaluationFlags::EvaluationFlags &evaluation_flags);
 
+  /**
+   * Actually does the integration templated on the chosen code path (linear or
+   * higher order).
+   */
   template <bool is_linear>
   void
   do_integrate_in_face(
     const unsigned int                      lane,
     const EvaluationFlags::EvaluationFlags &integration_flags);
 
+  /**
+   * Vectorized data array with storage for values and normal gradients at face
+   * dofs.
+   */
   AlignedVector<VectorizedArrayType> scratch_data_vectorized;
 
   /**
-   * Scalar ShapeInfo object needed for use_face_path path.
+   * Vectorized ShapeInfo object needed for from and to face interpolations.
    */
   internal::MatrixFreeFunctions::ShapeInfo<VectorizedArrayType> shape_info;
 };
@@ -3051,6 +3084,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::project_to_face(
     template interpolate<true, false>(
       n_components, evaluation_flags, shape_info, input, output, face_number);
 }
+
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
@@ -3407,6 +3441,8 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
   else
     this->template do_reinit<true, false>();
 }
+
+
 
 template <int n_components_, int dim, int spacedim, typename Number>
 inline Tensor<1, spacedim, Number>
