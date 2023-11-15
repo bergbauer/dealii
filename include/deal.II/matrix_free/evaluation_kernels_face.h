@@ -1643,6 +1643,65 @@ namespace internal
                                                        subface_index);
     }
 
+    template <int fe_degree>
+    static void
+    adjust_dofs_for_face_orientation(
+      const unsigned int                     n_components,
+      const EvaluationFlags::EvaluationFlags evaluation_flag,
+      FEEvaluationData<dim, Number, true>   &fe_eval,
+      const bool                             use_vectorization,
+      Number                                *temp,
+      Number                                *scratch_data)
+    {
+      const auto &shape_info = fe_eval.get_shape_info();
+      const auto &shape_data = shape_info.data.front();
+
+      const unsigned int dofs_per_comp_face =
+        fe_degree > -1 ?
+          Utilities::pow(fe_degree + 1, dim - 1) :
+          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+      const unsigned int dofs_per_face = n_components * dofs_per_comp_face;
+
+      if (use_vectorization == false)
+        {
+          for (unsigned int v = 0; v < Number::size(); ++v)
+            {
+              // the loop breaks once an invalid_unsigned_int is hit for
+              // all cases except the exterior faces in the ECL loop (where
+              // some faces might be at the boundaries but others not)
+              if (fe_eval.get_cell_ids()[v] == numbers::invalid_unsigned_int)
+                continue;
+
+              if (fe_eval.get_face_orientation(v) != 0)
+                adjust_for_face_orientation_per_lane(
+                  dim,
+                  n_components,
+                  v,
+                  evaluation_flag,
+                  &shape_info.face_orientations_dofs(
+                    fe_eval.get_face_orientation(v), 0),
+                  false,
+                  Utilities::pow(fe_degree + 1, dim - 1),
+                  &scratch_data[0][0],
+                  temp,
+                  temp + dofs_per_face,
+                  temp + 2 * dofs_per_face);
+            }
+        }
+      else if (fe_eval.get_face_orientation() != 0)
+        adjust_for_face_orientation(
+          dim,
+          n_components,
+          evaluation_flag,
+          &shape_info.face_orientations_dofs(fe_eval.get_face_orientation(), 0),
+          false,
+          Utilities::pow(fe_degree + 1, dim - 1),
+          scratch_data,
+          temp,
+          temp + dofs_per_face,
+          temp + 2 * dofs_per_face);
+    }
+
     static void
     adjust_quadrature_for_face_orientation(
       const unsigned int                     n_components,
@@ -1732,17 +1791,20 @@ namespace internal
                                  temp,
                                  scratch_data);
 
-      evaluate_in_face<fe_degree, n_q_points_1d>(n_components,
-                                                 evaluation_flag,
-                                                 values_dofs,
-                                                 fe_eval,
-                                                 temp,
-                                                 scratch_data);
+      if (dim == 3 && shape_data.nodal_at_cell_boundaries)
+        adjust_dofs_for_face_orientation<fe_degree>(n_components,
+                                                    evaluation_flag,
+                                                    fe_eval,
+                                                    use_vectorization,
+                                                    temp,
+                                                    scratch_data);
 
-      adjust_quadrature_for_face_orientation(n_components,
-                                             evaluation_flag,
-                                             use_vectorization,
-                                             temp);
+      evaluate_in_face<fe_degree, n_q_points_1d>(
+        n_components, evaluation_flag, fe_eval, temp, scratch_data);
+
+      if (dim == 3 && !shape_data.nodal_at_cell_boundaries)
+        adjust_quadrature_for_face_orientation(
+          n_components, evaluation_flag, fe_eval, use_vectorization, temp);
 
       return false;
     }
