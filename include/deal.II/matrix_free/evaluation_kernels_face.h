@@ -1532,15 +1532,17 @@ namespace internal
                     Number                                *scratch_data)
     {
       const auto &shape_info = fe_eval.get_shape_info();
-      const auto &shape_data = shape_info.data.front();
-
-      const unsigned int dofs_per_face =
-        fe_degree > -1 ?
-          Utilities::pow(fe_degree + 1, dim - 1) :
-          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
 
       if (use_vectorization == false)
         {
+          const auto &shape_data = shape_info.data.front();
+
+          const unsigned int dofs_per_comp_face =
+            fe_degree > -1 ?
+              Utilities::pow(fe_degree + 1, dim - 1) :
+              Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+          const unsigned int dofs_per_face = n_components * dofs_per_comp_face;
+
           for (unsigned int v = 0; v < Number::size(); ++v)
             {
               // the loop breaks once an invalid_unsigned_int is hit for
@@ -1548,8 +1550,7 @@ namespace internal
               // some faces might be at the boundaries but others not)
               if (fe_eval.get_cell_ids()[v] == numbers::invalid_unsigned_int)
                 {
-                  for (unsigned int i = 0; i < 3 * n_components * dofs_per_face;
-                       ++i)
+                  for (unsigned int i = 0; i < 3 * dofs_per_face; ++i)
                     temp[i][v] = 0;
                   continue;
                 }
@@ -1562,8 +1563,7 @@ namespace internal
                                                   scratch_data,
                                                   fe_eval.get_face_no(v));
 
-              for (unsigned int i = 0; i < 3 * n_components * dofs_per_face;
-                   ++i)
+              for (unsigned int i = 0; i < 3 * dofs_per_face; ++i)
                 temp[i][v] = scratch_data[i][v];
             }
         }
@@ -1764,7 +1764,7 @@ namespace internal
       const auto &shape_info = fe_eval.get_shape_info();
       const auto &shape_data = shape_info.data.front();
 
-      const unsigned int dofs_per_face =
+      const unsigned int dofs_per_comp_face =
         fe_degree > -1 ?
           Utilities::pow(fe_degree + 1, dim - 1) :
           Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
@@ -1772,7 +1772,7 @@ namespace internal
       // Note: we always keep storage of values, 1st and 2nd derivatives in an
       // array, so reserve space for all three here
       Number *temp         = fe_eval.get_scratch_data().begin();
-      Number *scratch_data = temp + 3 * n_components * dofs_per_face;
+      Number *scratch_data = temp + 3 * n_components * dofs_per_comp_face;
 
       bool use_vectorization = true;
       if (fe_eval.get_dof_access_index() ==
