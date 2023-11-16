@@ -1793,7 +1793,13 @@ namespace internal
                                  temp,
                                  scratch_data);
 
-      if (dim == 3 && false)
+      bool face_orientation_via_quadrature = true;
+      if (dim == 3 && (shape_data.nodal_at_cell_boundaries &&
+                       fe_eval.get_subface_index() >=
+                         GeometryInfo<dim>::max_children_per_cell))
+        face_orientation_via_quadrature = false;
+
+      if (dim == 3 && !face_orientation_via_quadrature)
         adjust_dofs_for_face_orientation<fe_degree>(n_components,
                                                     evaluation_flag,
                                                     fe_eval,
@@ -1804,7 +1810,7 @@ namespace internal
       evaluate_in_face<fe_degree, n_q_points_1d>(
         n_components, evaluation_flag, fe_eval, temp, scratch_data);
 
-      if (dim == 3 && true)
+      if (dim == 3 && face_orientation_via_quadrature)
         adjust_quadrature_for_face_orientation(
           n_components, evaluation_flag, fe_eval, use_vectorization, temp);
 
@@ -2178,14 +2184,20 @@ namespace internal
                                v == numbers::invalid_unsigned_int;
                       });
 
-      if (dim == 3 && true)
+      bool face_orientation_via_quadrature = true;
+      if (dim == 3 && (shape_data.nodal_at_cell_boundaries &&
+                       fe_eval.get_subface_index() >=
+                         GeometryInfo<dim>::max_children_per_cell))
+        face_orientation_via_quadrature = false;
+
+      if (dim == 3 && face_orientation_via_quadrature)
         adjust_quadrature_for_face_orientation(
           n_components, integration_flag, fe_eval, use_vectorization, temp);
 
       integrate_in_face<fe_degree, n_q_points_1d>(
         n_components, integration_flag, fe_eval, temp, scratch_data);
 
-      if (dim == 3 && false)
+      if (dim == 3 && !face_orientation_via_quadrature)
         adjust_dofs_for_face_orientation<fe_degree>(n_components,
                                                     integration_flag,
                                                     fe_eval,
