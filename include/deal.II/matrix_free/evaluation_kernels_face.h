@@ -1968,6 +1968,67 @@ namespace internal
           fe_eval.begin_hessians());
     }
 
+    template <int fe_degree>
+    static void
+    adjust_dofs_for_face_orientation(
+      const unsigned int                     n_components,
+      const EvaluationFlags::EvaluationFlags integration_flag,
+      FEEvaluationData<dim, Number, true>   &fe_eval,
+      const bool                             use_vectorization,
+      Number                                *temp,
+      Number                                *scratch_data)
+    {
+      const auto &shape_info = fe_eval.get_shape_info();
+      const auto &shape_data = shape_info.data.front();
+
+      const unsigned int dofs_per_comp_face =
+        fe_degree > -1 ?
+          Utilities::pow(fe_degree + 1, dim - 1) :
+          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+
+      if (use_vectorization == false)
+        {
+          for (unsigned int v = 0; v < Number::size(); ++v)
+            {
+              // the loop breaks once an invalid_unsigned_int is hit for
+              // all cases except the exterior faces in the ECL loop (where
+              // some faces might be at the boundaries but others not)
+              if (fe_eval.get_cell_ids()[v] == numbers::invalid_unsigned_int)
+                continue;
+
+              if (fe_eval.get_face_orientation(v) != 0)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  adjust_for_face_orientation_per_lane(
+                    1,
+                    1,
+                    v,
+                    integration_flag,
+                    &shape_info.face_orientations_dofs(
+                      fe_eval.get_face_orientation(v), 0),
+                    true,
+                    dofs_per_comp_face,
+                    &scratch_data[0][0],
+                    temp + c * 3 * dofs_per_comp_face,
+                    temp + dofs_per_comp_face + c * 3 * dofs_per_comp_face,
+                    temp + 2 * dofs_per_comp_face + c * 3 * dofs_per_comp_face);
+            }
+        }
+      else if (fe_eval.get_face_orientation() != 0)
+        for (unsigned int c = 0; c < n_components; ++c)
+          adjust_for_face_orientation(
+            1,
+            1,
+            integration_flag,
+            &shape_info.face_orientations_dofs(fe_eval.get_face_orientation(),
+                                               0),
+            true,
+            dofs_per_comp_face,
+            scratch_data,
+            temp + c * 3 * dofs_per_comp_face,
+            temp + dofs_per_comp_face + c * 3 * dofs_per_comp_face,
+            temp + 2 * dofs_per_comp_face + c * 3 * dofs_per_comp_face);
+    }
+
     template <int fe_degree, int n_q_points_1d>
     static void
     integrate_in_face(const unsigned int                     n_components,
@@ -2051,6 +2112,7 @@ namespace internal
         fe_degree > -1 ?
           Utilities::pow(fe_degree + 1, dim - 1) :
           Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+      const unsigned int dofs_per_face = n_components * dofs_per_comp_face;
 
       if (use_vectorization == false)
         {
@@ -2070,9 +2132,7 @@ namespace internal
                                                    scratch_data,
                                                    fe_eval.get_face_no(v));
 
-              for (unsigned int i = 0;
-                   i < 3 * n_components * dofs_per_comp_face;
-                   ++i)
+              for (unsigned int i = 0; i < 3 * dofs_per_face; ++i)
                 values_dofs[i][v] = scratch_data[i][v];
             }
         }
@@ -2118,11 +2178,20 @@ namespace internal
                                v == numbers::invalid_unsigned_int;
                       });
 
-      adjust_quadrature_for_face_orientation(
-        n_components, integration_flag, fe_eval, use_vectorization, temp);
+      if (dim == 3 && true)
+        adjust_quadrature_for_face_orientation(
+          n_components, integration_flag, fe_eval, use_vectorization, temp);
 
       integrate_in_face<fe_degree, n_q_points_1d>(
         n_components, integration_flag, fe_eval, temp, scratch_data);
+
+      if (dim == 3 && false)
+        adjust_dofs_for_face_orientation<fe_degree>(n_components,
+                                                    integration_flag,
+                                                    fe_eval,
+                                                    use_vectorization,
+                                                    temp,
+                                                    scratch_data);
 
       collect_from_face<fe_degree>(n_components,
                                    integration_flag,
