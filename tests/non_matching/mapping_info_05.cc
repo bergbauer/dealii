@@ -76,6 +76,8 @@ template <int dim>
 void
 test_dg_ecl(const unsigned int degree, const bool curved_mesh)
 {
+  constexpr unsigned int n_lanes = VectorizedArray<double>::size();
+
   const unsigned int n_q_points = degree + 1;
 
   parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
@@ -155,10 +157,9 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
                   matrix_free.get_faces_by_cells_boundary_id(cell, f);
 
                 // only internal faces have a neighbor, setup a mask
-                std::bitset<VectorizedArray<double>::size()> mask;
-                VectorizedArray<double>                      fluxes = 0.;
-                for (unsigned int v = 0; v < VectorizedArray<double>::size();
-                     ++v)
+                std::bitset<n_lanes>    mask;
+                VectorizedArray<double> fluxes = 0.;
+                for (unsigned int v = 0; v < n_lanes; ++v)
                   {
                     mask[v] =
                       boundary_ids[v] == numbers::internal_face_boundary_id;
@@ -199,20 +200,20 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
   std::vector<Quadrature<dim>> quad_vec_cells;
   quad_vec_cells.reserve(
     (matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches()) *
-    VectorizedArray<double>::size());
+    n_lanes);
   std::vector<std::vector<Quadrature<dim - 1>>> quad_vec_faces(
     (matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches()) *
-    VectorizedArray<double>::size());
+    n_lanes);
 
   std::vector<typename DoFHandler<dim>::cell_iterator> vector_accessors;
   vector_accessors.reserve(
     (matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches()) *
-    VectorizedArray<double>::size());
+    n_lanes);
   for (unsigned int cell_batch = 0;
        cell_batch <
        matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches();
        ++cell_batch)
-    for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+    for (unsigned int v = 0; v < n_lanes; ++v)
       {
         if (v < matrix_free.n_active_entries_per_cell_batch(cell_batch))
           vector_accessors.push_back(
@@ -226,8 +227,7 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
         for (const auto f : GeometryInfo<dim>::face_indices())
           {
             (void)f;
-            quad_vec_faces[cell_batch * VectorizedArray<double>::size() + v]
-              .push_back(quad_face);
+            quad_vec_faces[cell_batch * n_lanes + v].push_back(quad_face);
           }
       }
 
@@ -247,99 +247,106 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
   FEFacePointEvaluation<1, dim, dim, double> fe_peval_m(mapping_info_faces, fe);
   FEFacePointEvaluation<1, dim, dim, double> fe_peval_p(mapping_info_faces, fe);
 
-  matrix_free.template loop_cell_centric<
-    LinearAlgebra::distributed::Vector<double>,
-    LinearAlgebra::distributed::Vector<double>>(
-    [&](
-      const auto &matrix_free, auto &dst, const auto &src, const auto &range) {
-      FEEvaluation<dim, -1>                  fe_eval(matrix_free);
-      FEFaceEvaluation<dim, -1>              fe_eval_p(matrix_free, false);
-      AlignedVector<VectorizedArray<double>> vec_solution_values_in_m(
-        fe_eval.dofs_per_cell);
-      for (unsigned int cell = range.first; cell < range.second; ++cell)
-        {
-          fe_eval.reinit(cell);
-          fe_eval.read_dof_values(src);
+  matrix_free
+    .template loop_cell_centric<LinearAlgebra::distributed::Vector<double>,
+                                LinearAlgebra::distributed::Vector<double>>(
+      [&](const auto &matrix_free,
+          auto       &dst,
+          const auto &src,
+          const auto &range) {
+        FEEvaluation<dim, -1>                  fe_eval(matrix_free);
+        FEFaceEvaluation<dim, -1>              fe_eval_m(matrix_free, true);
+        FEFaceEvaluation<dim, -1>              fe_eval_p(matrix_free, false);
+        AlignedVector<VectorizedArray<double>> vec_solution_values_in_m(
+          fe_eval.dofs_per_cell);
+        for (unsigned int cell = range.first; cell < range.second; ++cell)
+          {
+            fe_eval.reinit(cell);
+            fe_eval.read_dof_values(src);
 
-          for (unsigned int i = 0; i < fe_eval.dofs_per_cell; ++i)
-            vec_solution_values_in_m[i] = fe_eval.begin_dof_values()[i];
+            for (unsigned int i = 0; i < fe_eval.dofs_per_cell; ++i)
+              vec_solution_values_in_m[i] = fe_eval.begin_dof_values()[i];
 
-          for (unsigned int v = 0;
-               v < matrix_free.n_active_entries_per_cell_batch(cell);
-               ++v)
-            {
-              fe_peval.reinit(cell * VectorizedArray<double>::size() + v);
-              fe_peval.evaluate(
-                StridedArrayView<const double, VectorizedArray<double>::size()>(
-                  &vec_solution_values_in_m[0][v], fe.dofs_per_cell),
-                EvaluationFlags::gradients);
-              for (const unsigned int q : fe_peval.quadrature_point_indices())
-                fe_peval.submit_gradient(fe_peval.get_gradient(q), q);
-              fe_peval.integrate(
-                StridedArrayView<double, VectorizedArray<double>::size()>(
-                  &fe_eval.begin_dof_values()[0][v], fe.dofs_per_cell),
-                EvaluationFlags::gradients);
-            }
+            for (unsigned int v = 0; v < n_lanes; ++v)
+              {
+                fe_peval.reinit(cell * n_lanes + v);
+                fe_peval.evaluate(StridedArrayView<const double, n_lanes>(
+                                    &vec_solution_values_in_m[0][v],
+                                    fe.dofs_per_cell),
+                                  EvaluationFlags::gradients);
+                for (const unsigned int q : fe_peval.quadrature_point_indices())
+                  fe_peval.submit_gradient(fe_peval.get_gradient(q), q);
+                fe_peval.integrate(StridedArrayView<double, n_lanes>(
+                                     &fe_eval.begin_dof_values()[0][v],
+                                     fe.dofs_per_cell),
+                                   EvaluationFlags::gradients);
+              }
 
-          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-            {
-              // ask for boundary ids of face
-              const auto boundary_ids =
-                matrix_free.get_faces_by_cells_boundary_id(cell, f);
+            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+              {
+                fe_eval_m.reinit(cell, f);
 
-              // only internal faces have a neighbor, setup a mask
-              std::bitset<VectorizedArray<double>::size()> mask;
-              for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
-                mask[v] = boundary_ids[v] == numbers::internal_face_boundary_id;
+                fe_eval_m.project_to_face(&vec_solution_values_in_m.begin()[0],
+                                          EvaluationFlags::values |
+                                            EvaluationFlags::gradients);
 
-              fe_eval_p.reinit(cell, f);
-              fe_eval_p.read_dof_values(src, 0, mask);
+                // ask for boundary ids of face
+                const auto boundary_ids =
+                  matrix_free.get_faces_by_cells_boundary_id(cell, f);
 
-              for (unsigned int v = 0;
-                   v < matrix_free.n_active_entries_per_cell_batch(cell);
-                   ++v)
-                {
-                  if (mask[v] == false)
-                    continue;
+                // only internal faces have a neighbor, setup a mask
+                std::bitset<n_lanes> mask;
+                for (unsigned int v = 0; v < n_lanes; ++v)
+                  mask[v] =
+                    boundary_ids[v] == numbers::internal_face_boundary_id;
 
-                  fe_peval_m.reinit(cell * VectorizedArray<double>::size() + v,
-                                    f);
+                fe_eval_p.reinit(cell, f);
+                fe_eval_p.read_dof_values(src, 0, mask);
 
-                  const auto &cell_iterator =
-                    matrix_free.get_cell_iterator(cell, v);
+                fe_eval_p.project_to_face(EvaluationFlags::values |
+                                          EvaluationFlags::gradients);
 
-                  fe_peval_p.reinit(matrix_free.get_matrix_free_cell_index(
-                                      cell_iterator->neighbor(f)),
-                                    cell_iterator->neighbor_of_neighbor(f));
+                const auto &cell_indices_p = fe_eval_p.get_cell_ids();
 
-                  fe_peval_m.evaluate(
-                    StridedArrayView<const double,
-                                     VectorizedArray<double>::size()>(
-                      &vec_solution_values_in_m[0][v], fe.dofs_per_cell),
-                    EvaluationFlags::values | EvaluationFlags::gradients);
-                  fe_peval_p.evaluate(
-                    StridedArrayView<const double,
-                                     VectorizedArray<double>::size()>(
-                      &fe_eval_p.begin_dof_values()[0][v], fe.dofs_per_cell),
-                    EvaluationFlags::values | EvaluationFlags::gradients);
+                for (unsigned int v = 0; v < n_lanes; ++v)
+                  {
+                    if (mask[v] == false)
+                      continue;
 
-                  for (const unsigned int q :
-                       fe_peval_m.quadrature_point_indices())
-                    do_flux_term_ecl(fe_peval_m, fe_peval_p, 1.0, q);
+                    fe_peval_m.reinit(cell * n_lanes + v, f);
 
-                  fe_peval_m.integrate(
-                    StridedArrayView<double, VectorizedArray<double>::size()>(
-                      &fe_eval.begin_dof_values()[0][v], fe.dofs_per_cell),
-                    EvaluationFlags::values | EvaluationFlags::gradients,
-                    true);
-                }
-            }
-          fe_eval.distribute_local_to_global(dst);
-        }
-    },
-    dst2,
-    src,
-    true);
+                    fe_peval_p.reinit(cell_indices_p[v],
+                                      fe_eval_p.get_face_no(v));
+
+                    fe_peval_m.evaluate_in_face(
+                      &fe_eval_m.get_scratch_data().begin()[0][v],
+                      EvaluationFlags::values | EvaluationFlags::gradients);
+                    fe_peval_p.evaluate_in_face(
+                      &fe_eval_p.get_scratch_data().begin()[0][v],
+                      EvaluationFlags::values | EvaluationFlags::gradients);
+
+                    for (const unsigned int q :
+                         fe_peval_m.quadrature_point_indices())
+                      do_flux_term_ecl(fe_peval_m, fe_peval_p, 1.0, q);
+
+                    fe_peval_m.integrate_in_face(
+                      &fe_eval_m.get_scratch_data().begin()[0][v],
+                      EvaluationFlags::values | EvaluationFlags::gradients);
+                  }
+
+                // TODO here we want to add into fe_eval buffer
+                fe_eval_m.collect_from_face(EvaluationFlags::values |
+                                            EvaluationFlags::gradients);
+
+                fe_eval_m.distribute_local_to_global(dst, 0, mask);
+              }
+
+            fe_eval.distribute_local_to_global(dst);
+          }
+      },
+      dst2,
+      src,
+      true);
 
   dst2 -= dst;
   const double error = dst2.l2_norm() / dst.l2_norm();
