@@ -311,7 +311,14 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
                 for (unsigned int v = 0; v < n_lanes; ++v)
                   {
                     if (mask[v] == false)
-                      continue;
+                      {
+                        for (unsigned int i = 0;
+                             i <
+                             2 * Utilities::fixed_power<dim - 1>(degree + 1);
+                             ++i)
+                          fe_eval_m.get_scratch_data().begin()[i][v] = 0.;
+                        continue;
+                      }
 
                     fe_peval_m.reinit(cell * n_lanes + v, f);
 
@@ -334,11 +341,10 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
                       EvaluationFlags::values | EvaluationFlags::gradients);
                   }
 
-                // TODO here we want to add into fe_eval buffer
                 fe_eval_m.collect_from_face(EvaluationFlags::values |
-                                            EvaluationFlags::gradients);
-
-                fe_eval_m.distribute_local_to_global(dst, 0, mask);
+                                              EvaluationFlags::gradients,
+                                            fe_eval.begin_dof_values(),
+                                            true);
               }
 
             fe_eval.distribute_local_to_global(dst);

@@ -113,7 +113,8 @@ namespace internal
     const unsigned int                     n_components,
     const EvaluationFlags::EvaluationFlags integration_flag,
     Number                                *values_dofs,
-    FEEvaluationData<dim, Number, true>   &fe_eval)
+    FEEvaluationData<dim, Number, true>   &fe_eval,
+    const bool sum_into_values)
   {
     instantiation_helper_degree_run<
       1,
@@ -122,7 +123,8 @@ namespace internal
       n_components,
       integration_flag,
       values_dofs,
-      fe_eval);
+      fe_eval,
+      sum_into_values);
   }
 
 

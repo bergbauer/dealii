@@ -2188,7 +2188,8 @@ namespace internal
                       FEEvaluationData<dim, Number, true>   &fe_eval,
                       const bool                             use_vectorization,
                       const Number                          *temp,
-                      Number                                *scratch_data)
+                      Number                                *scratch_data,
+                      const bool                             sum_into_values)
     {
       const auto &shape_info = fe_eval.get_shape_info();
       const auto &shape_data = shape_info.data.front();
@@ -2217,18 +2218,33 @@ namespace internal
                                                    scratch_data,
                                                    fe_eval.get_face_no(v));
 
-              for (unsigned int i = 0; i < 3 * dofs_per_face; ++i)
-                values_dofs[i][v] = scratch_data[i][v];
+              if (sum_into_values)
+                for (unsigned int i = 0; i < 3 * dofs_per_face; ++i)
+                  values_dofs[i][v] += scratch_data[i][v];
+              else
+                for (unsigned int i = 0; i < 3 * dofs_per_face; ++i)
+                  values_dofs[i][v] = scratch_data[i][v];
             }
         }
       else
-        FEFaceNormalEvaluationImpl<dim, fe_degree, Number>::
-          template interpolate<false, false>(n_components,
-                                             integration_flag,
-                                             shape_info,
-                                             temp,
-                                             values_dofs,
-                                             fe_eval.get_face_no());
+        {
+          if (sum_into_values)
+            FEFaceNormalEvaluationImpl<dim, fe_degree, Number>::
+              template interpolate<false, true>(n_components,
+                                                integration_flag,
+                                                shape_info,
+                                                temp,
+                                                values_dofs,
+                                                fe_eval.get_face_no());
+          else
+            FEFaceNormalEvaluationImpl<dim, fe_degree, Number>::
+              template interpolate<false, false>(n_components,
+                                                 integration_flag,
+                                                 shape_info,
+                                                 temp,
+                                                 values_dofs,
+                                                 fe_eval.get_face_no());
+        }
     }
 
     template <int fe_degree, int n_q_points_1d>
@@ -2290,7 +2306,8 @@ namespace internal
                                    fe_eval,
                                    use_vectorization,
                                    temp,
-                                   scratch_data);
+                                   scratch_data,
+                                   false);
 
       return false;
     }
@@ -2327,7 +2344,8 @@ namespace internal
     run(const unsigned int                     n_components,
         const EvaluationFlags::EvaluationFlags integration_flag,
         Number                                *values_dofs,
-        FEEvaluationData<dim, Number, true>   &fe_eval)
+        FEEvaluationData<dim, Number, true>   &fe_eval,
+        const bool                             sum_into_values)
     {
       const auto &shape_info = fe_eval.get_shape_info();
       const auto &shape_data = shape_info.data.front();
@@ -2361,7 +2379,8 @@ namespace internal
                                               fe_eval,
                                               use_vectorization,
                                               temp,
-                                              scratch_data);
+                                              scratch_data,
+                                              sum_into_values);
 
       return false;
     }
