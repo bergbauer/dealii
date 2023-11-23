@@ -125,79 +125,80 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
   matrix_free.initialize_dof_vector(dst);
   matrix_free.initialize_dof_vector(dst2);
 
-  matrix_free.template loop_cell_centric<
-    LinearAlgebra::distributed::Vector<double>,
-    LinearAlgebra::distributed::Vector<double>>(
-    [&](
-      const auto &matrix_free, auto &dst, const auto &src, const auto &range) {
-      FEEvaluation<dim, -1>                  fe_eval(matrix_free);
-      FEFaceEvaluation<dim, -1>              fe_eval_m(matrix_free, true);
-      FEFaceEvaluation<dim, -1>              fe_eval_p(matrix_free, false);
-      AlignedVector<VectorizedArray<double>> vec_solution_values_in_m(
-        fe_eval.dofs_per_cell);
-      for (unsigned int cell = range.first; cell < range.second; ++cell)
-        {
-          fe_eval.reinit(cell);
-          fe_eval.read_dof_values(src);
-          for (unsigned int i = 0; i < fe_eval.dofs_per_cell; ++i)
-            vec_solution_values_in_m[i] = fe_eval.begin_dof_values()[i];
-          fe_eval.evaluate(EvaluationFlags::gradients);
+  matrix_free
+    .template loop_cell_centric<LinearAlgebra::distributed::Vector<double>,
+                                LinearAlgebra::distributed::Vector<double>>(
+      [&](const auto &matrix_free,
+          auto       &dst,
+          const auto &src,
+          const auto &range) {
+        FEEvaluation<dim, -1>                  fe_eval(matrix_free);
+        FEFaceEvaluation<dim, -1>              fe_eval_m(matrix_free, true);
+        FEFaceEvaluation<dim, -1>              fe_eval_p(matrix_free, false);
+        AlignedVector<VectorizedArray<double>> vec_solution_values_in_m(
+          fe_eval.dofs_per_cell);
+        for (unsigned int cell = range.first; cell < range.second; ++cell)
+          {
+            fe_eval.reinit(cell);
+            fe_eval.read_dof_values(src);
+            for (unsigned int i = 0; i < fe_eval.dofs_per_cell; ++i)
+              vec_solution_values_in_m[i] = fe_eval.begin_dof_values()[i];
+            fe_eval.evaluate(EvaluationFlags::gradients);
 
-          for (const unsigned int q : fe_eval.quadrature_point_indices())
-            fe_eval.submit_gradient(fe_eval.get_gradient(q), q);
+            for (const unsigned int q : fe_eval.quadrature_point_indices())
+              fe_eval.submit_gradient(fe_eval.get_gradient(q), q);
 
-          fe_eval.integrate(EvaluationFlags::gradients);
+            fe_eval.integrate(EvaluationFlags::gradients);
 
-          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-            {
-              // ask for boundary ids of face
-              const auto boundary_ids =
-                matrix_free.get_faces_by_cells_boundary_id(cell, f);
+            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+              {
+                // ask for boundary ids of face
+                const auto boundary_ids =
+                  matrix_free.get_faces_by_cells_boundary_id(cell, f);
 
-              // only internal faces have a neighbor, setup a mask
-              std::bitset<n_lanes>    mask;
-              VectorizedArray<double> fluxes = 0.;
-              for (unsigned int v = 0; v < n_lanes; ++v)
-                {
-                  mask[v] =
-                    boundary_ids[v] == numbers::internal_face_boundary_id;
-                  fluxes[v] = mask[v] == true ? 1. : 0.;
-                }
+                // only internal faces have a neighbor, setup a mask
+                std::bitset<n_lanes>    mask;
+                VectorizedArray<double> fluxes = 0.;
+                for (unsigned int v = 0; v < n_lanes; ++v)
+                  {
+                    mask[v] =
+                      boundary_ids[v] == numbers::internal_face_boundary_id;
+                    fluxes[v] = mask[v] == true ? 1. : 0.;
+                  }
 
-              fe_eval_m.reinit(cell, f);
-              fe_eval_p.reinit(cell, f);
+                fe_eval_m.reinit(cell, f);
+                fe_eval_p.reinit(cell, f);
 
-              fe_eval_p.read_dof_values(src, 0, mask);
+                fe_eval_p.read_dof_values(src, 0, mask);
 
-              fe_eval_m.evaluate(vec_solution_values_in_m.data(),
-                                 EvaluationFlags::values |
+                fe_eval_m.evaluate(vec_solution_values_in_m.data(),
+                                   EvaluationFlags::values |
+                                     EvaluationFlags::gradients);
+                fe_eval_p.evaluate(EvaluationFlags::values |
                                    EvaluationFlags::gradients);
-              fe_eval_p.evaluate(EvaluationFlags::values |
-                                 EvaluationFlags::gradients);
 
-              for (const auto q : fe_eval_m.quadrature_point_indices())
-                do_flux_term_ecl(fe_eval_m, fe_eval_p, 1.0, q);
+                for (const auto q : fe_eval_m.quadrature_point_indices())
+                  {
+                    do_flux_term_ecl(fe_eval_m, fe_eval_p, 1.0, q);
 
-              for (const auto q : fe_eval_m.quadrature_point_indices())
-                {
-                  fe_eval_m.begin_values()[q] *= fluxes;
-                  for (unsigned int d = 0; d < dim; ++d)
-                    fe_eval_m.begin_gradients()[q + d * fe_eval_m.n_q_points] *=
-                      fluxes;
-                }
+                    // clear lanes where face at boundary
+                    fe_eval_m.begin_values()[q] *= fluxes;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      fe_eval_m.begin_gradients()[q * dim + d] *= fluxes;
+                  }
 
-              fe_eval_m.integrate(EvaluationFlags::values |
-                                    EvaluationFlags::gradients,
-                                  fe_eval.begin_dof_values(),
-                                  true);
-            }
+                fe_eval_m.integrate(EvaluationFlags::values |
+                                      EvaluationFlags::gradients,
+                                    fe_eval.begin_dof_values(),
+                                    true);
+              }
 
-          fe_eval.distribute_local_to_global(dst);
-        }
-    },
-    dst,
-    src,
-    true);
+            fe_eval.distribute_local_to_global(dst);
+          }
+      },
+      dst,
+      src,
+      true);
 
   QGauss<dim>                  quad_cell(n_q_points);
   QGauss<dim - 1>              quad_face(n_q_points);
