@@ -3019,7 +3019,8 @@ public:
   void
   collect_from_face(VectorizedArrayType                    *solution_values,
                     const EvaluationFlags::EvaluationFlags &integration_flags,
-                    const unsigned int                      face_number);
+                    const unsigned int                      face_number,
+                    const bool sum_into_values = false);
 
   /**
    * Return the normal vector. This class or the MappingInfo object passed to
@@ -3092,14 +3093,28 @@ void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::collect_from_face(
   VectorizedArrayType                    *solution_values,
   const EvaluationFlags::EvaluationFlags &integration_flags,
-  const unsigned int                      face_number)
+  const unsigned int                      face_number,
+  const bool                              sum_into_values)
 {
   const VectorizedArrayType *input  = scratch_data_vectorized.begin();
   VectorizedArrayType       *output = solution_values;
 
-  internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
-    template interpolate<false, false>(
-      n_components, integration_flags, shape_info, input, output, face_number);
+  if (sum_into_values)
+    internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
+      template interpolate<false, true>(n_components,
+                                        integration_flags,
+                                        shape_info,
+                                        input,
+                                        output,
+                                        face_number);
+  else
+    internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
+      template interpolate<false, false>(n_components,
+                                         integration_flags,
+                                         shape_info,
+                                         input,
+                                         output,
+                                         face_number);
 }
 
 
