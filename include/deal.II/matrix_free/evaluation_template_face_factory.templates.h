@@ -69,6 +69,25 @@ namespace internal
 
   template <int dim, typename Number>
   void
+  FEFaceEvaluationFactory<dim, Number>::evaluate_in_face(
+    const unsigned int                     n_components,
+    const EvaluationFlags::EvaluationFlags evaluation_flag,
+    FEEvaluationData<dim, Number, true>   &fe_eval)
+  {
+    instantiation_helper_run<
+      1,
+      FEFaceEvaluationImplEvaluateInFaceSelector<dim, Number>>(
+      fe_eval.get_shape_info().data[0].fe_degree,
+      fe_eval.get_shape_info().data[0].n_q_points_1d,
+      n_components,
+      evaluation_flag,
+      fe_eval);
+  }
+
+
+
+  template <int dim, typename Number>
+  void
   FEFaceEvaluationFactory<dim, Number>::integrate(
     const unsigned int                     n_components,
     const EvaluationFlags::EvaluationFlags integration_flag,
@@ -103,6 +122,25 @@ namespace internal
       n_components,
       integration_flag,
       values_dofs,
+      fe_eval);
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  FEFaceEvaluationFactory<dim, Number>::integrate_in_face(
+    const unsigned int                     n_components,
+    const EvaluationFlags::EvaluationFlags integration_flag,
+    FEEvaluationData<dim, Number, true>   &fe_eval)
+  {
+    instantiation_helper_run<
+      1,
+      FEFaceEvaluationImplIntegrateInFaceSelector<dim, Number>>(
+      fe_eval.get_shape_info().data[0].fe_degree,
+      fe_eval.get_shape_info().data[0].n_q_points_1d,
+      n_components,
+      integration_flag,
       fe_eval);
   }
 

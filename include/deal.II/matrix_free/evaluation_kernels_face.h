@@ -1889,6 +1889,38 @@ namespace internal
 
 
   template <int dim, typename Number>
+  struct FEFaceEvaluationImplEvaluateInFaceSelector
+  {
+    template <int fe_degree, int n_q_points_1d>
+    static bool
+    run(const unsigned int                     n_components,
+        const EvaluationFlags::EvaluationFlags evaluation_flag,
+        FEEvaluationData<dim, Number, true>   &fe_eval)
+    {
+      const auto &shape_info = fe_eval.get_shape_info();
+      const auto &shape_data = shape_info.data.front();
+
+      const unsigned int dofs_per_comp_face =
+        fe_degree > -1 ?
+          Utilities::pow(fe_degree + 1, dim - 1) :
+          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+
+      // Note: we always keep storage of values, 1st and 2nd derivatives in an
+      // array, so reserve space for all three here
+      Number *temp         = fe_eval.get_scratch_data().begin();
+      Number *scratch_data = temp + 3 * n_components * dofs_per_comp_face;
+
+      FEFaceEvaluationImplEvaluateSelector<dim, Number>::
+        template evaluate_in_face<fe_degree, n_q_points_1d>(
+          n_components, evaluation_flag, fe_eval, temp, scratch_data);
+
+      return false;
+    }
+  };
+
+
+
+  template <int dim, typename Number>
   struct FEFaceEvaluationImplIntegrateSelector
   {
     static bool
@@ -2330,6 +2362,37 @@ namespace internal
                                               use_vectorization,
                                               temp,
                                               scratch_data);
+
+      return false;
+    }
+  };
+
+
+
+  template <int dim, typename Number>
+  struct FEFaceEvaluationImplIntegrateInFaceSelector
+  {
+    template <int fe_degree, int n_q_points_1d>
+    static bool
+    run(const unsigned int                     n_components,
+        const EvaluationFlags::EvaluationFlags integration_flag,
+
+        FEEvaluationData<dim, Number, true> &fe_eval)
+    {
+      const auto &shape_info = fe_eval.get_shape_info();
+      const auto &shape_data = shape_info.data.front();
+
+      const unsigned int dofs_per_comp_face =
+        fe_degree > -1 ?
+          Utilities::pow(fe_degree + 1, dim - 1) :
+          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+
+      Number *temp         = fe_eval.get_scratch_data().begin();
+      Number *scratch_data = temp + 3 * n_components * dofs_per_comp_face;
+
+      FEFaceEvaluationImplIntegrateSelector<dim, Number>::
+        template integrate_in_face<fe_degree, n_q_points_1d>(
+          n_components, integration_flag, fe_eval, temp, scratch_data);
 
       return false;
     }

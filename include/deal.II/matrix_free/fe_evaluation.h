@@ -2611,6 +2611,9 @@ public:
   project_to_face(const VectorizedArrayType             *values_array,
                   const EvaluationFlags::EvaluationFlags evaluation_flag);
 
+  void
+  evaluate_in_face(const EvaluationFlags::EvaluationFlags evaluation_flag);
+
   /**
    * Reads from the input vector and evaluates the function values, the
    * gradients, and the Laplacians of the FE function at the quadrature points
@@ -2650,6 +2653,9 @@ public:
   void
   integrate(const EvaluationFlags::EvaluationFlags integration_flag,
             VectorizedArrayType                   *values_array);
+
+  void
+  integrate_in_face(const EvaluationFlags::EvaluationFlags integration_flag);
 
   void
   collect_from_face(const EvaluationFlags::EvaluationFlags integration_flag);
@@ -8705,6 +8711,55 @@ FEFaceEvaluation<dim,
                       values_array,
                       *this);
 
+  // face dofs initialized
+}
+
+
+
+template <int dim,
+          int fe_degree,
+          int n_q_points_1d,
+          int n_components_,
+          typename Number,
+          typename VectorizedArrayType>
+inline void
+FEFaceEvaluation<dim,
+                 fe_degree,
+                 n_q_points_1d,
+                 n_components_,
+                 Number,
+                 VectorizedArrayType>::
+  evaluate_in_face(const EvaluationFlags::EvaluationFlags evaluation_flag)
+{
+  Assert((evaluation_flag &
+          ~(EvaluationFlags::values | EvaluationFlags::gradients |
+            EvaluationFlags::hessians)) == 0,
+         ExcMessage("Only EvaluationFlags::values, EvaluationFlags::gradients, "
+                    "and EvaluationFlags::hessians are supported."));
+
+  const bool hessians_on_general_cells =
+    evaluation_flag & EvaluationFlags::hessians &&
+    (this->cell_type > internal::MatrixFreeFunctions::affine);
+  EvaluationFlags::EvaluationFlags evaluation_flag_actual = evaluation_flag;
+  if (hessians_on_general_cells)
+    evaluation_flag_actual |= EvaluationFlags::gradients;
+
+  if (this->data->element_type ==
+        internal::MatrixFreeFunctions::ElementType::tensor_raviart_thomas &&
+      evaluation_flag & EvaluationFlags::gradients &&
+      (this->cell_type > internal::MatrixFreeFunctions::affine))
+    evaluation_flag_actual |= EvaluationFlags::values;
+
+  if constexpr (fe_degree > -1)
+    internal::FEFaceEvaluationImplEvaluateInFaceSelector<
+      dim,
+      VectorizedArrayType>::template run<fe_degree>(n_components,
+                                                    evaluation_flag_actual,
+                                                    *this);
+  else
+    internal::FEFaceEvaluationFactory<dim, VectorizedArrayType>::
+      evaluate_in_face(n_components, evaluation_flag_actual, *this);
+
 #  ifdef DEBUG
   if (evaluation_flag_actual & EvaluationFlags::values)
     this->values_quad_initialized = true;
@@ -8810,6 +8865,80 @@ FEFaceEvaluation<dim,
   else
     internal::FEFaceEvaluationFactory<dim, VectorizedArrayType>::integrate(
       n_components, integration_flag_actual, values_array, *this);
+}
+
+
+
+template <int dim,
+          int fe_degree,
+          int n_q_points_1d,
+          int n_components_,
+          typename Number,
+          typename VectorizedArrayType>
+inline void
+FEFaceEvaluation<dim,
+                 fe_degree,
+                 n_q_points_1d,
+                 n_components_,
+                 Number,
+                 VectorizedArrayType>::
+  integrate_in_face(const EvaluationFlags::EvaluationFlags integration_flag)
+{
+  Assert((integration_flag &
+          ~(EvaluationFlags::values | EvaluationFlags::gradients |
+            EvaluationFlags::hessians)) == 0,
+         ExcMessage("Only EvaluationFlags::values, EvaluationFlags::gradients, "
+                    "and EvaluationFlags::hessians are supported."));
+
+  EvaluationFlags::EvaluationFlags integration_flag_actual = integration_flag;
+  if (integration_flag & EvaluationFlags::hessians &&
+      (this->cell_type > internal::MatrixFreeFunctions::affine))
+    {
+      unsigned int size = n_components * dim * n_q_points;
+      if ((integration_flag & EvaluationFlags::gradients) != 0u)
+        {
+          for (unsigned int i = 0; i < size; ++i)
+            this->gradients_quad[i] += this->gradients_from_hessians_quad[i];
+        }
+      else
+        {
+          for (unsigned int i = 0; i < size; ++i)
+            this->gradients_quad[i] = this->gradients_from_hessians_quad[i];
+          integration_flag_actual |= EvaluationFlags::gradients;
+        }
+    }
+
+  if (this->data->element_type ==
+        internal::MatrixFreeFunctions::ElementType::tensor_raviart_thomas &&
+      integration_flag & EvaluationFlags::gradients &&
+      this->cell_type > internal::MatrixFreeFunctions::affine &&
+      this->divergence_is_requested == false)
+    {
+      unsigned int size = n_components * n_q_points;
+      if ((integration_flag & EvaluationFlags::values) != 0u)
+        {
+          for (unsigned int i = 0; i < size; ++i)
+            this->values_quad[i] += this->values_from_gradients_quad[i];
+        }
+      else
+        {
+          for (unsigned int i = 0; i < size; ++i)
+            this->values_quad[i] = this->values_from_gradients_quad[i];
+          integration_flag_actual |= EvaluationFlags::values;
+        }
+    }
+
+  if constexpr (fe_degree > -1)
+    internal::FEFaceEvaluationImplIntegrateInFaceSelector<
+      dim,
+      VectorizedArrayType>::template run<fe_degree>(n_components,
+                                                    integration_flag_actual,
+                                                    *this);
+  else
+    internal::FEFaceEvaluationFactory<dim, VectorizedArrayType>::
+      integrate_in_face(n_components, integration_flag_actual, *this);
+
+  // face dofs initialized
 }
 
 
