@@ -67,7 +67,19 @@ namespace internal
              FEEvaluationData<dim, Number, true>   &fe_eval);
 
     static void
+    project_to_face(const unsigned int                     n_components,
+             const EvaluationFlags::EvaluationFlags evaluation_flag,
+             const Number                          *values_dofs,
+             FEEvaluationData<dim, Number, true>   &fe_eval);
+
+    static void
     integrate(const unsigned int                     n_components,
+              const EvaluationFlags::EvaluationFlags integration_flag,
+              Number                                *values_dofs,
+              FEEvaluationData<dim, Number, true>   &fe_eval);
+
+    static void
+    collect_from_face(const unsigned int                     n_components,
               const EvaluationFlags::EvaluationFlags integration_flag,
               Number                                *values_dofs,
               FEEvaluationData<dim, Number, true>   &fe_eval);

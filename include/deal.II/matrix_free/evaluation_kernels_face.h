@@ -1794,10 +1794,10 @@ namespace internal
                                  scratch_data);
 
       bool face_orientation_via_quadrature = true;
-      if (dim == 3 && (shape_data.nodal_at_cell_boundaries &&
-                       fe_eval.get_subface_index() >=
-                         GeometryInfo<dim>::max_children_per_cell))
-        face_orientation_via_quadrature = false;
+      //      if (dim == 3 && (shape_data.nodal_at_cell_boundaries &&
+      //                       fe_eval.get_subface_index() >=
+      //                         GeometryInfo<dim>::max_children_per_cell))
+      //        face_orientation_via_quadrature = false;
 
       if (dim == 3 && !face_orientation_via_quadrature)
         adjust_dofs_for_face_orientation<fe_degree>(n_components,
@@ -1836,6 +1836,53 @@ namespace internal
                                                          evaluation_flag,
                                                          values_dofs,
                                                          fe_eval);
+    }
+  };
+
+
+
+  template <int dim, typename Number>
+  struct FEFaceEvaluationImplProjectToFaceSelector
+  {
+    template <int fe_degree>
+    static bool
+    run(const unsigned int                     n_components,
+        const EvaluationFlags::EvaluationFlags evaluation_flag,
+        const Number                          *values_dofs,
+        FEEvaluationData<dim, Number, true>   &fe_eval)
+    {
+      const auto &shape_info = fe_eval.get_shape_info();
+      const auto &shape_data = shape_info.data.front();
+
+      const unsigned int dofs_per_comp_face =
+        fe_degree > -1 ?
+          Utilities::pow(fe_degree + 1, dim - 1) :
+          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+
+      // Note: we always keep storage of values, 1st and 2nd derivatives in an
+      // array, so reserve space for all three here
+      Number *temp         = fe_eval.get_scratch_data().begin();
+      Number *scratch_data = temp + 3 * n_components * dofs_per_comp_face;
+
+      bool use_vectorization = true;
+      if (fe_eval.get_dof_access_index() ==
+            MatrixFreeFunctions::DoFInfo::dof_access_cell &&
+          fe_eval.is_interior_face() == false) // exterior faces in the ECL loop
+        for (unsigned int v = 0; v < Number::size(); ++v)
+          if (fe_eval.get_cell_ids()[v] != numbers::invalid_unsigned_int &&
+              fe_eval.get_face_no(v) != fe_eval.get_face_no(0))
+            use_vectorization = false;
+
+      FEFaceEvaluationImplEvaluateSelector<dim, Number>::
+        template project_to_face<fe_degree>(n_components,
+                                            evaluation_flag,
+                                            values_dofs,
+                                            fe_eval,
+                                            use_vectorization,
+                                            temp,
+                                            scratch_data);
+
+      return false;
     }
   };
 
@@ -2185,10 +2232,10 @@ namespace internal
                       });
 
       bool face_orientation_via_quadrature = true;
-      if (dim == 3 && (shape_data.nodal_at_cell_boundaries &&
-                       fe_eval.get_subface_index() >=
-                         GeometryInfo<dim>::max_children_per_cell))
-        face_orientation_via_quadrature = false;
+      //      if (dim == 3 && (shape_data.nodal_at_cell_boundaries &&
+      //                       fe_eval.get_subface_index() >=
+      //                         GeometryInfo<dim>::max_children_per_cell))
+      //        face_orientation_via_quadrature = false;
 
       if (dim == 3 && face_orientation_via_quadrature)
         adjust_quadrature_for_face_orientation(
@@ -2235,6 +2282,56 @@ namespace internal
                                                           integration_flag,
                                                           values_dofs,
                                                           fe_eval);
+    }
+  };
+
+
+
+  template <int dim, typename Number>
+  struct FEFaceEvaluationImplCollectFromFaceSelector
+  {
+    template <int fe_degree>
+    static bool
+    run(const unsigned int                     n_components,
+        const EvaluationFlags::EvaluationFlags integration_flag,
+        Number                                *values_dofs,
+        FEEvaluationData<dim, Number, true>   &fe_eval)
+    {
+      const auto &shape_info = fe_eval.get_shape_info();
+      const auto &shape_data = shape_info.data.front();
+
+      const unsigned int dofs_per_comp_face =
+        fe_degree > -1 ?
+          Utilities::pow(fe_degree + 1, dim - 1) :
+          Utilities::fixed_power<dim - 1>(shape_data.fe_degree + 1);
+
+      Number *temp         = fe_eval.get_scratch_data().begin();
+      Number *scratch_data = temp + 3 * n_components * dofs_per_comp_face;
+
+      bool use_vectorization = true;
+
+      if (fe_eval.get_dof_access_index() ==
+            MatrixFreeFunctions::DoFInfo::dof_access_cell &&
+          fe_eval.is_interior_face() == false) // exterior faces in the ECL loop
+        use_vectorization =
+          fe_eval.get_cell_ids()[0] != numbers::invalid_unsigned_int &&
+          std::all_of(fe_eval.get_cell_ids().begin() + 1,
+                      fe_eval.get_cell_ids().end(),
+                      [&](const auto &v) {
+                        return v == fe_eval.get_cell_ids()[0] ||
+                               v == numbers::invalid_unsigned_int;
+                      });
+
+      FEFaceEvaluationImplIntegrateSelector<dim, Number>::
+        template collect_from_face<fe_degree>(n_components,
+                                              integration_flag,
+                                              values_dofs,
+                                              fe_eval,
+                                              use_vectorization,
+                                              temp,
+                                              scratch_data);
+
+      return false;
     }
   };
 
