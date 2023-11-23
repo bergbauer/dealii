@@ -2976,26 +2976,17 @@ public:
   reinit(const unsigned int face_index);
 
   /**
-   * Interpolate values and face normal derivatives into dof values at faces for
-   * the current face batch.
-   */
-  void
-  project_to_face(const VectorizedArrayType              *solution_values,
-                  const EvaluationFlags::EvaluationFlags &evaluation_flags,
-                  const unsigned int                      face_number);
-
-  /**
    * Evaluate values and gradients in face for the selected face (lane) of the
    * batch.
    */
   void
-  evaluate_in_face(const unsigned int                      lane,
+  evaluate_in_face(const ScalarNumber                     *face_dof_values,
                    const EvaluationFlags::EvaluationFlags &evaluation_flags)
   {
     if (this->use_linear_path)
-      do_evaluate_in_face<true>(lane, evaluation_flags);
+      do_evaluate_in_face<true>(face_dof_values, evaluation_flags);
     else
-      do_evaluate_in_face<false>(lane, evaluation_flags);
+      do_evaluate_in_face<false>(face_dof_values, evaluation_flags);
   }
 
   /**
@@ -3003,24 +2994,19 @@ public:
    * batch.
    */
   void
-  integrate_in_face(const unsigned int                      lane,
-                    const EvaluationFlags::EvaluationFlags &integration_flags)
+  integrate_in_face(ScalarNumber                           *face_dof_values,
+                    const EvaluationFlags::EvaluationFlags &integration_flags,
+                    const bool sum_into_values = false)
   {
     if (this->use_linear_path)
-      do_integrate_in_face<true>(lane, integration_flags);
+      do_integrate_in_face<true>(face_dof_values,
+                                 integration_flags,
+                                 sum_into_values);
     else
-      do_integrate_in_face<false>(lane, integration_flags);
+      do_integrate_in_face<false>(face_dof_values,
+                                  integration_flags,
+                                  sum_into_values);
   }
-
-  /**
-   * Collect and sum contributions from values and face normal derivatives at
-   * dof values at faces for the current face batch.
-   */
-  void
-  collect_from_face(VectorizedArrayType                    *solution_values,
-                    const EvaluationFlags::EvaluationFlags &integration_flags,
-                    const unsigned int                      face_number,
-                    const bool sum_into_values = false);
 
   /**
    * Return the normal vector. This class or the MappingInfo object passed to
@@ -3044,7 +3030,7 @@ private:
    */
   template <bool is_linear>
   void
-  do_evaluate_in_face(const unsigned int                      lane,
+  do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
                       const EvaluationFlags::EvaluationFlags &evaluation_flags);
 
   /**
@@ -3054,68 +3040,10 @@ private:
   template <bool is_linear>
   void
   do_integrate_in_face(
-    const unsigned int                      lane,
-    const EvaluationFlags::EvaluationFlags &integration_flags);
-
-  /**
-   * Vectorized data array with storage for values and normal gradients at face
-   * dofs.
-   */
-  AlignedVector<VectorizedArrayType> scratch_data_vectorized;
-
-  /**
-   * Vectorized ShapeInfo object needed for from and to face interpolations.
-   */
-  internal::MatrixFreeFunctions::ShapeInfo<VectorizedArrayType> shape_info;
+    ScalarNumber                           *face_dof_values,
+    const EvaluationFlags::EvaluationFlags &integration_flags,
+    const bool                              sum_into_values);
 };
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::project_to_face(
-  const VectorizedArrayType              *solution_values,
-  const EvaluationFlags::EvaluationFlags &evaluation_flags,
-  const unsigned int                      face_number)
-{
-  const VectorizedArrayType *input  = solution_values;
-  VectorizedArrayType       *output = scratch_data_vectorized.begin();
-
-  internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
-    template interpolate<true, false>(
-      n_components, evaluation_flags, shape_info, input, output, face_number);
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::collect_from_face(
-  VectorizedArrayType                    *solution_values,
-  const EvaluationFlags::EvaluationFlags &integration_flags,
-  const unsigned int                      face_number,
-  const bool                              sum_into_values)
-{
-  const VectorizedArrayType *input  = scratch_data_vectorized.begin();
-  VectorizedArrayType       *output = solution_values;
-
-  if (sum_into_values)
-    internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
-      template interpolate<false, true>(n_components,
-                                        integration_flags,
-                                        shape_info,
-                                        input,
-                                        output,
-                                        face_number);
-  else
-    internal::FEFaceNormalEvaluationImpl<dim, -1, VectorizedArrayType>::
-      template interpolate<false, false>(n_components,
-                                         integration_flags,
-                                         shape_info,
-                                         input,
-                                         output,
-                                         face_number);
-}
 
 
 
@@ -3123,7 +3051,7 @@ template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
-  do_evaluate_in_face(const unsigned int                      lane,
+  do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
                       const EvaluationFlags::EvaluationFlags &evaluation_flags)
 {
   // loop over quadrature batches qb
@@ -3143,7 +3071,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
-                n_lanes_internal>(&scratch_data_vectorized[0][lane],
+                n_lanes_internal>(face_dof_values,
                                   this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim - 1,
@@ -3153,7 +3081,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 false,
                 n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
                                   n_shapes,
-                                  &scratch_data_vectorized[0][lane]);
+                                  face_dof_values);
 
           value = interpolated_value[dim - 1];
           // reorder derivative from tangential/normal derivatives into tensor
@@ -3202,7 +3130,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
-                n_lanes_internal>(&scratch_data_vectorized[0][lane],
+                n_lanes_internal>(face_dof_values,
                                   this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_shapes<
                 dim - 1,
@@ -3211,7 +3139,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 false,
                 n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
                                   n_shapes,
-                                  &scratch_data_vectorized[0][lane]);
+                                  face_dof_values);
         }
 
       if (evaluation_flags & EvaluationFlags::values)
@@ -3259,8 +3187,9 @@ template <bool is_linear>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   do_integrate_in_face(
-    const unsigned int                      lane,
-    const EvaluationFlags::EvaluationFlags &integration_flags)
+    ScalarNumber                           *face_dof_values,
+    const EvaluationFlags::EvaluationFlags &integration_flags,
+    const bool                              sum_into_values)
 {
   // zero out lanes of incomplete last quadrature point batch
   if constexpr (stride == 1)
@@ -3392,15 +3321,20 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   const unsigned int dofs_per_comp_face =
     is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
 
-  VectorizedArrayType *input = scratch_data_vectorized.data();
-
   for (unsigned int comp = 0; comp < n_components; ++comp)
     for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
-      input[i][lane] =
-        ETT::sum_value(comp,
-                       is_linear ?
-                         *(solution_values_vectorized_linear.data() + i) :
-                         this->solution_renumbered_vectorized[i]);
+      if (sum_into_values)
+        face_dof_values[i * n_lanes_internal] +=
+          ETT::sum_value(comp,
+                         is_linear ?
+                           *(solution_values_vectorized_linear.data() + i) :
+                           this->solution_renumbered_vectorized[i]);
+      else
+        face_dof_values[i * n_lanes_internal] =
+          ETT::sum_value(comp,
+                         is_linear ?
+                           *(solution_values_vectorized_linear.data() + i) :
+                           this->solution_renumbered_vectorized[i]);
 }
 
 
@@ -3417,11 +3351,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
       fe,
       first_selected_component,
       is_interior)
-{
-  shape_info.reinit(QMidpoint<1>(), *this->fe);
-  scratch_data_vectorized.resize(2 * this->dofs_per_component_face *
-                                 n_components);
-}
+{}
 
 
 
