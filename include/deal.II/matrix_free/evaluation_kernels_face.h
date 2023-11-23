@@ -1928,7 +1928,8 @@ namespace internal
       const unsigned int                     n_components,
       const EvaluationFlags::EvaluationFlags integration_flag,
       Number                                *values_dofs,
-      FEEvaluationData<dim, Number, true>   &fe_eval)
+      FEEvaluationData<dim, Number, true>   &fe_eval,
+      const bool                             sum_into_values)
     {
       const auto &shape_info = fe_eval.get_shape_info();
       const auto &shape_data = shape_info.data.front();
@@ -1959,9 +1960,12 @@ namespace internal
           Eval eval(shape_values, nullptr, nullptr, n_dofs, n_q_points);
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              eval.template values<0, false, false>(values_quad_ptr,
-                                                    values_dofs_actual_ptr);
-
+              if (sum_into_values)
+                eval.template values<0, false, true>(values_quad_ptr,
+                                                     values_dofs_actual_ptr);
+              else
+                eval.template values<0, false, false>(values_quad_ptr,
+                                                      values_dofs_actual_ptr);
               values_quad_ptr += n_q_points;
               values_dofs_actual_ptr += n_dofs;
             }
@@ -1984,7 +1988,8 @@ namespace internal
                   Eval eval(
                     nullptr, shape_gradients[d], nullptr, n_dofs, n_q_points);
 
-                  if (!(integration_flag & EvaluationFlags::values) && d == 0)
+                  if (!sum_into_values &&
+                      !(integration_flag & EvaluationFlags::values) && d == 0)
                     eval.template gradients<0, false, false, dim>(
                       gradients_quad_ptr + d, values_dofs_actual_ptr);
                   else
@@ -2252,7 +2257,8 @@ namespace internal
     integrate_tensor(const unsigned int                     n_components,
                      const EvaluationFlags::EvaluationFlags integration_flag,
                      Number                                *values_dofs,
-                     FEEvaluationData<dim, Number, true>   &fe_eval)
+                     FEEvaluationData<dim, Number, true>   &fe_eval,
+                     const bool                             sum_into_values)
     {
       const auto &shape_info = fe_eval.get_shape_info();
       const auto &shape_data = shape_info.data.front();
@@ -2307,7 +2313,7 @@ namespace internal
                                    use_vectorization,
                                    temp,
                                    scratch_data,
-                                   false);
+                                   sum_into_values);
 
       return false;
     }
@@ -2317,7 +2323,8 @@ namespace internal
     run(const unsigned int                     n_components,
         const EvaluationFlags::EvaluationFlags integration_flag,
         Number                                *values_dofs,
-        FEEvaluationData<dim, Number, true>   &fe_eval)
+        FEEvaluationData<dim, Number, true>   &fe_eval,
+        const bool                             sum_into_values)
     {
       const auto &shape_info = fe_eval.get_shape_info();
 
@@ -2325,12 +2332,14 @@ namespace internal
         return integrate_tensor_none(n_components,
                                      integration_flag,
                                      values_dofs,
-                                     fe_eval);
+                                     fe_eval,
+                                     sum_into_values);
       else
         return integrate_tensor<fe_degree, n_q_points_1d>(n_components,
                                                           integration_flag,
                                                           values_dofs,
-                                                          fe_eval);
+                                                          fe_eval,
+                                                          sum_into_values);
     }
   };
 

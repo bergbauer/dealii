@@ -2640,7 +2640,8 @@ public:
    * distribute_local_to_global() or set_dof_values() methods).
    */
   void
-  integrate(const EvaluationFlags::EvaluationFlags integration_flag);
+  integrate(const EvaluationFlags::EvaluationFlags integration_flag,
+            const bool                             sum_into_values = false);
 
   /**
    * This function takes the values and/or gradients that are stored on
@@ -2652,7 +2653,8 @@ public:
    */
   void
   integrate(const EvaluationFlags::EvaluationFlags integration_flag,
-            VectorizedArrayType                   *values_array);
+            VectorizedArrayType                   *values_array,
+            const bool                             sum_into_values = false);
 
   void
   integrate_in_face(const EvaluationFlags::EvaluationFlags integration_flag);
@@ -8787,9 +8789,10 @@ FEFaceEvaluation<dim,
                  n_components_,
                  Number,
                  VectorizedArrayType>::
-  integrate(const EvaluationFlags::EvaluationFlags integration_flag)
+  integrate(const EvaluationFlags::EvaluationFlags integration_flag,
+            const bool                             sum_into_values)
 {
-  integrate(integration_flag, this->values_dofs);
+  integrate(integration_flag, this->values_dofs, sum_into_values);
 
 #  ifdef DEBUG
   this->dof_values_initialized = true;
@@ -8812,7 +8815,8 @@ FEFaceEvaluation<dim,
                  Number,
                  VectorizedArrayType>::
   integrate(const EvaluationFlags::EvaluationFlags integration_flag,
-            VectorizedArrayType                   *values_array)
+            VectorizedArrayType                   *values_array,
+            const bool                             sum_into_values)
 {
   Assert((integration_flag &
           ~(EvaluationFlags::values | EvaluationFlags::gradients |
@@ -8863,10 +8867,15 @@ FEFaceEvaluation<dim,
       template run<fe_degree, n_q_points_1d>(n_components,
                                              integration_flag_actual,
                                              values_array,
-                                             *this);
+                                             *this,
+                                             sum_into_values);
   else
     internal::FEFaceEvaluationFactory<dim, VectorizedArrayType>::integrate(
-      n_components, integration_flag_actual, values_array, *this);
+      n_components,
+      integration_flag_actual,
+      values_array,
+      *this,
+      sum_into_values);
 }
 
 
