@@ -318,8 +318,7 @@ test_dg_ecl(const unsigned int degree, const bool curved_mesh)
                     if (mask[v] == false)
                       {
                         for (unsigned int i = 0;
-                             i <
-                             2 * Utilities::fixed_power<dim - 1>(degree + 1);
+                             i < 2 * fe_eval_m.dofs_per_face;
                              ++i)
                           fe_eval_m.get_scratch_data().begin()[i][v] = 0.;
                         continue;
