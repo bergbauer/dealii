@@ -2977,35 +2977,43 @@ public:
 
   /**
    * Evaluate values and gradients in face for the selected face (lane) of the
-   * batch.
+   * batch. Default stride into the face dofs is width of
+   * VectorizedArray<selected_floating_point_type> which is the default
+   * vectorization over faces for FEFaceEvaluation.
    */
+  template <int stride_face_dof = VectorizedArrayType::size()>
   void
   evaluate_in_face(const ScalarNumber                     *face_dof_values,
                    const EvaluationFlags::EvaluationFlags &evaluation_flags)
   {
     if (this->use_linear_path)
-      do_evaluate_in_face<true>(face_dof_values, evaluation_flags);
+      do_evaluate_in_face<true, stride_face_dof>(face_dof_values,
+                                                 evaluation_flags);
     else
-      do_evaluate_in_face<false>(face_dof_values, evaluation_flags);
+      do_evaluate_in_face<false, stride_face_dof>(face_dof_values,
+                                                  evaluation_flags);
   }
 
   /**
    * Integrate values and gradients in face for the selected face (lane) of the
-   * batch.
+   * batch. Default stride into the face dofs is width of
+   * VectorizedArray<selected_floating_point_type> which is the default
+   * vectorization over faces for FEFaceEvaluation.
    */
+  template <int stride_face_dof = VectorizedArrayType::size()>
   void
   integrate_in_face(ScalarNumber                           *face_dof_values,
                     const EvaluationFlags::EvaluationFlags &integration_flags,
                     const bool sum_into_values = false)
   {
     if (this->use_linear_path)
-      do_integrate_in_face<true>(face_dof_values,
-                                 integration_flags,
-                                 sum_into_values);
+      do_integrate_in_face<true, stride_face_dof>(face_dof_values,
+                                                  integration_flags,
+                                                  sum_into_values);
     else
-      do_integrate_in_face<false>(face_dof_values,
-                                  integration_flags,
-                                  sum_into_values);
+      do_integrate_in_face<false, stride_face_dof>(face_dof_values,
+                                                   integration_flags,
+                                                   sum_into_values);
   }
 
   /**
@@ -3028,7 +3036,7 @@ private:
    * Actually does the evaluation templated on the chosen code path (linear or
    * higher order).
    */
-  template <bool is_linear>
+  template <bool is_linear, int stride_face_dof>
   void
   do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
                       const EvaluationFlags::EvaluationFlags &evaluation_flags);
@@ -3037,7 +3045,7 @@ private:
    * Actually does the integration templated on the chosen code path (linear or
    * higher order).
    */
-  template <bool is_linear>
+  template <bool is_linear, int stride_face_dof>
   void
   do_integrate_in_face(
     ScalarNumber                           *face_dof_values,
@@ -3048,7 +3056,7 @@ private:
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_linear>
+template <bool is_linear, int stride_face_dof>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
@@ -3071,17 +3079,17 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
-                n_lanes_internal>(face_dof_values,
-                                  this->unit_point_faces_ptr[qb]) :
+                stride_face_dof>(face_dof_values,
+                                 this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
                 false,
-                n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
-                                  n_shapes,
-                                  face_dof_values);
+                stride_face_dof>(this->shapes_faces.data() + qb * n_shapes,
+                                 n_shapes,
+                                 face_dof_values);
 
           value = interpolated_value[dim - 1];
           // reorder derivative from tangential/normal derivatives into tensor
@@ -3130,16 +3138,16 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
-                n_lanes_internal>(face_dof_values,
-                                  this->unit_point_faces_ptr[qb]) :
+                stride_face_dof>(face_dof_values,
+                                 this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_shapes<
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
                 false,
-                n_lanes_internal>(this->shapes_faces.data() + qb * n_shapes,
-                                  n_shapes,
-                                  face_dof_values);
+                stride_face_dof>(this->shapes_faces.data() + qb * n_shapes,
+                                 n_shapes,
+                                 face_dof_values);
         }
 
       if (evaluation_flags & EvaluationFlags::values)
@@ -3183,7 +3191,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_linear>
+template <bool is_linear, int stride_face_dof>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   do_integrate_in_face(
@@ -3324,13 +3332,13 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   for (unsigned int comp = 0; comp < n_components; ++comp)
     for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
       if (sum_into_values)
-        face_dof_values[i * n_lanes_internal] +=
+        face_dof_values[i * stride_face_dof] +=
           ETT::sum_value(comp,
                          is_linear ?
                            *(solution_values_vectorized_linear.data() + i) :
                            this->solution_renumbered_vectorized[i]);
       else
-        face_dof_values[i * n_lanes_internal] =
+        face_dof_values[i * stride_face_dof] =
           ETT::sum_value(comp,
                          is_linear ?
                            *(solution_values_vectorized_linear.data() + i) :
