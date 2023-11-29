@@ -308,9 +308,6 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_face_iterator(
   const unsigned int fe_component) const
 {
   AssertIndexRange(fe_component, dof_handlers.size());
-  AssertIndexRange(face_batch_index,
-                   n_inner_face_batches() +
-                     (interior ? n_boundary_face_batches() : 0));
 
   AssertIndexRange(lane_index,
                    n_active_entries_per_face_batch(face_batch_index));
