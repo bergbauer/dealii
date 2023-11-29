@@ -3060,7 +3060,7 @@ private:
 
 template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear, int stride_face_dof>
-void
+inline void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
                       const EvaluationFlags::EvaluationFlags &evaluation_flags)
@@ -3195,7 +3195,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
 
 template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear, int stride_face_dof>
-void
+inline void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   do_integrate_in_face(
     ScalarNumber                           *face_dof_values,
