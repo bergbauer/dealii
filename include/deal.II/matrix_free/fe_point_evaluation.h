@@ -45,7 +45,7 @@ namespace internal
     DeclException1(
       ExcFEPointEvaluationAccessToUninitializedMappingField,
       std::string,
-      << "You are requesting information from an FEPointEvaluation "
+      << "You are requesting information from an FEPointEvaluationBase "
       << "object for which this kind of information has not been computed. "
       << "What information these objects compute is determined by the update_* "
       << "flags you pass to MappingInfo() in the Constructor. Here, "
@@ -697,7 +697,7 @@ class FEFacePointEvaluation;
  * non-matching grids and particle simulations.
  *
  * The use of this class is similar to FEValues or FEEvaluation: The class is
- * first initialized to a cell by calling `FEPointEvaluation::reinit(cell,
+ * first initialized to a cell by calling `FEPointEvaluationBase::reinit(cell,
  * unit_points)`, with the main difference to the other concepts that the
  * underlying points in reference coordinates need to be passed along. Then,
  * upon call to evaluate() or integrate(), the user can compute information at
@@ -723,7 +723,7 @@ template <int n_components_,
           int dim,
           int spacedim    = dim,
           typename Number = double>
-class FEPointEvaluation
+class FEPointEvaluationBase
 {
 public:
   static constexpr unsigned int dimension    = dim;
@@ -762,14 +762,14 @@ public:
    * objects, this parameter allows to select a range of `n_components`
    * components starting from this parameter.
    */
-  FEPointEvaluation(const Mapping<dim>       &mapping,
-                    const FiniteElement<dim> &fe,
-                    const UpdateFlags         update_flags,
-                    const unsigned int        first_selected_component = 0);
+  FEPointEvaluationBase(const Mapping<dim>       &mapping,
+                        const FiniteElement<dim> &fe,
+                        const UpdateFlags         update_flags,
+                        const unsigned int        first_selected_component = 0);
 
   /**
    * Constructor to make the present class able to re-use the geometry
-   * data also used by other `FEPointEvaluation` objects.
+   * data also used by other `FEPointEvaluationBase` objects.
    *
    * @param mapping_info The MappingInfo class describes the geometry-related
    * data for evaluating finite-element solutions. This object enables to
@@ -783,7 +783,7 @@ public:
    * objects, this parameter allows to select a range of `n_components`
    * components starting from this parameter.
    */
-  FEPointEvaluation(
+  FEPointEvaluationBase(
     NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
     const FiniteElement<dim>                        &fe,
     const unsigned int first_selected_component = 0,
@@ -792,204 +792,23 @@ public:
   /**
    * Copy constructor.
    */
-  FEPointEvaluation(FEPointEvaluation &other) noexcept;
+  FEPointEvaluationBase(FEPointEvaluationBase &other) noexcept;
 
   /**
    * Move constructor.
    */
-  FEPointEvaluation(FEPointEvaluation &&other) noexcept;
+  FEPointEvaluationBase(FEPointEvaluationBase &&other) noexcept;
 
   /**
    * Destructor.
    */
-  ~FEPointEvaluation();
-
-  /**
-   * Set up the mapping information for the given cell, e.g., by computing the
-   * Jacobian of the mapping for the given points if gradients of the functions
-   * are requested.
-   *
-   * @param[in] cell An iterator to the current cell
-   *
-   * @param[in] unit_points List of points in the reference locations of the
-   * current cell where the FiniteElement object should be
-   * evaluated/integrated in the evaluate() and integrate() functions.
-   */
-  void
-  reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-         const ArrayView<const Point<dim>> &unit_points);
-
-  /**
-   * Reinitialize the evaluator to point to the correct precomputed mapping of
-   * the single cell in the MappingInfo object.
-   */
-  void
-  reinit();
-
-  /**
-   * Reinitialize the evaluator to point to the correct precomputed mapping of
-   * the cell in the MappingInfo object.
-   */
-  void
-  reinit(const unsigned int cell_index);
-
-  /**
-   * This function interpolates the finite element solution, represented by
-   * `solution_values`, on the cell and `unit_points` passed to reinit().
-   *
-   * @param[in] solution_values This array is supposed to contain the unknown
-   * values on the element read out by
-   * `FEEvaluation::read_dof_values(global_vector)`.
-   *
-   * @param[in] evaluation_flags Flags specifying which quantities should be
-   * evaluated at the points.
-   */
-  template <std::size_t stride_view>
-  void
-  evaluate(
-    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
-
-  /**
-   * This function interpolates the finite element solution, represented by
-   * `solution_values`, on the cell and `unit_points` passed to reinit().
-   *
-   * @param[in] solution_values This array is supposed to contain the unknown
-   * values on the element as returned by `cell->get_dof_values(global_vector,
-   * solution_values)`.
-   *
-   * @param[in] evaluation_flags Flags specifying which quantities should be
-   * evaluated at the points.
-   */
-  void
-  evaluate(const ArrayView<const ScalarNumber>    &solution_values,
-           const EvaluationFlags::EvaluationFlags &evaluation_flags)
-  {
-    evaluate(StridedArrayView<const ScalarNumber, 1>(solution_values.data(),
-                                                     solution_values.size()),
-             evaluation_flags);
-  }
-
-  /**
-   * This function multiplies the quantities passed in by previous
-   * submit_value() or submit_gradient() calls by the value or gradient of the
-   * test functions, and performs summation over all given points multiplied be
-   * the Jacobian determinant times the quadrature weight (JxW).
-   *
-   * @param[out] solution_values This array will contain the result of the
-   * integral, which can be used during
-   * `FEEvaluation::set_dof_values(global_vector)` or
-   * `FEEvaluation::distribute_local_to_global(global_vector)`. Note
-   * that for multi-component systems where only some of the components are
-   * selected by the present class, the entries in `solution_values` not touched
-   * by this class will be set to zero.
-   *
-   * @param[in] integration_flags Flags specifying which quantities should be
-   * integrated at the points.
-   *
-   * @param[in] sum_into_values Flag specifying if the integrated values
-   * should be summed into the solution values. Defaults to false.
-   *
-   */
-  template <std::size_t stride_view>
-  void
-  integrate(const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-            const EvaluationFlags::EvaluationFlags &integration_flags,
-            const bool                              sum_into_values = false);
-
-  /**
-   * This function multiplies the quantities passed in by previous
-   * submit_value() or submit_gradient() calls by the value or gradient of the
-   * test functions, and performs summation over all given points multiplied be
-   * the Jacobian determinant times the quadrature weight (JxW).
-   *
-   * @param[out] solution_values This array will contain the result of the
-   * integral, which can be used to during
-   * `cell->set_dof_values(solution_values, global_vector)` or
-   * `cell->distribute_local_to_global(solution_values, global_vector)`. Note
-   * that for multi-component systems where only some of the components are
-   * selected by the present class, the entries in `solution_values` not touched
-   * by this class will be set to zero.
-   *
-   * @param[in] integration_flags Flags specifying which quantities should be
-   * integrated at the points.
-   *
-   * @param[in] sum_into_values Flag specifying if the integrated values
-   * should be summed into the solution values. Defaults to false.
-   *
-   */
-  void
-  integrate(const ArrayView<ScalarNumber>          &solution_values,
-            const EvaluationFlags::EvaluationFlags &integration_flags,
-            const bool                              sum_into_values = false);
-
-  /**
-   * This function multiplies the quantities passed in by previous
-   * submit_value() or submit_gradient() calls by the value or gradient of the
-   * test functions, and performs summation over all given points. This is
-   * similar to the integration of a bilinear form in terms of the test
-   * function, with the difference that this formula does not include a `JxW`
-   * factor (in contrast to the integrate function of this class). This allows
-   * the class to naturally embed point information (e.g. particles) into a
-   * finite element formulation.
-   *
-   * @param[out] solution_values This array will contain the result of the
-   * integral, which can be used during
-   * `FEEvaluation::set_dof_values(global_vector)` or
-   * `FEEvaluation::distribute_local_to_global(global_vector)`. Note
-   * that for multi-component systems where only some of the components are
-   * selected by the present class, the entries in `solution_values` not touched
-   * by this class will be set to zero.
-   *
-   * @param[in] integration_flags Flags specifying which quantities should be
-   * integrated at the points.
-   *
-   * @param[in] sum_into_values Flag specifying if the integrated values
-   * should be summed into the solution values. Defaults to false.
-   *
-   */
-  template <std::size_t stride_view>
-  void
-  test_and_sum(
-    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags            &integration_flags,
-    const bool                                         sum_into_values = false);
-
-  /**
-   * This function multiplies the quantities passed in by previous
-   * submit_value() or submit_gradient() calls by the value or gradient of the
-   * test functions, and performs summation over all given points. This is
-   * similar to the integration of a bilinear form in terms of the test
-   * function, with the difference that this formula does not include a `JxW`
-   * factor (in contrast to the integrate function of this class). This allows
-   * the class to naturally embed point information (e.g. particles) into a
-   * finite element formulation.
-   *
-   * @param[out] solution_values This array will contain the result of the
-   * integral, which can be used during
-   * `cell->set_dof_values(solution_values, global_vector)` or
-   * `cell->distribute_local_to_global(solution_values, global_vector)`. Note
-   * that for multi-component systems where only some of the components are
-   * selected by the present class, the entries in `solution_values` not touched
-   * by this class will be set to zero.
-   *
-   * @param[in] integration_flags Flags specifying which quantities should be
-   * integrated at the points.
-   *
-   * @param[in] sum_into_values Flag specifying if the integrated values
-   * should be summed into the solution values. Defaults to false.
-   *
-   */
-  void
-  test_and_sum(const ArrayView<ScalarNumber>          &solution_values,
-               const EvaluationFlags::EvaluationFlags &integration_flags,
-               const bool                              sum_into_values = false);
+  ~FEPointEvaluationBase();
 
   /**
    * Return the value at quadrature point number @p point_index after a call to
-   * FEPointEvaluation::evaluate() with EvaluationFlags::values set, or
+   * FEPointEvaluationBase::evaluate() with EvaluationFlags::values set, or
    * the value that has been stored there with a call to
-   * FEPointEvaluation::submit_value(). If the object is vector-valued, a
+   * FEPointEvaluationBase::submit_value(). If the object is vector-valued, a
    * vector-valued return argument is given.
    */
   const value_type &
@@ -998,22 +817,22 @@ public:
   /**
    * Write a value to the field containing the values on points
    * with component point_index. Access to the same field as through
-   * get_value(). If applied before the function FEPointEvaluation::integrate()
-   * with EvaluationFlags::values set is called, this specifies the value
-   * which is tested by all basis function on the current cell and
-   * integrated over.
+   * get_value(). If applied before the function
+   * FEPointEvaluationBase::integrate() with EvaluationFlags::values set is
+   * called, this specifies the value which is tested by all basis function on
+   * the current cell and integrated over.
    */
   void
   submit_value(const value_type &value, const unsigned int point_index);
 
   /**
    * Return the gradient in real coordinates at the point with index
-   * `point_index` after a call to FEPointEvaluation::evaluate() with
+   * `point_index` after a call to FEPointEvaluationBase::evaluate() with
    * EvaluationFlags::gradients set, or the gradient that has been stored there
-   * with a call to FEPointEvaluation::submit_gradient(). The gradient in real
-   * coordinates is obtained by taking the unit gradient (also accessible via
-   * get_unit_gradient()) and applying the inverse Jacobian of the mapping. If
-   * the object is vector-valued, a vector-valued return argument is given.
+   * with a call to FEPointEvaluationBase::submit_gradient(). The gradient in
+   * real coordinates is obtained by taking the unit gradient (also accessible
+   * via get_unit_gradient()) and applying the inverse Jacobian of the mapping.
+   * If the object is vector-valued, a vector-valued return argument is given.
    */
   const gradient_type &
   get_gradient(const unsigned int point_index) const;
@@ -1022,9 +841,9 @@ public:
    * Write a contribution that is tested by the gradient to the field
    * containing the values on points with the given `point_index`. Access to
    * the same field as through get_gradient(). If applied before the function
-   * FEPointEvaluation::integrate(EvaluationFlags::gradients) is called, this
-   * specifies what is tested by all basis function gradients on the current
-   * cell and integrated over.
+   * FEPointEvaluationBase::integrate(EvaluationFlags::gradients) is called,
+   * this specifies what is tested by all basis function gradients on the
+   * current cell and integrated over.
    */
   void
   submit_gradient(const gradient_type &, const unsigned int point_index);
@@ -1084,7 +903,7 @@ public:
   inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
   quadrature_point_indices() const;
 
-private:
+protected:
   static constexpr std::size_t n_lanes_user_interface =
     internal::VectorizedArrayTrait<Number>::width();
   static constexpr std::size_t n_lanes_internal =
@@ -1111,109 +930,6 @@ private:
   template <bool is_face, bool is_linear>
   void
   do_reinit();
-
-  /**
-   * Resizes necessary data fields, reads in and renumbers solution values.
-   * Interpolates onto face if face path is selected.
-   */
-  template <bool is_face_path, bool is_linear, std::size_t stride_view>
-  void
-  prepare_evaluate_fast(
-    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
-
-  /**
-   * Evaluates the actual interpolation on the cell or face for a quadrature
-   * batch.
-   */
-  template <bool is_face_path, bool is_linear, std::size_t stride_view>
-  void
-  compute_evaluate_fast(
-    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags                  &evaluation_flags,
-    const unsigned int                                       n_shapes,
-    const unsigned int                                       qb,
-    vectorized_value_type                                   &value,
-    interface_vectorized_gradient_type                      &gradient);
-
-  /**
-   * Fast path of the evaluate function.
-   */
-  template <bool is_face_path, bool is_linear, std::size_t stride_view>
-  void
-  evaluate_fast(
-    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
-
-  /**
-   * Slow path of the evaluate function using FEValues.
-   */
-  template <std::size_t stride_view>
-  void
-  evaluate_slow(
-    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
-
-  /**
-   * Integrates the product of the data passed in by submit_value() and
-   * submit_gradient() with the values or gradients of test functions on the
-   * cell or face for a given quadrature batch.
-   */
-  template <bool is_face_path, bool is_linear>
-  void
-  compute_integrate_fast(
-    const EvaluationFlags::EvaluationFlags  &integration_flags,
-    const unsigned int                       n_shapes,
-    const unsigned int                       qb,
-    const vectorized_value_type              value,
-    const interface_vectorized_gradient_type gradient,
-    vectorized_value_type                   *solution_values_vectorized_linear);
-
-  /**
-   * Addition across the lanes of VectorizedArray as accumulated by the
-   * compute_integrate_fast_function(), writing the sum into the result vector.
-   * Applies face contributions to cell contributions for face path.
-   */
-  template <bool is_face_path, bool is_linear, std::size_t stride_view>
-  void
-  finish_integrate_fast(
-    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags            &integration_flags,
-    vectorized_value_type *solution_values_vectorized_linear,
-    const bool             sum_into_values);
-
-  /**
-   * Fast path of the integrate function.
-   */
-  template <bool        do_JxW,
-            bool        is_face_path,
-            bool        is_linear,
-            std::size_t stride_view>
-  void
-  integrate_fast(
-    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags            &integration_flags,
-    const bool                                         sum_into_values);
-
-  /**
-   * Slow path of the integrate function using FEValues.
-   */
-  template <bool do_JxW, std::size_t stride_view>
-  void
-  integrate_slow(
-    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags            &integration_flags,
-    const bool                                         sum_into_values);
-
-  /**
-   * Implementation of the integrate/test_and_sum function.
-   */
-  template <bool do_JxW, std::size_t stride_view>
-  void
-  do_integrate(
-    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags            &integration_flags,
-    const bool                                         sum_into_values);
 
   /**
    * Number of quadrature batches of the current cell/face.
@@ -1443,11 +1159,11 @@ private:
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
-  const Mapping<dim>       &mapping,
-  const FiniteElement<dim> &fe,
-  const UpdateFlags         update_flags,
-  const unsigned int        first_selected_component)
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
+  FEPointEvaluationBase(const Mapping<dim>       &mapping,
+                        const FiniteElement<dim> &fe,
+                        const UpdateFlags         update_flags,
+                        const unsigned int        first_selected_component)
   : n_q_batches(numbers::invalid_unsigned_int)
   , n_q_points(numbers::invalid_unsigned_int)
   , n_q_points_scalar(numbers::invalid_unsigned_int)
@@ -1472,11 +1188,12 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
-  NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-  const FiniteElement<dim>                        &fe,
-  const unsigned int                               first_selected_component,
-  const bool                                       is_interior)
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
+  FEPointEvaluationBase(
+    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim>                        &fe,
+    const unsigned int                               first_selected_component,
+    const bool                                       is_interior)
   : n_q_batches(numbers::invalid_unsigned_int)
   , n_q_points(numbers::invalid_unsigned_int)
   , n_q_points_scalar(numbers::invalid_unsigned_int)
@@ -1499,8 +1216,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
-  FEPointEvaluation<n_components_, dim, spacedim, Number> &other) noexcept
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
+  FEPointEvaluationBase(
+    FEPointEvaluationBase<n_components_, dim, spacedim, Number> &other) noexcept
   : n_q_batches(other.n_q_batches)
   , n_q_points(other.n_q_points)
   , n_q_points_scalar(other.n_q_points_scalar)
@@ -1542,8 +1260,10 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
-  FEPointEvaluation<n_components_, dim, spacedim, Number> &&other) noexcept
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
+  FEPointEvaluationBase(
+    FEPointEvaluationBase<n_components_, dim, spacedim, Number>
+      &&other) noexcept
   : n_q_batches(other.n_q_batches)
   , n_q_points(other.n_q_points)
   , n_q_points_scalar(other.n_q_points_scalar)
@@ -1580,7 +1300,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::~FEPointEvaluation()
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
+  ~FEPointEvaluationBase()
 {
   connection_is_reinitialized.disconnect();
 }
@@ -1589,7 +1310,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::~FEPointEvaluation()
 
 template <int n_components_, int dim, int spacedim, typename Number>
 void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::setup(
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::setup(
   const unsigned int first_selected_component)
 {
   AssertIndexRange(first_selected_component + n_components,
@@ -1674,89 +1395,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::setup(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
-  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-  const ArrayView<const Point<dim>>                          &unit_points)
-{
-  // reinit is only allowed for mapping computation on the fly
-  AssertThrow(mapping_info_on_the_fly.get() != nullptr, ExcNotImplemented());
-
-  mapping_info->reinit(cell, unit_points);
-
-  if (!fast_path)
-    {
-      fe_values = std::make_shared<FEValues<dim, spacedim>>(
-        *mapping,
-        *fe,
-        Quadrature<dim>(
-          std::vector<Point<dim>>(unit_points.begin(), unit_points.end())),
-        update_flags);
-      fe_values->reinit(cell);
-    }
-
-  if (use_linear_path)
-    do_reinit<false, true>();
-  else
-    do_reinit<false, false>();
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit()
-{
-  current_cell_index  = numbers::invalid_unsigned_int;
-  current_face_number = numbers::invalid_unsigned_int;
-
-  if (use_linear_path)
-    do_reinit<false, true>();
-  else
-    do_reinit<false, false>();
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
-  const unsigned int cell_index)
-{
-  current_cell_index  = cell_index;
-  current_face_number = numbers::invalid_unsigned_int;
-
-  if (use_linear_path)
-    do_reinit<false, true>();
-  else
-    do_reinit<false, false>();
-
-  if (!fast_path)
-    {
-      std::vector<Point<dim>> unit_points(n_q_points_scalar);
-
-      for (unsigned int v = 0; v < n_q_points_scalar; ++v)
-        for (unsigned int d = 0; d < dim; ++d)
-          unit_points[v][d] =
-            unit_point_ptr[v / n_lanes_internal][d][v % n_lanes_internal];
-
-      fe_values = std::make_shared<FEValues<dim, spacedim>>(
-        *mapping,
-        *fe,
-        Quadrature<dim>(
-          std::vector<Point<dim>>(unit_points.begin(), unit_points.end())),
-        update_flags);
-
-      fe_values->reinit(mapping_info->get_cell_iterator(current_cell_index));
-    }
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_face, bool is_linear>
 inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::do_reinit()
 {
   const unsigned int geometry_index =
     mapping_info->template compute_geometry_index_offset<is_face>(
@@ -1868,365 +1509,612 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_reinit()
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_face_path, bool is_linear, std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::prepare_evaluate_fast(
-  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
+inline const typename FEPointEvaluationBase<n_components_,
+                                            dim,
+                                            spacedim,
+                                            Number>::value_type &
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::get_value(
+  const unsigned int point_index) const
 {
-  const unsigned int dofs_per_comp =
-    is_linear ? Utilities::pow(2, dim) : dofs_per_component;
-
-  for (unsigned int comp = 0; comp < n_components; ++comp)
-    {
-      const std::size_t offset =
-        (component_in_base_element + comp) * dofs_per_comp;
-
-      if (is_face_path)
-        {
-          const ScalarNumber *input;
-          if (is_linear || renumber.empty())
-            {
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                scratch_data_scalar[i] = solution_values[i + offset];
-              input = scratch_data_scalar.data();
-            }
-          else
-            {
-              const unsigned int *renumber_ptr = renumber.data() + offset;
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                scratch_data_scalar[i] = solution_values[renumber_ptr[i]];
-              input = scratch_data_scalar.data();
-            }
-
-          ScalarNumber *output = scratch_data_scalar.begin() + dofs_per_comp;
-
-          internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-            template interpolate<true, false>(1,
-                                              evaluation_flags,
-                                              shape_info,
-                                              input,
-                                              output,
-                                              current_face_number);
-
-          const unsigned int dofs_per_comp_face =
-            is_linear ? Utilities::pow(2, dim - 1) : dofs_per_component_face;
-          for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
-            ETT::read_value(output[i], comp, solution_renumbered[i]);
-        }
-      else
-        {
-          if ((is_linear && n_components == 1) || renumber.empty())
-            {
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                ETT::read_value(solution_values[i + offset],
-                                comp,
-                                solution_renumbered[i]);
-            }
-          else
-            {
-              const unsigned int *renumber_ptr = renumber.data() + offset;
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                ETT::read_value(solution_values[renumber_ptr[i]],
-                                comp,
-                                solution_renumbered[i]);
-            }
-        }
-    }
+  AssertIndexRange(point_index, values.size());
+  return values[point_index];
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_face_path, bool is_linear, std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::compute_evaluate_fast(
-  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags                  &evaluation_flags,
-  const unsigned int                                       n_shapes,
-  const unsigned int                                       qb,
-  vectorized_value_type                                   &value,
-  interface_vectorized_gradient_type                      &gradient)
+inline const typename FEPointEvaluationBase<n_components_,
+                                            dim,
+                                            spacedim,
+                                            Number>::gradient_type &
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::get_gradient(
+  const unsigned int point_index) const
 {
-  if (is_face_path)
-    {
-      if (evaluation_flags & EvaluationFlags::gradients)
-        {
-          const std::array<vectorized_value_type, dim + 1> interpolated_value =
-            is_linear ?
-              internal::evaluate_tensor_product_value_and_gradient_linear<
-                dim - 1,
-                scalar_value_type,
-                VectorizedArrayType,
-                2>(solution_renumbered.data(), unit_point_faces_ptr[qb]) :
-              internal::evaluate_tensor_product_value_and_gradient_shapes<
-                dim - 1,
-                scalar_value_type,
-                VectorizedArrayType,
-                2,
-                false>(shapes_faces.data() + qb * n_shapes,
-                       n_shapes,
-                       solution_renumbered.data());
+  AssertIndexRange(point_index, gradients.size());
+  return gradients[point_index];
+}
 
-          value = interpolated_value[dim - 1];
-          // reorder derivative from tangential/normal derivatives into tensor
-          // in physical coordinates
-          if (current_face_number / 2 == 0)
-            {
-              gradient[0] = interpolated_value[dim];
-              if (dim > 1)
-                gradient[1] = interpolated_value[0];
-              if (dim > 2)
-                gradient[2] = interpolated_value[1];
-            }
-          else if (current_face_number / 2 == 1)
-            {
-              if (dim > 1)
-                gradient[1] = interpolated_value[dim];
-              if (dim == 3)
-                {
-                  gradient[0] = interpolated_value[1];
-                  gradient[2] = interpolated_value[0];
-                }
-              else if (dim == 2)
-                gradient[0] = interpolated_value[0];
-              else
-                Assert(false, ExcInternalError());
-            }
-          else if (current_face_number / 2 == 2)
-            {
-              if (dim > 2)
-                {
-                  gradient[0] = interpolated_value[0];
-                  gradient[1] = interpolated_value[1];
-                  gradient[2] = interpolated_value[dim];
-                }
-              else
-                Assert(false, ExcInternalError());
-            }
-          else
-            Assert(false, ExcInternalError());
-        }
-      else
-        {
-          value = is_linear ? internal::evaluate_tensor_product_value_linear<
-                                dim - 1,
-                                scalar_value_type,
-                                VectorizedArrayType>(solution_renumbered.data(),
-                                                     unit_point_faces_ptr[qb]) :
-                              internal::evaluate_tensor_product_value_shapes<
-                                dim - 1,
-                                scalar_value_type,
-                                VectorizedArrayType,
-                                false>(shapes_faces.data() + qb * n_shapes,
-                                       n_shapes,
-                                       solution_renumbered.data());
-        }
-    }
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::submit_value(
+  const value_type  &value,
+  const unsigned int point_index)
+{
+  AssertIndexRange(point_index, n_q_points);
+  values[point_index] = value;
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::submit_gradient(
+  const gradient_type &gradient,
+  const unsigned int   point_index)
+{
+  AssertIndexRange(point_index, n_q_points);
+  gradients[point_index] = gradient;
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline DerivativeForm<1, dim, spacedim, Number>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::jacobian(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, n_q_points);
+  Assert(jacobian_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_jacobians"));
+  return jacobian_ptr[cell_type <= ::dealii::internal::MatrixFreeFunctions::
+                                     GeometryType::affine ?
+                        0 :
+                        point_index];
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline DerivativeForm<1, spacedim, dim, Number>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::inverse_jacobian(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, n_q_points);
+  Assert(inverse_jacobian_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_inverse_jacobians"));
+  return inverse_jacobian_ptr
+    [cell_type <=
+         ::dealii::internal::MatrixFreeFunctions::GeometryType::affine ?
+       0 :
+       point_index];
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline Number
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::JxW(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, n_q_points);
+  Assert(JxW_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_JxW_values"));
+  return JxW_ptr[point_index];
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline Tensor<1, spacedim, Number>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::normal_vector(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, n_q_points);
+  Assert(normal_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_normal_vectors"));
+  if (is_interior)
+    return normal_ptr[point_index];
   else
-    {
-      if (evaluation_flags & EvaluationFlags::gradients)
-        {
-          std::array<vectorized_value_type, dim + 1> result;
-          if constexpr (is_linear)
-            {
-              if constexpr (n_components == 1)
-                result =
-                  internal::evaluate_tensor_product_value_and_gradient_linear<
-                    dim,
-                    scalar_value_type,
-                    VectorizedArrayType,
-                    1,
-                    stride_view>(solution_values.data(), unit_point_ptr[qb]);
-              else
-                result =
-                  internal::evaluate_tensor_product_value_and_gradient_linear(
-                    solution_renumbered.data(), unit_point_ptr[qb]);
-            }
-          else
-            result =
-              internal::evaluate_tensor_product_value_and_gradient_shapes<
-                dim,
-                scalar_value_type,
-                VectorizedArrayType,
-                1,
-                false>(shapes.data() + qb * n_shapes,
-                       n_shapes,
-                       solution_renumbered.data());
-          gradient[0] = result[0];
-          if (dim > 1)
-            gradient[1] = result[1];
-          if (dim > 2)
-            gradient[2] = result[2];
-          value = result[dim];
-        }
-      else
-        {
-          if constexpr (is_linear)
-            {
-              if constexpr (n_components == 1)
-                value = internal::evaluate_tensor_product_value_linear<
-                  dim,
-                  scalar_value_type,
-                  VectorizedArrayType,
-                  stride_view>(solution_values.data(), unit_point_ptr[qb]);
-              else
-                value = internal::evaluate_tensor_product_value_linear(
-                  solution_renumbered.data(), unit_point_ptr[qb]);
-            }
-          else
-            value = internal::evaluate_tensor_product_value_shapes<
-              dim,
-              scalar_value_type,
-              VectorizedArrayType,
-              false>(shapes.data() + qb * n_shapes,
-                     n_shapes,
-                     solution_renumbered.data());
-        }
-    }
+    return -normal_ptr[point_index];
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_face_path, bool is_linear, std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
-  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
+inline Point<spacedim, Number>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::real_point(
+  const unsigned int point_index) const
 {
-  if (!(is_linear && n_components == 1) || is_face_path)
-    prepare_evaluate_fast<is_face_path, is_linear>(solution_values,
-                                                   evaluation_flags);
-
-  // loop over quadrature batches qb
-  const unsigned int n_shapes = is_linear ? 2 : poly.size();
-
-  for (unsigned int qb = 0; qb < n_q_batches; ++qb)
-    {
-      vectorized_value_type              value;
-      interface_vectorized_gradient_type gradient;
-
-      compute_evaluate_fast<is_face_path, is_linear>(
-        solution_values, evaluation_flags, n_shapes, qb, value, gradient);
-
-      if (evaluation_flags & EvaluationFlags::values)
-        {
-          for (unsigned int v = 0, offset = qb * stride;
-               v < stride && (stride == 1 || offset < n_q_points_scalar);
-               ++v, ++offset)
-            ETT::set_value(value, v, values[offset]);
-        }
-      if (evaluation_flags & EvaluationFlags::gradients)
-        {
-          Assert(update_flags & update_gradients ||
-                   update_flags & update_inverse_jacobians,
-                 ExcNotInitialized());
-
-          for (unsigned int v = 0, offset = qb * stride;
-               v < stride && (stride == 1 || offset < n_q_points_scalar);
-               ++v, ++offset)
-            {
-              gradient_type unit_gradient;
-              ETT::set_gradient(gradient, v, unit_gradient);
-              gradients[offset] =
-                cell_type <=
-                    internal::MatrixFreeFunctions::GeometryType::cartesian ?
-                  apply_diagonal_transformation(inverse_jacobian_ptr[0],
-                                                unit_gradient) :
-                  apply_transformation(
-                    inverse_jacobian_ptr
-                      [cell_type <=
-                           internal::MatrixFreeFunctions::GeometryType::affine ?
-                         0 :
-                         offset]
-                        .transpose(),
-                    unit_gradient);
-            }
-        }
-    }
+  AssertIndexRange(point_index, n_q_points);
+  Assert(real_point_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_quadrature_points"));
+  return real_point_ptr[point_index];
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
-  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
+inline Point<dim, Number>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::unit_point(
+  const unsigned int point_index) const
 {
-  // slow path with FEValues
-  Assert(fe_values.get() != nullptr,
-         ExcMessage(
-           "Not initialized. Please call FEPointEvaluation::reinit()!"));
+  AssertIndexRange(point_index, n_q_points);
+  Assert(unit_point_ptr != nullptr, ExcMessage("unit_point_ptr is not set!"));
+  Point<dim, Number> unit_point;
+  for (unsigned int d = 0; d < dim; ++d)
+    unit_point[d] = internal::VectorizedArrayTrait<Number>::get_from_vectorized(
+      unit_point_ptr[point_index / stride][d], point_index % stride);
+  return unit_point;
+}
 
-  const std::size_t n_points = fe_values->get_quadrature().size();
 
-  if (evaluation_flags & EvaluationFlags::values)
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
+  quadrature_point_indices() const
+{
+  return {0U, n_q_points};
+}
+
+
+template <int n_components_,
+          int dim,
+          int spacedim    = dim,
+          typename Number = double>
+class FEPointEvaluation
+  : public FEPointEvaluationBase<n_components_, dim, spacedim, Number>
+{
+public:
+  static constexpr unsigned int dimension    = dim;
+  static constexpr unsigned int n_components = n_components_;
+
+  using number_type = Number;
+
+  using ScalarNumber =
+    typename internal::VectorizedArrayTrait<Number>::value_type;
+  using VectorizedArrayType = typename dealii::internal::VectorizedArrayTrait<
+    Number>::vectorized_value_type;
+  using ETT = typename internal::FEPointEvaluation::
+    EvaluatorTypeTraits<dim, n_components, Number>;
+  using value_type            = typename ETT::value_type;
+  using scalar_value_type     = typename ETT::scalar_value_type;
+  using vectorized_value_type = typename ETT::vectorized_value_type;
+  using gradient_type         = typename ETT::gradient_type;
+  using interface_vectorized_gradient_type =
+    typename ETT::interface_vectorized_gradient_type;
+
+  /**
+   * Constructor.
+   *
+   * @param mapping The Mapping class describing the actual geometry of a cell
+   * passed to the evaluate() function.
+   *
+   * @param fe The FiniteElement object that is used for the evaluation, which
+   * is typically the same on all cells to be evaluated.
+   *
+   * @param update_flags Specify the quantities to be computed by the mapping
+   * during the call of reinit(). During evaluate() or integrate(), this data
+   * is queried to produce the desired result (e.g., the gradient of a finite
+   * element solution).
+   *
+   * @param first_selected_component For multi-component FiniteElement
+   * objects, this parameter allows to select a range of `n_components`
+   * components starting from this parameter.
+   */
+  FEPointEvaluation(const Mapping<dim>       &mapping,
+                    const FiniteElement<dim> &fe,
+                    const UpdateFlags         update_flags,
+                    const unsigned int        first_selected_component = 0)
+    : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
+        mapping,
+        fe,
+        update_flags,
+        first_selected_component)
+  {}
+
+  /**
+   * Constructor to make the present class able to re-use the geometry
+   * data also used by other `FEPointEvaluationBase` objects.
+   *
+   * @param mapping_info The MappingInfo class describes the geometry-related
+   * data for evaluating finite-element solutions. This object enables to
+   * construct such an object on the outside, possibly re-using it between
+   * several objects or between several calls to the same cell and unit points.
+   *
+   * @param fe The FiniteElement object that is used for the evaluation, which
+   * is typically the same on all cells to be evaluated.
+   *
+   * @param first_selected_component For multi-component FiniteElement
+   * objects, this parameter allows to select a range of `n_components`
+   * components starting from this parameter.
+   */
+  FEPointEvaluation(
+    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim>                        &fe,
+    const unsigned int first_selected_component = 0,
+    const bool         is_interior              = true)
+    : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
+        mapping_info,
+        fe,
+        first_selected_component,
+        is_interior)
+  {}
+
+  /**
+   * Set up the mapping information for the given cell, e.g., by computing the
+   * Jacobian of the mapping for the given points if gradients of the functions
+   * are requested.
+   *
+   * @param[in] cell An iterator to the current cell
+   *
+   * @param[in] unit_points List of points in the reference locations of the
+   * current cell where the FiniteElement object should be
+   * evaluated/integrated in the evaluate() and integrate() functions.
+   */
+  void
+  reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+         const ArrayView<const Point<dim>> &unit_points);
+
+  /**
+   * Reinitialize the evaluator to point to the correct precomputed mapping of
+   * the single cell in the MappingInfo object.
+   */
+  void
+  reinit();
+
+  /**
+   * Reinitialize the evaluator to point to the correct precomputed mapping of
+   * the cell in the MappingInfo object.
+   */
+  void
+  reinit(const unsigned int cell_index);
+
+
+  /**
+   * This function interpolates the finite element solution, represented by
+   * `solution_values`, on the cell and `unit_points` passed to reinit().
+   *
+   * @param[in] solution_values This array is supposed to contain the unknown
+   * values on the element read out by
+   * `FEEvaluation::read_dof_values(global_vector)`.
+   *
+   * @param[in] evaluation_flags Flags specifying which quantities should be
+   * evaluated at the points.
+   */
+  template <std::size_t stride_view>
+  void
+  evaluate(
+    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
+
+  /**
+   * This function interpolates the finite element solution, represented by
+   * `solution_values`, on the cell and `unit_points` passed to reinit().
+   *
+   * @param[in] solution_values This array is supposed to contain the unknown
+   * values on the element as returned by `cell->get_dof_values(global_vector,
+   * solution_values)`.
+   *
+   * @param[in] evaluation_flags Flags specifying which quantities should be
+   * evaluated at the points.
+   */
+  void
+  evaluate(const ArrayView<const ScalarNumber>    &solution_values,
+           const EvaluationFlags::EvaluationFlags &evaluation_flags);
+
+  /**
+   * This function multiplies the quantities passed in by previous
+   * submit_value() or submit_gradient() calls by the value or gradient of the
+   * test functions, and performs summation over all given points multiplied be
+   * the Jacobian determinant times the quadrature weight (JxW).
+   *
+   * @param[out] solution_values This array will contain the result of the
+   * integral, which can be used during
+   * `FEEvaluation::set_dof_values(global_vector)` or
+   * `FEEvaluation::distribute_local_to_global(global_vector)`. Note
+   * that for multi-component systems where only some of the components are
+   * selected by the present class, the entries in `solution_values` not touched
+   * by this class will be set to zero.
+   *
+   * @param[in] integration_flags Flags specifying which quantities should be
+   * integrated at the points.
+   *
+   * @param[in] sum_into_values Flag specifying if the integrated values
+   * should be summed into the solution values. Defaults to false.
+   *
+   */
+  template <std::size_t stride_view>
+  void
+  integrate(const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+            const EvaluationFlags::EvaluationFlags &integration_flags,
+            const bool                              sum_into_values = false);
+
+  /**
+   * This function multiplies the quantities passed in by previous
+   * submit_value() or submit_gradient() calls by the value or gradient of the
+   * test functions, and performs summation over all given points multiplied be
+   * the Jacobian determinant times the quadrature weight (JxW).
+   *
+   * @param[out] solution_values This array will contain the result of the
+   * integral, which can be used to during
+   * `cell->set_dof_values(solution_values, global_vector)` or
+   * `cell->distribute_local_to_global(solution_values, global_vector)`. Note
+   * that for multi-component systems where only some of the components are
+   * selected by the present class, the entries in `solution_values` not touched
+   * by this class will be set to zero.
+   *
+   * @param[in] integration_flags Flags specifying which quantities should be
+   * integrated at the points.
+   *
+   * @param[in] sum_into_values Flag specifying if the integrated values
+   * should be summed into the solution values. Defaults to false.
+   *
+   */
+  void
+  integrate(const ArrayView<ScalarNumber>          &solution_values,
+            const EvaluationFlags::EvaluationFlags &integration_flags,
+            const bool                              sum_into_values = false);
+
+  /**
+   * This function multiplies the quantities passed in by previous
+   * submit_value() or submit_gradient() calls by the value or gradient of the
+   * test functions, and performs summation over all given points. This is
+   * similar to the integration of a bilinear form in terms of the test
+   * function, with the difference that this formula does not include a `JxW`
+   * factor (in contrast to the integrate function of this class). This allows
+   * the class to naturally embed point information (e.g. particles) into a
+   * finite element formulation.
+   *
+   * @param[out] solution_values This array will contain the result of the
+   * integral, which can be used during
+   * `FEEvaluation::set_dof_values(global_vector)` or
+   * `FEEvaluation::distribute_local_to_global(global_vector)`. Note
+   * that for multi-component systems where only some of the components are
+   * selected by the present class, the entries in `solution_values` not touched
+   * by this class will be set to zero.
+   *
+   * @param[in] integration_flags Flags specifying which quantities should be
+   * integrated at the points.
+   *
+   * @param[in] sum_into_values Flag specifying if the integrated values
+   * should be summed into the solution values. Defaults to false.
+   *
+   */
+  template <std::size_t stride_view>
+  void
+  test_and_sum(
+    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags            &integration_flags,
+    const bool                                         sum_into_values = false);
+
+  /**
+   * This function multiplies the quantities passed in by previous
+   * submit_value() or submit_gradient() calls by the value or gradient of the
+   * test functions, and performs summation over all given points. This is
+   * similar to the integration of a bilinear form in terms of the test
+   * function, with the difference that this formula does not include a `JxW`
+   * factor (in contrast to the integrate function of this class). This allows
+   * the class to naturally embed point information (e.g. particles) into a
+   * finite element formulation.
+   *
+   * @param[out] solution_values This array will contain the result of the
+   * integral, which can be used during
+   * `cell->set_dof_values(solution_values, global_vector)` or
+   * `cell->distribute_local_to_global(solution_values, global_vector)`. Note
+   * that for multi-component systems where only some of the components are
+   * selected by the present class, the entries in `solution_values` not touched
+   * by this class will be set to zero.
+   *
+   * @param[in] integration_flags Flags specifying which quantities should be
+   * integrated at the points.
+   *
+   * @param[in] sum_into_values Flag specifying if the integrated values
+   * should be summed into the solution values. Defaults to false.
+   *
+   */
+  void
+  test_and_sum(const ArrayView<ScalarNumber>          &solution_values,
+               const EvaluationFlags::EvaluationFlags &integration_flags,
+               const bool                              sum_into_values = false);
+
+private:
+  /**
+   * Resizes necessary data fields, reads in and renumbers solution values.
+   * Interpolates onto face if face path is selected.
+   */
+  template <bool is_face_path, bool is_linear, std::size_t stride_view>
+  void
+  prepare_evaluate_fast(
+    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
+
+  /**
+   * Evaluates the actual interpolation on the cell or face for a quadrature
+   * batch.
+   */
+  template <bool is_face_path, bool is_linear, std::size_t stride_view>
+  void
+  compute_evaluate_fast(
+    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags                  &evaluation_flags,
+    const unsigned int                                       n_shapes,
+    const unsigned int                                       qb,
+    vectorized_value_type                                   &value,
+    interface_vectorized_gradient_type                      &gradient);
+
+  /**
+   * Fast path of the evaluate function.
+   */
+  template <bool is_face_path, bool is_linear, std::size_t stride_view>
+  void
+  evaluate_fast(
+    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
+
+  /**
+   * Slow path of the evaluate function using FEValues.
+   */
+  template <std::size_t stride_view>
+  void
+  evaluate_slow(
+    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
+
+  /**
+   * Integrates the product of the data passed in by submit_value() and
+   * submit_gradient() with the values or gradients of test functions on the
+   * cell or face for a given quadrature batch.
+   */
+  template <bool is_face_path, bool is_linear>
+  void
+  compute_integrate_fast(
+    const EvaluationFlags::EvaluationFlags  &integration_flags,
+    const unsigned int                       n_shapes,
+    const unsigned int                       qb,
+    const vectorized_value_type              value,
+    const interface_vectorized_gradient_type gradient,
+    vectorized_value_type                   *solution_values_vectorized_linear);
+
+  /**
+   * Addition across the lanes of VectorizedArray as accumulated by the
+   * compute_integrate_fast_function(), writing the sum into the result vector.
+   * Applies face contributions to cell contributions for face path.
+   */
+  template <bool is_face_path, bool is_linear, std::size_t stride_view>
+  void
+  finish_integrate_fast(
+    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags            &integration_flags,
+    vectorized_value_type *solution_values_vectorized_linear,
+    const bool             sum_into_values);
+
+  /**
+   * Fast path of the integrate function.
+   */
+  template <bool        do_JxW,
+            bool        is_face_path,
+            bool        is_linear,
+            std::size_t stride_view>
+  void
+  integrate_fast(
+    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags            &integration_flags,
+    const bool                                         sum_into_values);
+
+  /**
+   * Slow path of the integrate function using FEValues.
+   */
+  template <bool do_JxW, std::size_t stride_view>
+  void
+  integrate_slow(
+    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags            &integration_flags,
+    const bool                                         sum_into_values);
+
+  /**
+   * Implementation of the integrate/test_and_sum function.
+   */
+  template <bool do_JxW, std::size_t stride_view>
+  void
+  do_integrate(
+    const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+    const EvaluationFlags::EvaluationFlags            &integration_flags,
+    const bool                                         sum_into_values);
+};
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit()
+{
+  this->current_cell_index  = numbers::invalid_unsigned_int;
+  this->current_face_number = numbers::invalid_unsigned_int;
+
+  if (this->use_linear_path)
+    this->template do_reinit<false, true>();
+  else
+    this->template do_reinit<false, false>();
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
+  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+  const ArrayView<const Point<dim>>                          &unit_points)
+{
+  // reinit is only allowed for mapping computation on the fly
+  AssertThrow(this->mapping_info_on_the_fly.get() != nullptr,
+              ExcNotImplemented());
+
+  this->mapping_info->reinit(cell, unit_points);
+
+  if (!this->fast_path)
     {
-      values.resize(n_q_points);
-      std::fill(values.begin(), values.end(), value_type());
-      for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
-        {
-          const ScalarNumber value = solution_values[i];
-          for (unsigned int d = 0; d < n_components; ++d)
-            if (nonzero_shape_function_component[i][d] &&
-                (fe->is_primitive(i) || fe->is_primitive()))
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  ETT::access(values[qb],
-                              v,
-                              d,
-                              fe_values->shape_value(i, q + v) * value);
-            else if (nonzero_shape_function_component[i][d])
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  ETT::access(values[qb],
-                              v,
-                              d,
-                              fe_values->shape_value_component(i, q + v, d) *
-                                value);
-        }
+      this->fe_values = std::make_shared<FEValues<dim, spacedim>>(
+        *this->mapping,
+        *this->fe,
+        Quadrature<dim>(
+          std::vector<Point<dim>>(unit_points.begin(), unit_points.end())),
+        this->update_flags);
+      this->fe_values->reinit(cell);
     }
 
-  if (evaluation_flags & EvaluationFlags::gradients)
+  if (this->use_linear_path)
+    this->template do_reinit<false, true>();
+  else
+    this->template do_reinit<false, false>();
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
+  const unsigned int cell_index)
+{
+  this->current_cell_index  = cell_index;
+  this->current_face_number = numbers::invalid_unsigned_int;
+
+  if (this->use_linear_path)
+    this->template do_reinit<false, true>();
+  else
+    this->template do_reinit<false, false>();
+
+  if (!this->fast_path)
     {
-      gradients.resize(n_q_points);
-      std::fill(gradients.begin(), gradients.end(), gradient_type());
-      for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
-        {
-          const ScalarNumber value = solution_values[i];
-          for (unsigned int d = 0; d < n_components; ++d)
-            if (nonzero_shape_function_component[i][d] &&
-                (fe->is_primitive(i) || fe->is_primitive()))
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  ETT::access(gradients[qb],
-                              v,
-                              d,
-                              fe_values->shape_grad(i, q + v) * value);
-            else if (nonzero_shape_function_component[i][d])
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  ETT::access(gradients[qb],
-                              v,
-                              d,
-                              fe_values->shape_grad_component(i, q + v, d) *
-                                value);
-        }
+      std::vector<Point<dim>> unit_points(this->n_q_points_scalar);
+
+      for (unsigned int v = 0; v < this->n_q_points_scalar; ++v)
+        for (unsigned int d = 0; d < dim; ++d)
+          unit_points[v][d] =
+            this->unit_point_ptr[v / this->n_lanes_internal][d]
+                                [v % this->n_lanes_internal];
+
+      this->fe_values = std::make_shared<FEValues<dim, spacedim>>(
+        *this->mapping,
+        *this->fe,
+        Quadrature<dim>(
+          std::vector<Point<dim>>(unit_points.begin(), unit_points.end())),
+        this->update_flags);
+
+      this->fe_values->reinit(
+        this->mapping_info->get_cell_iterator(this->current_cell_index));
     }
 }
 
@@ -2239,10 +2127,10 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
   const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
   const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
 {
-  if (!is_reinitialized)
+  if (!this->is_reinitialized)
     reinit();
 
-  if (n_q_points == 0)
+  if (this->n_q_points == 0)
     return;
 
   Assert(!(evaluation_flags & EvaluationFlags::hessians), ExcNotImplemented());
@@ -2251,19 +2139,19 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
         (evaluation_flags & EvaluationFlags::gradients))) // no evaluation flags
     return;
 
-  AssertDimension(solution_values.size(), fe->dofs_per_cell);
-  if (fast_path)
+  AssertDimension(solution_values.size(), this->fe->dofs_per_cell);
+  if (this->fast_path)
     {
-      if (use_face_path)
+      if (this->use_face_path)
         {
-          if (use_linear_path)
+          if (this->use_linear_path)
             evaluate_fast<true, true>(solution_values, evaluation_flags);
           else
             evaluate_fast<true, false>(solution_values, evaluation_flags);
         }
       else
         {
-          if (use_linear_path)
+          if (this->use_linear_path)
             evaluate_fast<false, true>(solution_values, evaluation_flags);
           else
             evaluate_fast<false, false>(solution_values, evaluation_flags);
@@ -2276,443 +2164,14 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_face_path, bool is_linear>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::compute_integrate_fast(
-  const EvaluationFlags::EvaluationFlags  &integration_flags,
-  const unsigned int                       n_shapes,
-  const unsigned int                       qb,
-  const vectorized_value_type              value,
-  const interface_vectorized_gradient_type gradient,
-  vectorized_value_type                   *solution_values_vectorized_linear)
-{
-  if (is_face_path)
-    {
-      if (integration_flags & EvaluationFlags::gradients)
-        {
-          std::array<vectorized_value_type, 2>      value_face = {};
-          Tensor<1, dim - 1, vectorized_value_type> gradient_in_face;
-
-          value_face[0] = value;
-          // fill derivative in physical coordinates into tangential/normal
-          // derivatives
-          if (current_face_number / 2 == 0)
-            {
-              value_face[1] = gradient[0];
-              if (dim > 1)
-                gradient_in_face[0] = gradient[1];
-              if (dim > 2)
-                gradient_in_face[1] = gradient[2];
-            }
-          else if (current_face_number / 2 == 1)
-            {
-              if (dim > 1)
-                value_face[1] = gradient[1];
-              if (dim == 3)
-                {
-                  gradient_in_face[0] = gradient[2];
-                  gradient_in_face[1] = gradient[0];
-                }
-              else if (dim == 2)
-                gradient_in_face[0] = gradient[0];
-              else
-                Assert(false, ExcInternalError());
-            }
-          else if (current_face_number / 2 == 2)
-            {
-              if (dim > 2)
-                {
-                  value_face[1]       = gradient[2];
-                  gradient_in_face[0] = gradient[0];
-                  gradient_in_face[1] = gradient[1];
-                }
-              else
-                Assert(false, ExcInternalError());
-            }
-          else
-            Assert(false, ExcInternalError());
-
-          internal::integrate_tensor_product_value_and_gradient<
-            is_linear,
-            dim - 1,
-            VectorizedArrayType,
-            vectorized_value_type,
-            2>(shapes_faces.data() + qb * n_shapes,
-               n_shapes,
-               value_face.data(),
-               gradient_in_face,
-               is_linear ? solution_values_vectorized_linear :
-                           solution_renumbered_vectorized.data(),
-               unit_point_faces_ptr[qb],
-               qb != 0);
-        }
-      else
-        internal::integrate_tensor_product_value<is_linear,
-                                                 dim - 1,
-                                                 VectorizedArrayType,
-                                                 vectorized_value_type>(
-          shapes_faces.data() + qb * n_shapes,
-          n_shapes,
-          value,
-          is_linear ? solution_values_vectorized_linear :
-                      solution_renumbered_vectorized.data(),
-          unit_point_faces_ptr[qb],
-          qb != 0);
-    }
-  else
-    {
-      if (integration_flags & EvaluationFlags::gradients)
-        internal::integrate_tensor_product_value_and_gradient<
-          is_linear,
-          dim,
-          VectorizedArrayType,
-          vectorized_value_type>(shapes.data() + qb * n_shapes,
-                                 n_shapes,
-                                 &value,
-                                 gradient,
-                                 is_linear ?
-                                   solution_values_vectorized_linear :
-                                   solution_renumbered_vectorized.data(),
-                                 unit_point_ptr[qb],
-                                 qb != 0);
-      else
-        internal::integrate_tensor_product_value<is_linear,
-                                                 dim,
-                                                 VectorizedArrayType,
-                                                 vectorized_value_type>(
-          shapes.data() + qb * n_shapes,
-          n_shapes,
-          value,
-          is_linear ? solution_values_vectorized_linear :
-                      solution_renumbered_vectorized.data(),
-          unit_point_ptr[qb],
-          qb != 0);
-    }
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-template <bool is_face_path, bool is_linear, std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::finish_integrate_fast(
-  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags            &integration_flags,
-  vectorized_value_type *solution_values_vectorized_linear,
-  const bool             sum_into_values)
-{
-  if (!sum_into_values && fe->n_components() > n_components)
-    for (unsigned int i = 0; i < solution_values.size(); ++i)
-      solution_values[i] = 0;
-
-  const unsigned int dofs_per_comp =
-    is_linear ? Utilities::pow(2, dim) : dofs_per_component;
-
-  for (unsigned int comp = 0; comp < n_components; ++comp)
-    {
-      const std::size_t offset =
-        (component_in_base_element + comp) * dofs_per_comp;
-
-      if (is_face_path)
-        {
-          const unsigned int dofs_per_comp_face =
-            is_linear ? Utilities::pow(2, dim - 1) : dofs_per_component_face;
-
-          const unsigned int size_input = 2 * dofs_per_comp_face;
-          ScalarNumber      *input      = scratch_data_scalar.begin();
-          ScalarNumber      *output     = input + size_input;
-
-          for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
-            input[i] =
-              ETT::sum_value(comp,
-                             is_linear ?
-                               *(solution_values_vectorized_linear + i) :
-                               solution_renumbered_vectorized[i]);
-
-          internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-            template interpolate<false, false>(1,
-                                               integration_flags,
-                                               shape_info,
-                                               input,
-                                               output,
-                                               current_face_number);
-
-          if (is_linear || renumber.empty())
-            {
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                if (sum_into_values)
-                  solution_values[i + offset] += output[i];
-                else
-                  solution_values[i + offset] = output[i];
-            }
-          else
-            {
-              const unsigned int *renumber_ptr = renumber.data() + offset;
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                if (sum_into_values)
-                  solution_values[renumber_ptr[i]] += output[i];
-                else
-                  solution_values[renumber_ptr[i]] = output[i];
-            }
-        }
-      else
-        {
-          if (is_linear || renumber.empty())
-            {
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                if (sum_into_values)
-                  solution_values[i + offset] +=
-                    ETT::sum_value(comp,
-                                   is_linear ?
-                                     *(solution_values_vectorized_linear + i) :
-                                     solution_renumbered_vectorized[i]);
-                else
-                  solution_values[i + offset] =
-                    ETT::sum_value(comp,
-                                   is_linear ?
-                                     *(solution_values_vectorized_linear + i) :
-                                     solution_renumbered_vectorized[i]);
-            }
-          else
-            {
-              const unsigned int *renumber_ptr = renumber.data() + offset;
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                if (sum_into_values)
-                  solution_values[renumber_ptr[i]] +=
-                    ETT::sum_value(comp, solution_renumbered_vectorized[i]);
-                else
-                  solution_values[renumber_ptr[i]] =
-                    ETT::sum_value(comp, solution_renumbered_vectorized[i]);
-            }
-        }
-    }
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-template <bool        do_JxW,
-          bool        is_face_path,
-          bool        is_linear,
-          std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
-  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags            &integration_flags,
-  const bool                                         sum_into_values)
-{
-  // zero out lanes of incomplete last quadrature point batch
-  if constexpr (stride == 1)
-    if (const unsigned int n_filled_lanes =
-          n_q_points_scalar & (n_lanes_internal - 1);
-        n_filled_lanes > 0)
-      {
-        if (integration_flags & EvaluationFlags::values)
-          for (unsigned int v = n_filled_lanes; v < n_lanes_internal; ++v)
-            ETT::set_zero_value(values.back(), v);
-        if (integration_flags & EvaluationFlags::gradients)
-          for (unsigned int v = n_filled_lanes; v < n_lanes_internal; ++v)
-            ETT::set_zero_gradient(gradients.back(), v);
-      }
-
-  std::array<vectorized_value_type,
-             is_linear ? (is_face_path ? 2 * Utilities::pow(2, dim - 1) :
-                                         Utilities::pow(2, dim)) :
-                         0>
-    solution_values_vectorized_linear = {};
-
-  // loop over quadrature batches qb
-  const unsigned int n_shapes = is_linear ? 2 : poly.size();
-
-  const bool cartesian_cell =
-    cell_type <= internal::MatrixFreeFunctions::GeometryType::cartesian;
-  const bool affine_cell =
-    cell_type <= internal::MatrixFreeFunctions::GeometryType::affine;
-  for (unsigned int qb = 0; qb < n_q_batches; ++qb)
-    {
-      vectorized_value_type                 value = {};
-      Tensor<1, dim, vectorized_value_type> gradient;
-
-      if (integration_flags & EvaluationFlags::values)
-        for (unsigned int v = 0, offset = qb * stride;
-             v < stride && (stride == 1 || offset < n_q_points_scalar);
-             ++v, ++offset)
-          ETT::get_value(value,
-                         v,
-                         do_JxW ? values[offset] * JxW_ptr[offset] :
-                                  values[offset]);
-
-      if (integration_flags & EvaluationFlags::gradients)
-        for (unsigned int v = 0, offset = qb * stride;
-             v < stride && (stride == 1 || offset < n_q_points_scalar);
-             ++v, ++offset)
-          {
-            const auto grad_w =
-              do_JxW ? gradients[offset] * JxW_ptr[offset] : gradients[offset];
-            ETT::get_gradient(
-              gradient,
-              v,
-              cartesian_cell ?
-                apply_diagonal_transformation(inverse_jacobian_ptr[0], grad_w) :
-                apply_transformation(
-                  inverse_jacobian_ptr[affine_cell ? 0 : offset], grad_w));
-          }
-
-      compute_integrate_fast<is_face_path, is_linear>(
-        integration_flags,
-        n_shapes,
-        qb,
-        value,
-        gradient,
-        solution_values_vectorized_linear.data());
-    }
-
-  // add between the lanes and write into the result
-  finish_integrate_fast<is_face_path, is_linear>(
-    solution_values,
-    integration_flags,
-    solution_values_vectorized_linear.data(),
-    sum_into_values);
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-template <bool do_JxW, std::size_t stride_view>
-inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
-  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags            &integration_flags,
-  const bool                                         sum_into_values)
-{
-  // slow path with FEValues
-  Assert(fe_values.get() != nullptr,
-         ExcMessage(
-           "Not initialized. Please call FEPointEvaluation::reinit()!"));
-  if (!sum_into_values)
-    for (unsigned int i = 0; i < solution_values.size(); ++i)
-      solution_values[i] = 0;
-
-  const std::size_t n_points = fe_values->get_quadrature().size();
-
-  if (integration_flags & EvaluationFlags::values)
-    {
-      AssertIndexRange(n_q_points, values.size() + 1);
-      for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
-        {
-          for (unsigned int d = 0; d < n_components; ++d)
-            if (nonzero_shape_function_component[i][d] &&
-                (fe->is_primitive(i) || fe->is_primitive()))
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  solution_values[i] += fe_values->shape_value(i, q + v) *
-                                        ETT::access(values[qb], v, d) *
-                                        (do_JxW ? fe_values->JxW(q + v) : 1.);
-            else if (nonzero_shape_function_component[i][d])
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  solution_values[i] +=
-                    fe_values->shape_value_component(i, q + v, d) *
-                    ETT::access(values[qb], v, d) *
-                    (do_JxW ? fe_values->JxW(q + v) : 1.);
-        }
-    }
-
-  if (integration_flags & EvaluationFlags::gradients)
-    {
-      AssertIndexRange(n_q_points, gradients.size() + 1);
-      for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
-        {
-          for (unsigned int d = 0; d < n_components; ++d)
-            if (nonzero_shape_function_component[i][d] &&
-                (fe->is_primitive(i) || fe->is_primitive()))
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  solution_values[i] += fe_values->shape_grad(i, q + v) *
-                                        ETT::access(gradients[qb], v, d) *
-                                        (do_JxW ? fe_values->JxW(q + v) : 1.);
-            else if (nonzero_shape_function_component[i][d])
-              for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += n_lanes_user_interface)
-                for (unsigned int v = 0;
-                     v < n_lanes_user_interface && q + v < n_points;
-                     ++v)
-                  solution_values[i] +=
-                    fe_values->shape_grad_component(i, q + v, d) *
-                    ETT::access(gradients[qb], v, d) *
-                    (do_JxW ? fe_values->JxW(q + v) : 1.);
-        }
-    }
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-template <bool do_JxW, std::size_t stride_view>
 void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
-  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags            &integration_flags,
-  const bool                                         sum_into_values)
+FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
+  const ArrayView<const ScalarNumber>    &solution_values,
+  const EvaluationFlags::EvaluationFlags &evaluation_flags)
 {
-  if (!is_reinitialized)
-    reinit();
-
-  Assert(!(integration_flags & EvaluationFlags::hessians), ExcNotImplemented());
-
-  if (n_q_points == 0 || // no evaluation points provided
-      !((integration_flags & EvaluationFlags::values) ||
-        (integration_flags &
-         EvaluationFlags::gradients))) // no integration flags
-    {
-      if (!sum_into_values)
-        for (unsigned int i = 0; i < solution_values.size(); ++i)
-          solution_values[i] = 0;
-      return;
-    }
-
-  Assert(
-    !do_JxW || JxW_ptr != nullptr,
-    ExcMessage(
-      "JxW pointer is not set! If you do not want to integrate() use test_and_sum()"));
-
-  AssertDimension(solution_values.size(), fe->dofs_per_cell);
-  if (fast_path)
-    {
-      if (use_face_path)
-        {
-          if (use_linear_path)
-            integrate_fast<do_JxW, true, true>(solution_values,
-                                               integration_flags,
-                                               sum_into_values);
-          else
-            integrate_fast<do_JxW, true, false>(solution_values,
-                                                integration_flags,
-                                                sum_into_values);
-        }
-      else
-        {
-          if (use_linear_path)
-            integrate_fast<do_JxW, false, true>(solution_values,
-                                                integration_flags,
-                                                sum_into_values);
-          else
-            integrate_fast<do_JxW, false, false>(solution_values,
-                                                 integration_flags,
-                                                 sum_into_values);
-        }
-    }
-  else
-    integrate_slow<do_JxW>(solution_values, integration_flags, sum_into_values);
+  evaluate(StridedArrayView<const ScalarNumber, 1>(solution_values.data(),
+                                                   solution_values.size()),
+           evaluation_flags);
 }
 
 
@@ -2774,167 +2233,838 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::test_and_sum(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-inline const typename FEPointEvaluation<n_components_, dim, spacedim, Number>::
-  value_type &
-  FEPointEvaluation<n_components_, dim, spacedim, Number>::get_value(
-    const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, values.size());
-  return values[point_index];
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline const typename FEPointEvaluation<n_components_, dim, spacedim, Number>::
-  gradient_type &
-  FEPointEvaluation<n_components_, dim, spacedim, Number>::get_gradient(
-    const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, gradients.size());
-  return gradients[point_index];
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
+template <bool is_face_path, bool is_linear, std::size_t stride_view>
 inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::submit_value(
-  const value_type  &value,
-  const unsigned int point_index)
+FEPointEvaluation<n_components_, dim, spacedim, Number>::prepare_evaluate_fast(
+  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
 {
-  AssertIndexRange(point_index, n_q_points);
-  values[point_index] = value;
+  const unsigned int dofs_per_comp =
+    is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
+
+  for (unsigned int comp = 0; comp < n_components; ++comp)
+    {
+      const std::size_t offset =
+        (this->component_in_base_element + comp) * dofs_per_comp;
+
+      if (is_face_path)
+        {
+          const ScalarNumber *input;
+          if (is_linear || this->renumber.empty())
+            {
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                this->scratch_data_scalar[i] = solution_values[i + offset];
+              input = this->scratch_data_scalar.data();
+            }
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                this->scratch_data_scalar[i] = solution_values[renumber_ptr[i]];
+              input = this->scratch_data_scalar.data();
+            }
+
+          ScalarNumber *output =
+            this->scratch_data_scalar.begin() + dofs_per_comp;
+
+          internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+            template interpolate<true, false>(1,
+                                              evaluation_flags,
+                                              this->shape_info,
+                                              input,
+                                              output,
+                                              this->current_face_number);
+
+          const unsigned int dofs_per_comp_face =
+            is_linear ? Utilities::pow(2, dim - 1) :
+                        this->dofs_per_component_face;
+          for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
+            ETT::read_value(output[i], comp, this->solution_renumbered[i]);
+        }
+      else
+        {
+          if ((is_linear && n_components == 1) || this->renumber.empty())
+            {
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                ETT::read_value(solution_values[i + offset],
+                                comp,
+                                this->solution_renumbered[i]);
+            }
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                ETT::read_value(solution_values[renumber_ptr[i]],
+                                comp,
+                                this->solution_renumbered[i]);
+            }
+        }
+    }
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
+template <bool is_face_path, bool is_linear, std::size_t stride_view>
 inline void
-FEPointEvaluation<n_components_, dim, spacedim, Number>::submit_gradient(
-  const gradient_type &gradient,
-  const unsigned int   point_index)
+FEPointEvaluation<n_components_, dim, spacedim, Number>::compute_evaluate_fast(
+  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags                  &evaluation_flags,
+  const unsigned int                                       n_shapes,
+  const unsigned int                                       qb,
+  vectorized_value_type                                   &value,
+  interface_vectorized_gradient_type                      &gradient)
 {
-  AssertIndexRange(point_index, n_q_points);
-  gradients[point_index] = gradient;
-}
+  if (is_face_path)
+    {
+      if (evaluation_flags & EvaluationFlags::gradients)
+        {
+          const std::array<vectorized_value_type, dim + 1> interpolated_value =
+            is_linear ?
+              internal::evaluate_tensor_product_value_and_gradient_linear<
+                dim - 1,
+                scalar_value_type,
+                VectorizedArrayType,
+                2>(this->solution_renumbered.data(),
+                   this->unit_point_faces_ptr[qb]) :
+              internal::evaluate_tensor_product_value_and_gradient_shapes<
+                dim - 1,
+                scalar_value_type,
+                VectorizedArrayType,
+                2,
+                false>(this->shapes_faces.data() + qb * n_shapes,
+                       n_shapes,
+                       this->solution_renumbered.data());
 
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline DerivativeForm<1, dim, spacedim, Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::jacobian(
-  const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, n_q_points);
-  Assert(jacobian_ptr != nullptr,
-         internal::FEPointEvaluation::
-           ExcFEPointEvaluationAccessToUninitializedMappingField(
-             "update_jacobians"));
-  return jacobian_ptr[cell_type <= ::dealii::internal::MatrixFreeFunctions::
-                                     GeometryType::affine ?
-                        0 :
-                        point_index];
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline DerivativeForm<1, spacedim, dim, Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::inverse_jacobian(
-  const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, n_q_points);
-  Assert(inverse_jacobian_ptr != nullptr,
-         internal::FEPointEvaluation::
-           ExcFEPointEvaluationAccessToUninitializedMappingField(
-             "update_inverse_jacobians"));
-  return inverse_jacobian_ptr
-    [cell_type <=
-         ::dealii::internal::MatrixFreeFunctions::GeometryType::affine ?
-       0 :
-       point_index];
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline Number
-FEPointEvaluation<n_components_, dim, spacedim, Number>::JxW(
-  const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, n_q_points);
-  Assert(JxW_ptr != nullptr,
-         internal::FEPointEvaluation::
-           ExcFEPointEvaluationAccessToUninitializedMappingField(
-             "update_JxW_values"));
-  return JxW_ptr[point_index];
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline Tensor<1, spacedim, Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::normal_vector(
-  const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, n_q_points);
-  Assert(normal_ptr != nullptr,
-         internal::FEPointEvaluation::
-           ExcFEPointEvaluationAccessToUninitializedMappingField(
-             "update_normal_vectors"));
-  if (is_interior)
-    return normal_ptr[point_index];
+          value = interpolated_value[dim - 1];
+          // reorder derivative from tangential/normal derivatives into tensor
+          // in physical coordinates
+          if (this->current_face_number / 2 == 0)
+            {
+              gradient[0] = interpolated_value[dim];
+              if (dim > 1)
+                gradient[1] = interpolated_value[0];
+              if (dim > 2)
+                gradient[2] = interpolated_value[1];
+            }
+          else if (this->current_face_number / 2 == 1)
+            {
+              if (dim > 1)
+                gradient[1] = interpolated_value[dim];
+              if (dim == 3)
+                {
+                  gradient[0] = interpolated_value[1];
+                  gradient[2] = interpolated_value[0];
+                }
+              else if (dim == 2)
+                gradient[0] = interpolated_value[0];
+              else
+                Assert(false, ExcInternalError());
+            }
+          else if (this->current_face_number / 2 == 2)
+            {
+              if (dim > 2)
+                {
+                  gradient[0] = interpolated_value[0];
+                  gradient[1] = interpolated_value[1];
+                  gradient[2] = interpolated_value[dim];
+                }
+              else
+                Assert(false, ExcInternalError());
+            }
+          else
+            Assert(false, ExcInternalError());
+        }
+      else
+        {
+          value = is_linear ?
+                    internal::evaluate_tensor_product_value_linear<
+                      dim - 1,
+                      scalar_value_type,
+                      VectorizedArrayType>(this->solution_renumbered.data(),
+                                           this->unit_point_faces_ptr[qb]) :
+                    internal::evaluate_tensor_product_value_shapes<
+                      dim - 1,
+                      scalar_value_type,
+                      VectorizedArrayType,
+                      false>(this->shapes_faces.data() + qb * n_shapes,
+                             n_shapes,
+                             this->solution_renumbered.data());
+        }
+    }
   else
-    return -normal_ptr[point_index];
+    {
+      if (evaluation_flags & EvaluationFlags::gradients)
+        {
+          std::array<vectorized_value_type, dim + 1> result;
+          if constexpr (is_linear)
+            {
+              if constexpr (n_components == 1)
+                result =
+                  internal::evaluate_tensor_product_value_and_gradient_linear<
+                    dim,
+                    scalar_value_type,
+                    VectorizedArrayType,
+                    1,
+                    stride_view>(solution_values.data(),
+                                 this->unit_point_ptr[qb]);
+              else
+                result =
+                  internal::evaluate_tensor_product_value_and_gradient_linear(
+                    this->solution_renumbered.data(), this->unit_point_ptr[qb]);
+            }
+          else
+            result =
+              internal::evaluate_tensor_product_value_and_gradient_shapes<
+                dim,
+                scalar_value_type,
+                VectorizedArrayType,
+                1,
+                false>(this->shapes.data() + qb * n_shapes,
+                       n_shapes,
+                       this->solution_renumbered.data());
+          gradient[0] = result[0];
+          if (dim > 1)
+            gradient[1] = result[1];
+          if (dim > 2)
+            gradient[2] = result[2];
+          value = result[dim];
+        }
+      else
+        {
+          if constexpr (is_linear)
+            {
+              if constexpr (n_components == 1)
+                value = internal::evaluate_tensor_product_value_linear<
+                  dim,
+                  scalar_value_type,
+                  VectorizedArrayType,
+                  stride_view>(solution_values.data(),
+                               this->unit_point_ptr[qb]);
+              else
+                value = internal::evaluate_tensor_product_value_linear(
+                  this->solution_renumbered.data(), this->unit_point_ptr[qb]);
+            }
+          else
+            value = internal::evaluate_tensor_product_value_shapes<
+              dim,
+              scalar_value_type,
+              VectorizedArrayType,
+              false>(this->shapes.data() + qb * n_shapes,
+                     n_shapes,
+                     this->solution_renumbered.data());
+        }
+    }
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-inline Point<spacedim, Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::real_point(
-  const unsigned int point_index) const
+template <bool is_face_path, bool is_linear, std::size_t stride_view>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
+  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
 {
-  AssertIndexRange(point_index, n_q_points);
-  Assert(real_point_ptr != nullptr,
-         internal::FEPointEvaluation::
-           ExcFEPointEvaluationAccessToUninitializedMappingField(
-             "update_quadrature_points"));
-  return real_point_ptr[point_index];
+  if (!(is_linear && n_components == 1) || is_face_path)
+    prepare_evaluate_fast<is_face_path, is_linear>(solution_values,
+                                                   evaluation_flags);
+
+  // loop over quadrature batches qb
+  const unsigned int n_shapes = is_linear ? 2 : this->poly.size();
+
+  for (unsigned int qb = 0; qb < this->n_q_batches; ++qb)
+    {
+      vectorized_value_type              value;
+      interface_vectorized_gradient_type gradient;
+
+      compute_evaluate_fast<is_face_path, is_linear>(
+        solution_values, evaluation_flags, n_shapes, qb, value, gradient);
+
+      if (evaluation_flags & EvaluationFlags::values)
+        {
+          for (unsigned int v = 0, offset = qb * this->stride;
+               v < this->stride &&
+               (this->stride == 1 || offset < this->n_q_points_scalar);
+               ++v, ++offset)
+            ETT::set_value(value, v, this->values[offset]);
+        }
+      if (evaluation_flags & EvaluationFlags::gradients)
+        {
+          Assert(this->update_flags & update_gradients ||
+                   this->update_flags & update_inverse_jacobians,
+                 ExcNotInitialized());
+
+          for (unsigned int v = 0, offset = qb * this->stride;
+               v < this->stride &&
+               (this->stride == 1 || offset < this->n_q_points_scalar);
+               ++v, ++offset)
+            {
+              gradient_type unit_gradient;
+              ETT::set_gradient(gradient, v, unit_gradient);
+              this->gradients[offset] =
+                this->cell_type <=
+                    internal::MatrixFreeFunctions::GeometryType::cartesian ?
+                  apply_diagonal_transformation(this->inverse_jacobian_ptr[0],
+                                                unit_gradient) :
+                  apply_transformation(
+                    this
+                      ->inverse_jacobian_ptr[this->cell_type <=
+                                                 internal::MatrixFreeFunctions::
+                                                   GeometryType::affine ?
+                                               0 :
+                                               offset]
+                      .transpose(),
+                    unit_gradient);
+            }
+        }
+    }
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-inline Point<dim, Number>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::unit_point(
-  const unsigned int point_index) const
+template <std::size_t stride_view>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
+  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
 {
-  AssertIndexRange(point_index, n_q_points);
-  Assert(unit_point_ptr != nullptr, ExcMessage("unit_point_ptr is not set!"));
-  Point<dim, Number> unit_point;
-  for (unsigned int d = 0; d < dim; ++d)
-    unit_point[d] = internal::VectorizedArrayTrait<Number>::get_from_vectorized(
-      unit_point_ptr[point_index / stride][d], point_index % stride);
-  return unit_point;
+  // slow path with FEValues
+  Assert(this->fe_values.get() != nullptr,
+         ExcMessage(
+           "Not initialized. Please call FEPointEvaluationBase::reinit()!"));
+
+  const std::size_t n_points = this->fe_values->get_quadrature().size();
+
+  if (evaluation_flags & EvaluationFlags::values)
+    {
+      this->values.resize(this->n_q_points);
+      std::fill(this->values.begin(), this->values.end(), value_type());
+      for (unsigned int i = 0; i < this->fe->n_dofs_per_cell(); ++i)
+        {
+          const ScalarNumber value = solution_values[i];
+          for (unsigned int d = 0; d < n_components; ++d)
+            if (this->nonzero_shape_function_component[i][d] &&
+                (this->fe->is_primitive(i) || this->fe->is_primitive()))
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  ETT::access(this->values[qb],
+                              v,
+                              d,
+                              this->fe_values->shape_value(i, q + v) * value);
+            else if (this->nonzero_shape_function_component[i][d])
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  ETT::access(this->values[qb],
+                              v,
+                              d,
+                              this->fe_values->shape_value_component(i,
+                                                                     q + v,
+                                                                     d) *
+                                value);
+        }
+    }
+
+  if (evaluation_flags & EvaluationFlags::gradients)
+    {
+      this->gradients.resize(this->n_q_points);
+      std::fill(this->gradients.begin(),
+                this->gradients.end(),
+                gradient_type());
+      for (unsigned int i = 0; i < this->fe->n_dofs_per_cell(); ++i)
+        {
+          const ScalarNumber value = solution_values[i];
+          for (unsigned int d = 0; d < n_components; ++d)
+            if (this->nonzero_shape_function_component[i][d] &&
+                (this->fe->is_primitive(i) || this->fe->is_primitive()))
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  ETT::access(this->gradients[qb],
+                              v,
+                              d,
+                              this->fe_values->shape_grad(i, q + v) * value);
+            else if (this->nonzero_shape_function_component[i][d])
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  ETT::access(
+                    this->gradients[qb],
+                    v,
+                    d,
+                    this->fe_values->shape_grad_component(i, q + v, d) * value);
+        }
+    }
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
-FEPointEvaluation<n_components_, dim, spacedim, Number>::
-  quadrature_point_indices() const
+template <bool is_face_path, bool is_linear>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::compute_integrate_fast(
+  const EvaluationFlags::EvaluationFlags  &integration_flags,
+  const unsigned int                       n_shapes,
+  const unsigned int                       qb,
+  const vectorized_value_type              value,
+  const interface_vectorized_gradient_type gradient,
+  vectorized_value_type                   *solution_values_vectorized_linear)
 {
-  return {0U, n_q_points};
+  if (is_face_path)
+    {
+      if (integration_flags & EvaluationFlags::gradients)
+        {
+          std::array<vectorized_value_type, 2>      value_face = {};
+          Tensor<1, dim - 1, vectorized_value_type> gradient_in_face;
+
+          value_face[0] = value;
+          // fill derivative in physical coordinates into tangential/normal
+          // derivatives
+          if (this->current_face_number / 2 == 0)
+            {
+              value_face[1] = gradient[0];
+              if (dim > 1)
+                gradient_in_face[0] = gradient[1];
+              if (dim > 2)
+                gradient_in_face[1] = gradient[2];
+            }
+          else if (this->current_face_number / 2 == 1)
+            {
+              if (dim > 1)
+                value_face[1] = gradient[1];
+              if (dim == 3)
+                {
+                  gradient_in_face[0] = gradient[2];
+                  gradient_in_face[1] = gradient[0];
+                }
+              else if (dim == 2)
+                gradient_in_face[0] = gradient[0];
+              else
+                Assert(false, ExcInternalError());
+            }
+          else if (this->current_face_number / 2 == 2)
+            {
+              if (dim > 2)
+                {
+                  value_face[1]       = gradient[2];
+                  gradient_in_face[0] = gradient[0];
+                  gradient_in_face[1] = gradient[1];
+                }
+              else
+                Assert(false, ExcInternalError());
+            }
+          else
+            Assert(false, ExcInternalError());
+
+          internal::integrate_tensor_product_value_and_gradient<
+            is_linear,
+            dim - 1,
+            VectorizedArrayType,
+            vectorized_value_type,
+            2>(this->shapes_faces.data() + qb * n_shapes,
+               n_shapes,
+               value_face.data(),
+               gradient_in_face,
+               is_linear ? solution_values_vectorized_linear :
+                           this->solution_renumbered_vectorized.data(),
+               this->unit_point_faces_ptr[qb],
+               qb != 0);
+        }
+      else
+        internal::integrate_tensor_product_value<is_linear,
+                                                 dim - 1,
+                                                 VectorizedArrayType,
+                                                 vectorized_value_type>(
+          this->shapes_faces.data() + qb * n_shapes,
+          n_shapes,
+          value,
+          is_linear ? solution_values_vectorized_linear :
+                      this->solution_renumbered_vectorized.data(),
+          this->unit_point_faces_ptr[qb],
+          qb != 0);
+    }
+  else
+    {
+      if (integration_flags & EvaluationFlags::gradients)
+        internal::integrate_tensor_product_value_and_gradient<
+          is_linear,
+          dim,
+          VectorizedArrayType,
+          vectorized_value_type>(this->shapes.data() + qb * n_shapes,
+                                 n_shapes,
+                                 &value,
+                                 gradient,
+                                 is_linear ?
+                                   solution_values_vectorized_linear :
+                                   this->solution_renumbered_vectorized.data(),
+                                 this->unit_point_ptr[qb],
+                                 qb != 0);
+      else
+        internal::integrate_tensor_product_value<is_linear,
+                                                 dim,
+                                                 VectorizedArrayType,
+                                                 vectorized_value_type>(
+          this->shapes.data() + qb * n_shapes,
+          n_shapes,
+          value,
+          is_linear ? solution_values_vectorized_linear :
+                      this->solution_renumbered_vectorized.data(),
+          this->unit_point_ptr[qb],
+          qb != 0);
+    }
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+template <bool is_face_path, bool is_linear, std::size_t stride_view>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::finish_integrate_fast(
+  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags            &integration_flags,
+  vectorized_value_type *solution_values_vectorized_linear,
+  const bool             sum_into_values)
+{
+  if (!sum_into_values && this->fe->n_components() > n_components)
+    for (unsigned int i = 0; i < solution_values.size(); ++i)
+      solution_values[i] = 0;
+
+  const unsigned int dofs_per_comp =
+    is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
+
+  for (unsigned int comp = 0; comp < n_components; ++comp)
+    {
+      const std::size_t offset =
+        (this->component_in_base_element + comp) * dofs_per_comp;
+
+      if (is_face_path)
+        {
+          const unsigned int dofs_per_comp_face =
+            is_linear ? Utilities::pow(2, dim - 1) :
+                        this->dofs_per_component_face;
+
+          const unsigned int size_input = 2 * dofs_per_comp_face;
+          ScalarNumber      *input      = this->scratch_data_scalar.begin();
+          ScalarNumber      *output     = input + size_input;
+
+          for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
+            input[i] =
+              ETT::sum_value(comp,
+                             is_linear ?
+                               *(solution_values_vectorized_linear + i) :
+                               this->solution_renumbered_vectorized[i]);
+
+          internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+            template interpolate<false, false>(1,
+                                               integration_flags,
+                                               this->shape_info,
+                                               input,
+                                               output,
+                                               this->current_face_number);
+
+          if (is_linear || this->renumber.empty())
+            {
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[i + offset] += output[i];
+                else
+                  solution_values[i + offset] = output[i];
+            }
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[renumber_ptr[i]] += output[i];
+                else
+                  solution_values[renumber_ptr[i]] = output[i];
+            }
+        }
+      else
+        {
+          if (is_linear || this->renumber.empty())
+            {
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[i + offset] +=
+                    ETT::sum_value(comp,
+                                   is_linear ?
+                                     *(solution_values_vectorized_linear + i) :
+                                     this->solution_renumbered_vectorized[i]);
+                else
+                  solution_values[i + offset] =
+                    ETT::sum_value(comp,
+                                   is_linear ?
+                                     *(solution_values_vectorized_linear + i) :
+                                     this->solution_renumbered_vectorized[i]);
+            }
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[renumber_ptr[i]] +=
+                    ETT::sum_value(comp,
+                                   this->solution_renumbered_vectorized[i]);
+                else
+                  solution_values[renumber_ptr[i]] =
+                    ETT::sum_value(comp,
+                                   this->solution_renumbered_vectorized[i]);
+            }
+        }
+    }
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+template <bool        do_JxW,
+          bool        is_face_path,
+          bool        is_linear,
+          std::size_t stride_view>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
+  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags            &integration_flags,
+  const bool                                         sum_into_values)
+{
+  // zero out lanes of incomplete last quadrature point batch
+  if constexpr (this->stride == 1)
+    if (const unsigned int n_filled_lanes =
+          this->n_q_points_scalar & (this->n_lanes_internal - 1);
+        n_filled_lanes > 0)
+      {
+        if (integration_flags & EvaluationFlags::values)
+          for (unsigned int v = n_filled_lanes; v < this->n_lanes_internal; ++v)
+            ETT::set_zero_value(this->values.back(), v);
+        if (integration_flags & EvaluationFlags::gradients)
+          for (unsigned int v = n_filled_lanes; v < this->n_lanes_internal; ++v)
+            ETT::set_zero_gradient(this->gradients.back(), v);
+      }
+
+  std::array<vectorized_value_type,
+             is_linear ? (is_face_path ? 2 * Utilities::pow(2, dim - 1) :
+                                         Utilities::pow(2, dim)) :
+                         0>
+    solution_values_vectorized_linear = {};
+
+  // loop over quadrature batches qb
+  const unsigned int n_shapes = is_linear ? 2 : this->poly.size();
+
+  const bool cartesian_cell =
+    this->cell_type <= internal::MatrixFreeFunctions::GeometryType::cartesian;
+  const bool affine_cell =
+    this->cell_type <= internal::MatrixFreeFunctions::GeometryType::affine;
+  for (unsigned int qb = 0; qb < this->n_q_batches; ++qb)
+    {
+      vectorized_value_type                 value = {};
+      Tensor<1, dim, vectorized_value_type> gradient;
+
+      if (integration_flags & EvaluationFlags::values)
+        for (unsigned int v = 0, offset = qb * this->stride;
+             v < this->stride &&
+             (this->stride == 1 || offset < this->n_q_points_scalar);
+             ++v, ++offset)
+          ETT::get_value(value,
+                         v,
+                         do_JxW ? this->values[offset] * this->JxW_ptr[offset] :
+                                  this->values[offset]);
+
+      if (integration_flags & EvaluationFlags::gradients)
+        for (unsigned int v = 0, offset = qb * this->stride;
+             v < this->stride &&
+             (this->stride == 1 || offset < this->n_q_points_scalar);
+             ++v, ++offset)
+          {
+            const auto grad_w =
+              do_JxW ? this->gradients[offset] * this->JxW_ptr[offset] :
+                       this->gradients[offset];
+            ETT::get_gradient(
+              gradient,
+              v,
+              cartesian_cell ?
+                apply_diagonal_transformation(this->inverse_jacobian_ptr[0],
+                                              grad_w) :
+                apply_transformation(
+                  this->inverse_jacobian_ptr[affine_cell ? 0 : offset],
+                  grad_w));
+          }
+
+      compute_integrate_fast<is_face_path, is_linear>(
+        integration_flags,
+        n_shapes,
+        qb,
+        value,
+        gradient,
+        solution_values_vectorized_linear.data());
+    }
+
+  // add between the lanes and write into the result
+  finish_integrate_fast<is_face_path, is_linear>(
+    solution_values,
+    integration_flags,
+    solution_values_vectorized_linear.data(),
+    sum_into_values);
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+template <bool do_JxW, std::size_t stride_view>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
+  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags            &integration_flags,
+  const bool                                         sum_into_values)
+{
+  // slow path with FEValues
+  Assert(this->fe_values.get() != nullptr,
+         ExcMessage(
+           "Not initialized. Please call FEPointEvaluationBase::reinit()!"));
+  if (!sum_into_values)
+    for (unsigned int i = 0; i < solution_values.size(); ++i)
+      solution_values[i] = 0;
+
+  const std::size_t n_points = this->fe_values->get_quadrature().size();
+
+  if (integration_flags & EvaluationFlags::values)
+    {
+      AssertIndexRange(this->n_q_points, this->values.size() + 1);
+      for (unsigned int i = 0; i < this->fe->n_dofs_per_cell(); ++i)
+        {
+          for (unsigned int d = 0; d < n_components; ++d)
+            if (this->nonzero_shape_function_component[i][d] &&
+                (this->fe->is_primitive(i) || this->fe->is_primitive()))
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  solution_values[i] +=
+                    this->fe_values->shape_value(i, q + v) *
+                    ETT::access(this->values[qb], v, d) *
+                    (do_JxW ? this->fe_values->JxW(q + v) : 1.);
+            else if (this->nonzero_shape_function_component[i][d])
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  solution_values[i] +=
+                    this->fe_values->shape_value_component(i, q + v, d) *
+                    ETT::access(this->values[qb], v, d) *
+                    (do_JxW ? this->fe_values->JxW(q + v) : 1.);
+        }
+    }
+
+  if (integration_flags & EvaluationFlags::gradients)
+    {
+      AssertIndexRange(this->n_q_points, this->gradients.size() + 1);
+      for (unsigned int i = 0; i < this->fe->n_dofs_per_cell(); ++i)
+        {
+          for (unsigned int d = 0; d < n_components; ++d)
+            if (this->nonzero_shape_function_component[i][d] &&
+                (this->fe->is_primitive(i) || this->fe->is_primitive()))
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  solution_values[i] +=
+                    this->fe_values->shape_grad(i, q + v) *
+                    ETT::access(this->gradients[qb], v, d) *
+                    (do_JxW ? this->fe_values->JxW(q + v) : 1.);
+            else if (this->nonzero_shape_function_component[i][d])
+              for (unsigned int qb = 0, q = 0; q < n_points;
+                   ++qb, q += this->n_lanes_user_interface)
+                for (unsigned int v = 0;
+                     v < this->n_lanes_user_interface && q + v < n_points;
+                     ++v)
+                  solution_values[i] +=
+                    this->fe_values->shape_grad_component(i, q + v, d) *
+                    ETT::access(this->gradients[qb], v, d) *
+                    (do_JxW ? this->fe_values->JxW(q + v) : 1.);
+        }
+    }
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+template <bool do_JxW, std::size_t stride_view>
+void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
+  const StridedArrayView<ScalarNumber, stride_view> &solution_values,
+  const EvaluationFlags::EvaluationFlags            &integration_flags,
+  const bool                                         sum_into_values)
+{
+  if (!this->is_reinitialized)
+    reinit();
+
+  Assert(!(integration_flags & EvaluationFlags::hessians), ExcNotImplemented());
+
+  if (this->n_q_points == 0 || // no evaluation points provided
+      !((integration_flags & EvaluationFlags::values) ||
+        (integration_flags &
+         EvaluationFlags::gradients))) // no integration flags
+    {
+      if (!sum_into_values)
+        for (unsigned int i = 0; i < solution_values.size(); ++i)
+          solution_values[i] = 0;
+      return;
+    }
+
+  Assert(
+    !do_JxW || this->JxW_ptr != nullptr,
+    ExcMessage(
+      "JxW pointer is not set! If you do not want to integrate() use test_and_sum()"));
+
+  AssertDimension(solution_values.size(), this->fe->dofs_per_cell);
+  if (this->fast_path)
+    {
+      if (this->use_face_path)
+        {
+          if (this->use_linear_path)
+            integrate_fast<do_JxW, true, true>(solution_values,
+                                               integration_flags,
+                                               sum_into_values);
+          else
+            integrate_fast<do_JxW, true, false>(solution_values,
+                                                integration_flags,
+                                                sum_into_values);
+        }
+      else
+        {
+          if (this->use_linear_path)
+            integrate_fast<do_JxW, false, true>(solution_values,
+                                                integration_flags,
+                                                sum_into_values);
+          else
+            integrate_fast<do_JxW, false, false>(solution_values,
+                                                 integration_flags,
+                                                 sum_into_values);
+        }
+    }
+  else
+    integrate_slow<do_JxW>(solution_values, integration_flags, sum_into_values);
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
 class FEFacePointEvaluation
-  : public FEPointEvaluation<n_components_, dim, spacedim, Number>
+  : public FEPointEvaluationBase<n_components_, dim, spacedim, Number>
 {
 public:
   static constexpr unsigned int dimension    = dim;
@@ -3357,7 +3487,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
     const FiniteElement<dim>                        &fe,
     const bool                                       is_interior,
     const unsigned int                               first_selected_component)
-  : FEPointEvaluation<n_components_, dim, spacedim, Number>(
+  : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
       mapping_info,
       fe,
       first_selected_component,
