@@ -3172,7 +3172,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
   ScalarNumber *output =
     this->scratch_data_scalar.begin() + dofs_per_comp * n_components;
 
-  internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+  internal::FEFaceNormalEvaluationImpl<dim, is_linear ? 1 : -1, ScalarNumber>::
     template interpolate<true, false>(n_components,
                                       evaluation_flags,
                                       this->shape_info,
@@ -3312,21 +3312,23 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
       (is_linear || this->renumber.empty()))
     {
       if (sum_into_values)
-        internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-          template interpolate<false, true>(n_components,
-                                            integration_flags,
-                                            this->shape_info,
-                                            input,
-                                            solution_values.data(),
-                                            this->current_face_number);
+        internal::
+          FEFaceNormalEvaluationImpl<dim, is_linear ? 1 : -1, ScalarNumber>::
+            template interpolate<false, true>(n_components,
+                                              integration_flags,
+                                              this->shape_info,
+                                              input,
+                                              solution_values.data(),
+                                              this->current_face_number);
       else
-        internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-          template interpolate<false, false>(n_components,
-                                             integration_flags,
-                                             this->shape_info,
-                                             input,
-                                             solution_values.data(),
-                                             this->current_face_number);
+        internal::
+          FEFaceNormalEvaluationImpl<dim, is_linear ? 1 : -1, ScalarNumber>::
+            template interpolate<false, false>(n_components,
+                                               integration_flags,
+                                               this->shape_info,
+                                               input,
+                                               solution_values.data(),
+                                               this->current_face_number);
     }
   else
     {
@@ -3336,13 +3338,14 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
       const unsigned int size_input = 3 * dofs_per_comp_face * n_components;
       ScalarNumber      *output     = input + size_input;
 
-      internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-        template interpolate<false, false>(n_components,
-                                           integration_flags,
-                                           this->shape_info,
-                                           input,
-                                           output,
-                                           this->current_face_number);
+      internal::
+        FEFaceNormalEvaluationImpl<dim, is_linear ? 1 : -1, ScalarNumber>::
+          template interpolate<false, false>(n_components,
+                                             integration_flags,
+                                             this->shape_info,
+                                             input,
+                                             output,
+                                             this->current_face_number);
 
       const unsigned int dofs_per_comp =
         is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
