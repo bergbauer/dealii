@@ -3388,36 +3388,40 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
       const std::size_t offset =
         (this->component_in_base_element + comp) * dofs_per_comp;
 
-      const ScalarNumber *input;
       if (is_linear || this->renumber.empty())
         {
           for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            this->scratch_data_scalar[i] = solution_values[i + offset];
-          input = this->scratch_data_scalar.data();
+            this->scratch_data_scalar[i + comp * dofs_per_comp] =
+              solution_values[i + offset];
         }
       else
         {
           const unsigned int *renumber_ptr = this->renumber.data() + offset;
           for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            this->scratch_data_scalar[i] = solution_values[renumber_ptr[i]];
-          input = this->scratch_data_scalar.data();
+            this->scratch_data_scalar[i + comp * dofs_per_comp] =
+              solution_values[renumber_ptr[i]];
         }
-
-      ScalarNumber *output = this->scratch_data_scalar.begin() + dofs_per_comp;
-
-      internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-        template interpolate<true, false>(1,
-                                          evaluation_flags,
-                                          this->shape_info,
-                                          input,
-                                          output,
-                                          this->current_face_number);
-
-      const unsigned int dofs_per_comp_face =
-        is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
-      for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
-        ETT::read_value(output[i], comp, this->solution_renumbered[i]);
     }
+
+  const ScalarNumber *input = this->scratch_data_scalar.data();
+  ScalarNumber       *output =
+    this->scratch_data_scalar.begin() + dofs_per_comp * n_components;
+
+  internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+    template interpolate<true, false>(n_components,
+                                      evaluation_flags,
+                                      this->shape_info,
+                                      input,
+                                      output,
+                                      this->current_face_number);
+
+  const unsigned int dofs_per_comp_face =
+    is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
+  for (unsigned int comp = 0; comp < n_components; ++comp)
+    for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
+      ETT::read_value(output[i + comp * 3 * dofs_per_comp_face],
+                      comp,
+                      this->solution_renumbered[i]);
 
   do_evaluate_in_face<is_linear, 1>(this->solution_renumbered.data(),
                                     evaluation_flags);
@@ -3871,7 +3875,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
     is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
 
   for (unsigned int comp = 0; comp < n_components; ++comp)
-    for (unsigned int i = 0; i < 3 * dofs_per_comp_face; ++i)
+    for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
       if (sum_into_values)
         face_dof_values[(i + comp * 3 * dofs_per_comp_face) *
                         stride_face_dof] +=
