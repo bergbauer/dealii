@@ -3180,7 +3180,6 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
                                       output,
                                       this->current_face_number);
 
-
   do_evaluate_in_face<is_linear, 1>(output, evaluation_flags);
 }
 
