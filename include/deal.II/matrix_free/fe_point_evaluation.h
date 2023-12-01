@@ -3041,6 +3041,56 @@ private:
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  FEFacePointEvaluation(
+    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim>                        &fe,
+    const bool                                       is_interior,
+    const unsigned int                               first_selected_component)
+  : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
+      mapping_info,
+      fe,
+      first_selected_component,
+      is_interior)
+{}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
+  const unsigned int cell_index,
+  const unsigned int face_number)
+{
+  this->current_cell_index  = cell_index;
+  this->current_face_number = face_number;
+
+  if (this->use_linear_path)
+    this->template do_reinit<true, true>();
+  else
+    this->template do_reinit<true, false>();
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
+  const unsigned int face_index)
+{
+  this->current_cell_index = face_index;
+  this->current_face_number =
+    this->mapping_info->get_face_number(face_index, this->is_interior);
+
+  if (this->use_linear_path)
+    this->template do_reinit<true, true>();
+  else
+    this->template do_reinit<true, false>();
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
 template <std::size_t stride_view>
 void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
@@ -3597,56 +3647,6 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                          is_linear ?
                            *(solution_values_vectorized_linear.data() + i) :
                            this->solution_renumbered_vectorized[i]);
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
-  FEFacePointEvaluation(
-    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-    const FiniteElement<dim>                        &fe,
-    const bool                                       is_interior,
-    const unsigned int                               first_selected_component)
-  : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
-      mapping_info,
-      fe,
-      first_selected_component,
-      is_interior)
-{}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
-  const unsigned int cell_index,
-  const unsigned int face_number)
-{
-  this->current_cell_index  = cell_index;
-  this->current_face_number = face_number;
-
-  if (this->use_linear_path)
-    this->template do_reinit<true, true>();
-  else
-    this->template do_reinit<true, false>();
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
-inline void
-FEFacePointEvaluation<n_components_, dim, spacedim, Number>::reinit(
-  const unsigned int face_index)
-{
-  this->current_cell_index = face_index;
-  this->current_face_number =
-    this->mapping_info->get_face_number(face_index, this->is_interior);
-
-  if (this->use_linear_path)
-    this->template do_reinit<true, true>();
-  else
-    this->template do_reinit<true, false>();
 }
 
 
