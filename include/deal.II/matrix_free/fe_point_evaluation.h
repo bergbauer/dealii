@@ -2979,13 +2979,13 @@ public:
                     const bool sum_into_values = false)
   {
     if (this->use_linear_path)
-      do_integrate_in_face<true, stride_face_dof>(face_dof_values,
-                                                  integration_flags,
-                                                  sum_into_values);
+      do_integrate_in_face<true, true, stride_face_dof>(face_dof_values,
+                                                        integration_flags,
+                                                        sum_into_values);
     else
-      do_integrate_in_face<false, stride_face_dof>(face_dof_values,
-                                                   integration_flags,
-                                                   sum_into_values);
+      do_integrate_in_face<true, false, stride_face_dof>(face_dof_values,
+                                                         integration_flags,
+                                                         sum_into_values);
   }
 
   /**
