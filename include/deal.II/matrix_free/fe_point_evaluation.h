@@ -1903,8 +1903,7 @@ private:
   template <bool is_linear, std::size_t stride_view>
   void
   prepare_evaluate_fast(
-    const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags                  &evaluation_flags);
+    const StridedArrayView<const ScalarNumber, stride_view> &solution_values);
 
   /**
    * Evaluates the actual interpolation on the cell or face for a quadrature
@@ -1962,7 +1961,6 @@ private:
   void
   finish_integrate_fast(
     const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-    const EvaluationFlags::EvaluationFlags            &integration_flags,
     vectorized_value_type *solution_values_vectorized_linear,
     const bool             sum_into_values);
 
@@ -2187,8 +2185,7 @@ template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear, std::size_t stride_view>
 inline void
 FEPointEvaluation<n_components_, dim, spacedim, Number>::prepare_evaluate_fast(
-  const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
+  const StridedArrayView<const ScalarNumber, stride_view> &solution_values)
 {
   const unsigned int dofs_per_comp =
     is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
@@ -2299,7 +2296,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
   const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
 {
   if (!(is_linear && n_components == 1))
-    prepare_evaluate_fast<is_linear>(solution_values, evaluation_flags);
+    prepare_evaluate_fast<is_linear>(solution_values);
 
   // loop over quadrature batches qb
   const unsigned int n_shapes = is_linear ? 2 : this->poly.size();
@@ -2485,7 +2482,6 @@ template <bool is_linear, std::size_t stride_view>
 inline void
 FEPointEvaluation<n_components_, dim, spacedim, Number>::finish_integrate_fast(
   const StridedArrayView<ScalarNumber, stride_view> &solution_values,
-  const EvaluationFlags::EvaluationFlags            &integration_flags,
   vectorized_value_type *solution_values_vectorized_linear,
   const bool             sum_into_values)
 {
@@ -2609,7 +2605,6 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
 
   // add between the lanes and write into the result
   finish_integrate_fast<is_linear>(solution_values,
-                                   integration_flags,
                                    solution_values_vectorized_linear.data(),
                                    sum_into_values);
 }
