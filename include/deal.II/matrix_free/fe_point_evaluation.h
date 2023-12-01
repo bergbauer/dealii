@@ -866,14 +866,6 @@ public:
   JxW(const unsigned int point_index) const;
 
   /**
-   * Return the normal vector. This class or the MappingInfo object passed to
-   * this function needs to be constructed with UpdateFlags containing
-   * `update_normal_vectors`.
-   */
-  Tensor<1, spacedim, Number>
-  normal_vector(const unsigned int point_index) const;
-
-  /**
    * Return the position in real coordinates of the given point index among
    * the points passed to reinit().
    */
@@ -1588,24 +1580,6 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::JxW(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
-inline Tensor<1, spacedim, Number>
-FEPointEvaluationBase<n_components_, dim, spacedim, Number>::normal_vector(
-  const unsigned int point_index) const
-{
-  AssertIndexRange(point_index, n_q_points);
-  Assert(normal_ptr != nullptr,
-         internal::FEPointEvaluation::
-           ExcFEPointEvaluationAccessToUninitializedMappingField(
-             "update_normal_vectors"));
-  if (is_interior)
-    return normal_ptr[point_index];
-  else
-    return -normal_ptr[point_index];
-}
-
-
-
-template <int n_components_, int dim, int spacedim, typename Number>
 inline Point<spacedim, Number>
 FEPointEvaluationBase<n_components_, dim, spacedim, Number>::real_point(
   const unsigned int point_index) const
@@ -1904,6 +1878,14 @@ public:
   test_and_sum(const ArrayView<ScalarNumber>          &solution_values,
                const EvaluationFlags::EvaluationFlags &integration_flags,
                const bool                              sum_into_values = false);
+
+  /**
+   * Return the normal vector. This class or the MappingInfo object passed to
+   * this function needs to be constructed with UpdateFlags containing
+   * `update_normal_vectors`.
+   */
+  Tensor<1, spacedim, Number>
+  normal_vector(const unsigned int point_index) const;
 
 private:
   /**
@@ -2755,6 +2737,24 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
     }
   else
     integrate_slow<do_JxW>(solution_values, integration_flags, sum_into_values);
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline Tensor<1, spacedim, Number>
+FEPointEvaluation<n_components_, dim, spacedim, Number>::normal_vector(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, this->n_q_points);
+  Assert(this->normal_ptr != nullptr,
+         internal::FEPointEvaluation::
+           ExcFEPointEvaluationAccessToUninitializedMappingField(
+             "update_normal_vectors"));
+  if (this->is_interior)
+    return this->normal_ptr[point_index];
+  else
+    return -this->normal_ptr[point_index];
 }
 
 
