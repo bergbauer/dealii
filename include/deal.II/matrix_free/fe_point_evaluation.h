@@ -1888,6 +1888,13 @@ public:
   normal_vector(const unsigned int point_index) const;
 
 private:
+  static constexpr std::size_t n_lanes_user_interface =
+    internal::VectorizedArrayTrait<Number>::width();
+  static constexpr std::size_t n_lanes_internal =
+    internal::VectorizedArrayTrait<VectorizedArrayType>::width();
+  static constexpr std::size_t stride =
+    internal::VectorizedArrayTrait<Number>::stride();
+
   /**
    * Resizes necessary data fields, reads in and renumbers solution values.
    * Interpolates onto face if face path is selected.
@@ -2057,8 +2064,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
       for (unsigned int v = 0; v < this->n_q_points_scalar; ++v)
         for (unsigned int d = 0; d < dim; ++d)
           unit_points[v][d] =
-            this->unit_point_ptr[v / this->n_lanes_internal][d]
-                                [v % this->n_lanes_internal];
+            this->unit_point_ptr[v / n_lanes_internal][d][v % n_lanes_internal];
 
       this->fe_values = std::make_shared<FEValues<dim, spacedim>>(
         *this->mapping,
@@ -2307,9 +2313,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
 
       if (evaluation_flags & EvaluationFlags::values)
         {
-          for (unsigned int v = 0, offset = qb * this->stride;
-               v < this->stride &&
-               (this->stride == 1 || offset < this->n_q_points_scalar);
+          for (unsigned int v = 0, offset = qb * stride;
+               v < stride && (stride == 1 || offset < this->n_q_points_scalar);
                ++v, ++offset)
             ETT::set_value(value, v, this->values[offset]);
         }
@@ -2319,9 +2324,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_fast(
                    this->update_flags & update_inverse_jacobians,
                  ExcNotInitialized());
 
-          for (unsigned int v = 0, offset = qb * this->stride;
-               v < this->stride &&
-               (this->stride == 1 || offset < this->n_q_points_scalar);
+          for (unsigned int v = 0, offset = qb * stride;
+               v < stride && (stride == 1 || offset < this->n_q_points_scalar);
                ++v, ++offset)
             {
               gradient_type unit_gradient;
@@ -2372,9 +2376,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
             if (this->nonzero_shape_function_component[i][d] &&
                 (this->fe->is_primitive(i) || this->fe->is_primitive()))
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   ETT::access(this->values[qb],
                               v,
@@ -2382,9 +2386,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
                               this->fe_values->shape_value(i, q + v) * value);
             else if (this->nonzero_shape_function_component[i][d])
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   ETT::access(this->values[qb],
                               v,
@@ -2409,9 +2413,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
             if (this->nonzero_shape_function_component[i][d] &&
                 (this->fe->is_primitive(i) || this->fe->is_primitive()))
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   ETT::access(this->gradients[qb],
                               v,
@@ -2419,9 +2423,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate_slow(
                               this->fe_values->shape_grad(i, q + v) * value);
             else if (this->nonzero_shape_function_component[i][d])
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   ETT::access(
                     this->gradients[qb],
@@ -2537,16 +2541,16 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
   const bool                                         sum_into_values)
 {
   // zero out lanes of incomplete last quadrature point batch
-  if constexpr (this->stride == 1)
+  if constexpr (stride == 1)
     if (const unsigned int n_filled_lanes =
-          this->n_q_points_scalar & (this->n_lanes_internal - 1);
+          this->n_q_points_scalar & (n_lanes_internal - 1);
         n_filled_lanes > 0)
       {
         if (integration_flags & EvaluationFlags::values)
-          for (unsigned int v = n_filled_lanes; v < this->n_lanes_internal; ++v)
+          for (unsigned int v = n_filled_lanes; v < n_lanes_internal; ++v)
             ETT::set_zero_value(this->values.back(), v);
         if (integration_flags & EvaluationFlags::gradients)
-          for (unsigned int v = n_filled_lanes; v < this->n_lanes_internal; ++v)
+          for (unsigned int v = n_filled_lanes; v < n_lanes_internal; ++v)
             ETT::set_zero_gradient(this->gradients.back(), v);
       }
 
@@ -2566,9 +2570,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
       Tensor<1, dim, vectorized_value_type> gradient;
 
       if (integration_flags & EvaluationFlags::values)
-        for (unsigned int v = 0, offset = qb * this->stride;
-             v < this->stride &&
-             (this->stride == 1 || offset < this->n_q_points_scalar);
+        for (unsigned int v = 0, offset = qb * stride;
+             v < stride && (stride == 1 || offset < this->n_q_points_scalar);
              ++v, ++offset)
           ETT::get_value(value,
                          v,
@@ -2576,9 +2579,8 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_fast(
                                   this->values[offset]);
 
       if (integration_flags & EvaluationFlags::gradients)
-        for (unsigned int v = 0, offset = qb * this->stride;
-             v < this->stride &&
-             (this->stride == 1 || offset < this->n_q_points_scalar);
+        for (unsigned int v = 0, offset = qb * stride;
+             v < stride && (stride == 1 || offset < this->n_q_points_scalar);
              ++v, ++offset)
           {
             const auto grad_w =
@@ -2640,9 +2642,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
             if (this->nonzero_shape_function_component[i][d] &&
                 (this->fe->is_primitive(i) || this->fe->is_primitive()))
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   solution_values[i] +=
                     this->fe_values->shape_value(i, q + v) *
@@ -2650,9 +2652,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
                     (do_JxW ? this->fe_values->JxW(q + v) : 1.);
             else if (this->nonzero_shape_function_component[i][d])
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   solution_values[i] +=
                     this->fe_values->shape_value_component(i, q + v, d) *
@@ -2670,9 +2672,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
             if (this->nonzero_shape_function_component[i][d] &&
                 (this->fe->is_primitive(i) || this->fe->is_primitive()))
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   solution_values[i] +=
                     this->fe_values->shape_grad(i, q + v) *
@@ -2680,9 +2682,9 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::integrate_slow(
                     (do_JxW ? this->fe_values->JxW(q + v) : 1.);
             else if (this->nonzero_shape_function_component[i][d])
               for (unsigned int qb = 0, q = 0; q < n_points;
-                   ++qb, q += this->n_lanes_user_interface)
+                   ++qb, q += n_lanes_user_interface)
                 for (unsigned int v = 0;
-                     v < this->n_lanes_user_interface && q + v < n_points;
+                     v < n_lanes_user_interface && q + v < n_points;
                      ++v)
                   solution_values[i] +=
                     this->fe_values->shape_grad_component(i, q + v, d) *
