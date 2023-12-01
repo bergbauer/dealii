@@ -3306,47 +3306,73 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
                                              integration_flags,
                                              false);
 
-  const unsigned int dofs_per_comp_face =
-    is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
+  ScalarNumber *input = this->scratch_data_scalar.begin();
 
-  const unsigned int size_input = 3 * dofs_per_comp_face * n_components;
-  ScalarNumber      *input      = this->scratch_data_scalar.begin();
-  ScalarNumber      *output     = input + size_input;
-
-  internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
-    template interpolate<false, false>(n_components,
-                                       integration_flags,
-                                       this->shape_info,
-                                       input,
-                                       output,
-                                       this->current_face_number);
-
-  const unsigned int dofs_per_comp =
-    is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
-
-  for (unsigned int comp = 0; comp < n_components; ++comp)
+  if (this->component_in_base_element == 0 &&
+      (is_linear || this->renumber.empty()))
     {
-      const std::size_t offset =
-        (this->component_in_base_element + comp) * dofs_per_comp;
-
-      if (is_linear || this->renumber.empty())
-        {
-          for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            if (sum_into_values)
-              solution_values[i + offset] += output[i + comp * dofs_per_comp];
-            else
-              solution_values[i + offset] = output[i + comp * dofs_per_comp];
-        }
+      if (sum_into_values)
+        internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+          template interpolate<false, true>(n_components,
+                                            integration_flags,
+                                            this->shape_info,
+                                            input,
+                                            solution_values.data(),
+                                            this->current_face_number);
       else
+        internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+          template interpolate<false, false>(n_components,
+                                             integration_flags,
+                                             this->shape_info,
+                                             input,
+                                             solution_values.data(),
+                                             this->current_face_number);
+    }
+  else
+    {
+      const unsigned int dofs_per_comp_face =
+        is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
+
+      const unsigned int size_input = 3 * dofs_per_comp_face * n_components;
+      ScalarNumber      *output     = input + size_input;
+
+      internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
+        template interpolate<false, false>(n_components,
+                                           integration_flags,
+                                           this->shape_info,
+                                           input,
+                                           output,
+                                           this->current_face_number);
+
+      const unsigned int dofs_per_comp =
+        is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
+
+      for (unsigned int comp = 0; comp < n_components; ++comp)
         {
-          const unsigned int *renumber_ptr = this->renumber.data() + offset;
-          for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            if (sum_into_values)
-              solution_values[renumber_ptr[i]] +=
-                output[i + comp * dofs_per_comp];
-            else
-              solution_values[renumber_ptr[i]] =
-                output[i + comp * dofs_per_comp];
+          const std::size_t offset =
+            (this->component_in_base_element + comp) * dofs_per_comp;
+
+          if (is_linear || this->renumber.empty())
+            {
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[i + offset] +=
+                    output[i + comp * dofs_per_comp];
+                else
+                  solution_values[i + offset] =
+                    output[i + comp * dofs_per_comp];
+            }
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[renumber_ptr[i]] +=
+                    output[i + comp * dofs_per_comp];
+                else
+                  solution_values[renumber_ptr[i]] =
+                    output[i + comp * dofs_per_comp];
+            }
         }
     }
 }
