@@ -3023,7 +3023,7 @@ private:
    */
   template <bool is_linear, int stride_face_dof>
   void
-  do_evaluate_in_face(const scalar_value_type                *face_dof_values,
+  do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
                       const EvaluationFlags::EvaluationFlags &evaluation_flags);
 
   /**
@@ -3141,28 +3141,35 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
   const unsigned int dofs_per_comp =
     is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
 
-  for (unsigned int comp = 0; comp < n_components; ++comp)
+  const ScalarNumber *input;
+  if (this->component_in_base_element == 0 &&
+      (is_linear || this->renumber.empty()))
+    input = solution_values.data();
+  else
     {
-      const std::size_t offset =
-        (this->component_in_base_element + comp) * dofs_per_comp;
+      for (unsigned int comp = 0; comp < n_components; ++comp)
+        {
+          const std::size_t offset =
+            (this->component_in_base_element + comp) * dofs_per_comp;
 
-      if (is_linear || this->renumber.empty())
-        {
-          for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            this->scratch_data_scalar[i + comp * dofs_per_comp] =
-              solution_values[i + offset];
+          if (is_linear || this->renumber.empty())
+            {
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                this->scratch_data_scalar[i + comp * dofs_per_comp] =
+                  solution_values[i + offset];
+            }
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                this->scratch_data_scalar[i + comp * dofs_per_comp] =
+                  solution_values[renumber_ptr[i]];
+            }
         }
-      else
-        {
-          const unsigned int *renumber_ptr = this->renumber.data() + offset;
-          for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            this->scratch_data_scalar[i + comp * dofs_per_comp] =
-              solution_values[renumber_ptr[i]];
-        }
+      input = this->scratch_data_scalar.data();
     }
 
-  const ScalarNumber *input = this->scratch_data_scalar.data();
-  ScalarNumber       *output =
+  ScalarNumber *output =
     this->scratch_data_scalar.begin() + dofs_per_comp * n_components;
 
   internal::FEFaceNormalEvaluationImpl<dim, -1, ScalarNumber>::
@@ -3173,16 +3180,8 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
                                       output,
                                       this->current_face_number);
 
-  const unsigned int dofs_per_comp_face =
-    is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
-  for (unsigned int comp = 0; comp < n_components; ++comp)
-    for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
-      ETT::read_value(output[i + comp * 3 * dofs_per_comp_face],
-                      comp,
-                      this->solution_renumbered[i]);
 
-  do_evaluate_in_face<is_linear, 1>(this->solution_renumbered.data(),
-                                    evaluation_flags);
+  do_evaluate_in_face<is_linear, 1>(output, evaluation_flags);
 }
 
 
@@ -3358,10 +3357,25 @@ template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear, int stride_face_dof>
 inline void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
-  do_evaluate_in_face(
-    const FEFacePointEvaluation::scalar_value_type *face_dof_values,
-    const EvaluationFlags::EvaluationFlags         &evaluation_flags)
+  do_evaluate_in_face(const ScalarNumber                     *face_dof_values,
+                      const EvaluationFlags::EvaluationFlags &evaluation_flags)
 {
+  const scalar_value_type *face_dof_values_ptr;
+  if constexpr (n_components == 1)
+    face_dof_values_ptr = face_dof_values;
+  else
+    {
+      const unsigned int dofs_per_comp_face =
+        is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
+      for (unsigned int comp = 0; comp < n_components; ++comp)
+        for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
+          ETT::read_value(face_dof_values[i + comp * 3 * dofs_per_comp_face],
+                          comp,
+                          this->solution_renumbered[i]);
+
+      face_dof_values_ptr = this->solution_renumbered.data();
+    }
+
   // loop over quadrature batches qb
   const unsigned int n_shapes = is_linear ? 2 : this->poly.size();
 
@@ -3379,7 +3393,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
-                stride_face_dof>(face_dof_values,
+                stride_face_dof>(face_dof_values_ptr,
                                  this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim - 1,
@@ -3389,7 +3403,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 false,
                 stride_face_dof>(this->shapes_faces.data() + qb * n_shapes,
                                  n_shapes,
-                                 face_dof_values);
+                                 face_dof_values_ptr);
 
           value = interpolated_value[dim - 1];
           // reorder derivative from tangential/normal derivatives into tensor
@@ -3438,7 +3452,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
-                stride_face_dof>(face_dof_values,
+                stride_face_dof>(face_dof_values_ptr,
                                  this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_shapes<
                 dim - 1,
@@ -3447,7 +3461,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 false,
                 stride_face_dof>(this->shapes_faces.data() + qb * n_shapes,
                                  n_shapes,
-                                 face_dof_values);
+                                 face_dof_values_ptr);
         }
 
       if (evaluation_flags & EvaluationFlags::values)
