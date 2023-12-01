@@ -774,6 +774,9 @@ public:
    * @param first_selected_component For multi-component FiniteElement
    * objects, this parameter allows to select a range of `n_components`
    * components starting from this parameter.
+   *
+   * @param is_interior Defines if interior or exterior. Only makes sense for
+   * faces.
    */
   FEPointEvaluationBase(
     NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
@@ -1693,13 +1696,11 @@ public:
   FEPointEvaluation(
     NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
     const FiniteElement<dim>                        &fe,
-    const unsigned int first_selected_component = 0,
-    const bool         is_interior              = true)
+    const unsigned int first_selected_component = 0)
     : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
         mapping_info,
         fe,
-        first_selected_component,
-        is_interior)
+        first_selected_component)
   {}
 
   /**
