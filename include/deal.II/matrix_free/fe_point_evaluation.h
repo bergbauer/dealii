@@ -3122,7 +3122,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
     is_linear ? Utilities::pow(2, dim) : this->dofs_per_component;
 
   const ScalarNumber *input;
-  if (this->component_in_base_element == 0 &&
+  if (stride_view == 1 && this->component_in_base_element == 0 &&
       (is_linear || this->renumber.empty()))
     input = solution_values.data();
   else
@@ -3287,7 +3287,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
 
   ScalarNumber *input = this->scratch_data_scalar.begin();
 
-  if (this->component_in_base_element == 0 &&
+  if (stride_view == 1 && this->component_in_base_element == 0 &&
       (is_linear || this->renumber.empty()))
     {
       if (sum_into_values)
