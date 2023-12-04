@@ -2954,15 +2954,7 @@ public:
   template <int stride_face_dof = VectorizedArrayType::size()>
   void
   evaluate_in_face(const ScalarNumber                     *face_dof_values,
-                   const EvaluationFlags::EvaluationFlags &evaluation_flags)
-  {
-    if (this->use_linear_path)
-      do_evaluate_in_face<true, stride_face_dof>(face_dof_values,
-                                                 evaluation_flags);
-    else
-      do_evaluate_in_face<false, stride_face_dof>(face_dof_values,
-                                                  evaluation_flags);
-  }
+                   const EvaluationFlags::EvaluationFlags &evaluation_flags);
 
   /**
    * Integrate values and gradients in face for the selected face (lane) of the
@@ -2974,17 +2966,7 @@ public:
   void
   integrate_in_face(ScalarNumber                           *face_dof_values,
                     const EvaluationFlags::EvaluationFlags &integration_flags,
-                    const bool sum_into_values = false)
-  {
-    if (this->use_linear_path)
-      do_integrate_in_face<true, true, stride_face_dof>(face_dof_values,
-                                                        integration_flags,
-                                                        sum_into_values);
-    else
-      do_integrate_in_face<true, false, stride_face_dof>(face_dof_values,
-                                                         integration_flags,
-                                                         sum_into_values);
-  }
+                    const bool sum_into_values = false);
 
   /**
    * Return the normal vector. This class or the MappingInfo object passed to
@@ -3380,6 +3362,23 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
+template <int stride_face_dof>
+void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::evaluate_in_face(
+  const ScalarNumber                     *face_dof_values,
+  const EvaluationFlags::EvaluationFlags &evaluation_flags)
+{
+  if (this->use_linear_path)
+    do_evaluate_in_face<true, stride_face_dof>(face_dof_values,
+                                               evaluation_flags);
+  else
+    do_evaluate_in_face<false, stride_face_dof>(face_dof_values,
+                                                evaluation_flags);
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
 template <bool is_linear, int stride_face_dof>
 inline void
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
@@ -3526,6 +3525,26 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
             }
         }
     }
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+template <int stride_face_dof>
+void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::integrate_in_face(
+  ScalarNumber                           *face_dof_values,
+  const EvaluationFlags::EvaluationFlags &integration_flags,
+  const bool                              sum_into_values)
+{
+  if (this->use_linear_path)
+    do_integrate_in_face<true, true, stride_face_dof>(face_dof_values,
+                                                      integration_flags,
+                                                      sum_into_values);
+  else
+    do_integrate_in_face<true, false, stride_face_dof>(face_dof_values,
+                                                       integration_flags,
+                                                       sum_into_values);
 }
 
 
