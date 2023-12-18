@@ -77,11 +77,11 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 Function<dim, RangeNumberType, PointNumberType>::vector_value(
   const Point<dim, PointNumberType> &p,
-  Vector<RangeNumberType>           &v) const
+  ArrayView<RangeNumberType>         v) const
 {
   AssertDimension(v.size(), this->n_components);
   for (unsigned int i = 0; i < this->n_components; ++i)
-    v(i) = value(p, i);
+    v[i] = value(p, i);
 }
 
 
@@ -106,7 +106,7 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 Function<dim, RangeNumberType, PointNumberType>::vector_value_list(
   const std::vector<Point<dim, PointNumberType>> &points,
-  std::vector<Vector<RangeNumberType>>           &values) const
+  std::vector<ArrayView<RangeNumberType>>         values) const
 {
   // check whether component is in the valid range is up to the derived
   // class
@@ -216,7 +216,7 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 Function<dim, RangeNumberType, PointNumberType>::vector_laplacian(
   const Point<dim, PointNumberType> &,
-  Vector<RangeNumberType> &) const
+  ArrayView<RangeNumberType>) const
 {
   Assert(false, ExcPureFunctionCalled());
 }
@@ -244,7 +244,7 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 Function<dim, RangeNumberType, PointNumberType>::vector_laplacian_list(
   const std::vector<Point<dim, PointNumberType>> &points,
-  std::vector<Vector<RangeNumberType>>           &laplacians) const
+  std::vector<ArrayView<RangeNumberType>>         laplacians) const
 {
   // check whether component is in the valid range is up to the derived
   // class
@@ -349,7 +349,7 @@ namespace Functions
 
   template <int dim, typename RangeNumberType, typename PointNumberType>
   ConstantFunction<dim, RangeNumberType, PointNumberType>::ConstantFunction(
-    const Vector<RangeNumberType> &values)
+    const ArrayView<RangeNumberType> values)
     : Function<dim, RangeNumberType, PointNumberType>(values.size())
     , function_value_vector(values.size())
   {
@@ -391,7 +391,7 @@ namespace Functions
   void
   ConstantFunction<dim, RangeNumberType, PointNumberType>::vector_value(
     const Point<dim, PointNumberType> &,
-    Vector<RangeNumberType> &return_value) const
+    ArrayView<RangeNumberType> return_value) const
   {
     Assert(return_value.size() == this->n_components,
            ExcDimensionMismatch(return_value.size(), this->n_components));
@@ -427,7 +427,7 @@ namespace Functions
   void
   ConstantFunction<dim, RangeNumberType, PointNumberType>::vector_value_list(
     const std::vector<Point<dim, PointNumberType>> &points,
-    std::vector<Vector<RangeNumberType>>           &return_values) const
+    std::vector<ArrayView<RangeNumberType>>         return_values) const
   {
     Assert(return_values.size() == points.size(),
            ExcDimensionMismatch(return_values.size(), points.size()));
@@ -667,12 +667,13 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 ComponentSelectFunction<dim, RangeNumberType, PointNumberType>::vector_value(
   const Point<dim, PointNumberType> &,
-  Vector<RangeNumberType> &return_value) const
+  ArrayView<RangeNumberType> return_value) const
 {
   Assert(return_value.size() == this->n_components,
          ExcDimensionMismatch(return_value.size(), this->n_components));
 
-  return_value = 0;
+  for (auto &r : return_value)
+    r = 0;
   std::copy(this->function_value_vector.begin() + selected_components.first,
             this->function_value_vector.begin() + selected_components.second,
             return_value.begin() + selected_components.first);
@@ -684,7 +685,7 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 ComponentSelectFunction<dim, RangeNumberType, PointNumberType>::
   vector_value_list(const std::vector<Point<dim, PointNumberType>> &points,
-                    std::vector<Vector<RangeNumberType>> &values) const
+                    std::vector<ArrayView<RangeNumberType>> values) const
 {
   Assert(values.size() == points.size(),
          ExcDimensionMismatch(values.size(), points.size()));
@@ -774,14 +775,15 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 VectorFunctionFromScalarFunctionObject<dim, RangeNumberType, PointNumberType>::
   vector_value(const Point<dim, PointNumberType> &p,
-               Vector<RangeNumberType>           &values) const
+               ArrayView<RangeNumberType>         values) const
 {
   AssertDimension(values.size(), this->n_components);
 
   // set everything to zero, and then the right component to its correct
   // value
-  values                     = 0;
-  values(selected_component) = function_object(p);
+  for (auto &v : values)
+    v = 0;
+  values[selected_component] = function_object(p);
 }
 
 
@@ -824,7 +826,7 @@ VectorFunctionFromTensorFunction<dim, RangeNumberType, PointNumberType>::value(
 
   // otherwise retrieve the values from the <tt>tensor_function</tt> to be
   // placed at the <tt>selected_component</tt> to
-  // <tt>selected_component + dim - 1</tt> elements of the <tt>Vector</tt>
+  // <tt>selected_component + dim - 1</tt> elements of the <tt>ArrayView</tt>
   // values and pick the correct one
   const Tensor<1, dim, RangeNumberType> tensor_value = tensor_function.value(p);
 
@@ -836,24 +838,25 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 inline void
 VectorFunctionFromTensorFunction<dim, RangeNumberType, PointNumberType>::
   vector_value(const Point<dim, PointNumberType> &p,
-               Vector<RangeNumberType>           &values) const
+               ArrayView<RangeNumberType>         values) const
 {
   Assert(values.size() == this->n_components,
          ExcDimensionMismatch(values.size(), this->n_components));
 
   // Retrieve the values from the <tt>tensor_function</tt> to be placed at
   // the <tt>selected_component</tt> to
-  // <tt>selected_component + dim - 1</tt> elements of the <tt>Vector</tt>
+  // <tt>selected_component + dim - 1</tt> elements of the <tt>ArrayView</tt>
   // values.
   const Tensor<1, dim, RangeNumberType> tensor_value = tensor_function.value(p);
 
   // First we make all elements of values = 0
-  values = 0;
+  for (auto &v : values)
+    v = 0;
 
   // Second we adjust the desired components to take on the values in
   // <tt>tensor_value</tt>.
   for (unsigned int i = 0; i < dim; ++i)
-    values(i + selected_component) = tensor_value[i];
+    values[i + selected_component] = tensor_value[i];
 }
 
 
@@ -868,7 +871,7 @@ template <int dim, typename RangeNumberType, typename PointNumberType>
 void
 VectorFunctionFromTensorFunction<dim, RangeNumberType, PointNumberType>::
   vector_value_list(const std::vector<Point<dim, PointNumberType>> &points,
-                    std::vector<Vector<RangeNumberType>> &value_list) const
+                    std::vector<ArrayView<RangeNumberType>> value_list) const
 {
   Assert(value_list.size() == points.size(),
          ExcDimensionMismatch(value_list.size(), points.size()));
@@ -896,7 +899,7 @@ VectorFunctionFromTensorFunction<dim, RangeNumberType, PointNumberType>::
 
   // // otherwise retrieve the values from the <tt>tensor_function</tt> to be
   // // placed at the <tt>selected_component</tt> to
-  // // <tt>selected_component + dim - 1</tt> elements of the <tt>Vector</tt>
+  // // <tt>selected_component + dim - 1</tt> elements of the <tt>ArrayView</tt>
   // // values and pick the correct one
   const Tensor<2, dim, RangeNumberType> tensor_gradient =
     tensor_function.gradient(p);

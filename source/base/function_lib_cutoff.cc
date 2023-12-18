@@ -257,7 +257,7 @@ namespace Functions
   void
   CutOffFunctionLinfty<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -268,11 +268,13 @@ namespace Functions
                              this->rescaling :
                              0.;
         if (this->selected == CutOffFunctionBase<dim>::no_component)
-          values[k] = val;
+          for (auto &v : values[k])
+            v = val;
         else
           {
-            values[k]                 = 0;
-            values[k](this->selected) = val;
+            for (auto &v : values[k])
+              v = 0;
+            values[k][this->selected] = val;
           }
       }
   }
@@ -337,7 +339,7 @@ namespace Functions
   void
   CutOffFunctionW1<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -350,11 +352,13 @@ namespace Functions
             (this->radius - d) / this->radius * this->rescaling :
             0.;
         if (this->selected == CutOffFunctionBase<dim>::no_component)
-          values[k] = val;
+          for (auto &v : values[k])
+            v = val;
         else
           {
-            values[k]                 = 0;
-            values[k](this->selected) = val;
+            for (auto &v : values[k])
+              v = 0;
+            values[k][this->selected] = val;
           }
       }
   }
@@ -431,7 +435,7 @@ namespace Functions
   void
   CutOffFunctionCinfty<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -449,11 +453,13 @@ namespace Functions
           }
 
         if (this->selected == CutOffFunctionBase<dim>::no_component)
-          values[k] = val;
+          for (auto &v : values[k])
+            v = val;
         else
           {
-            values[k]                 = 0;
-            values[k](this->selected) = val;
+            for (auto &v : values[k])
+              v = 0;
+            values[k][this->selected] = val;
           }
       }
   }
@@ -548,7 +554,7 @@ namespace Functions
   void
   CutOffFunctionC1<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -564,11 +570,13 @@ namespace Functions
           }
 
         if (this->selected == CutOffFunctionBase<dim>::no_component)
-          values[k] = val;
+          for (auto &v : values[k])
+            v = val;
         else
           {
-            values[k]                 = 0;
-            values[k](this->selected) = val;
+            for (auto &v : values[k])
+              v = 0;
+            values[k][this->selected] = val;
           }
       }
   }

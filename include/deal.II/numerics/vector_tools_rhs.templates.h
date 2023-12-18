@@ -108,7 +108,8 @@ namespace VectorTools
 
                 const std::vector<double> &weights = fe_values.get_JxW_values();
                 rhs_function.vector_value_list(
-                  fe_values.get_quadrature_points(), rhs_values);
+                  fe_values.get_quadrature_points(),
+                  make_vector_of_array_views(rhs_values));
 
                 cell_vector = 0;
 
@@ -261,7 +262,8 @@ namespace VectorTools
 
                 const std::vector<double> &weights = fe_values.get_JxW_values();
                 rhs_function.vector_value_list(
-                  fe_values.get_quadrature_points(), rhs_values);
+                  fe_values.get_quadrature_points(),
+                  make_vector_of_array_views(rhs_values));
 
                 cell_vector = 0;
 
@@ -397,7 +399,8 @@ namespace VectorTools
 
               const std::vector<double> &weights = fe_values.get_JxW_values();
               rhs_function.vector_value_list(fe_values.get_quadrature_points(),
-                                             rhs_values);
+                                             make_vector_of_array_views(
+                                               rhs_values));
 
               cell_vector = 0;
               // Use the faster code if the
@@ -552,7 +555,8 @@ namespace VectorTools
 
               const auto &weights = fe_values.get_JxW_values();
               rhs_function.vector_value_list(fe_values.get_quadrature_points(),
-                                             rhs_values);
+                                             make_vector_of_array_views(
+                                               rhs_values));
 
               cell_vector = 0;
 

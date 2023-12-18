@@ -49,7 +49,7 @@ namespace Functions
   void
   FlowFunction<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     const unsigned int n_points = points.size();
     Assert(values.size() == n_points,
@@ -68,7 +68,7 @@ namespace Functions
         Assert(values[k].size() == dim + 1,
                ExcDimensionMismatch(values[k].size(), dim + 1));
         for (unsigned int d = 0; d < dim + 1; ++d)
-          values[k](d) = aux_values[d][k];
+          values[k][d] = aux_values[d][k];
       }
   }
 
@@ -76,7 +76,7 @@ namespace Functions
   template <int dim>
   void
   FlowFunction<dim>::vector_value(const Point<dim> &point,
-                                  Vector<double>   &value) const
+                                  ArrayView<double> value) const
   {
     Assert(value.size() == dim + 1,
            ExcDimensionMismatch(value.size(), dim + 1));
@@ -94,7 +94,7 @@ namespace Functions
     vector_values(points, aux_values);
 
     for (unsigned int d = 0; d < dim + 1; ++d)
-      value(d) = aux_values[d][0];
+      value[d] = aux_values[d][0];
   }
 
 
@@ -152,7 +152,7 @@ namespace Functions
   void
   FlowFunction<dim>::vector_laplacian_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     const unsigned int n_points = points.size();
     Assert(values.size() == n_points,
@@ -171,7 +171,7 @@ namespace Functions
         Assert(values[k].size() == dim + 1,
                ExcDimensionMismatch(values[k].size(), dim + 1));
         for (unsigned int d = 0; d < dim + 1; ++d)
-          values[k](d) = aux_values[d][k];
+          values[k][d] = aux_values[d][k];
       }
   }
 

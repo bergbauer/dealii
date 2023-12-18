@@ -40,10 +40,10 @@ namespace Functions
   template <int dim>
   void
   SquareFunction<dim>::vector_value(const Point<dim> &p,
-                                    Vector<double>   &values) const
+                                    ArrayView<double> values) const
   {
     AssertDimension(values.size(), 1);
-    values(0) = p.square();
+    values[0] = p.square();
   }
 
 
@@ -156,7 +156,7 @@ namespace Functions
   void
   Q1WedgeFunction<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(dim >= 2, ExcInternalError());
     Assert(values.size() == points.size(),
@@ -166,7 +166,7 @@ namespace Functions
     for (unsigned int i = 0; i < points.size(); ++i)
       {
         const Point<dim> &p = points[i];
-        values[i](0)        = p(0) * p(1);
+        values[i][0]        = p(0) * p(1);
       }
   }
 
@@ -467,7 +467,7 @@ namespace Functions
   void
   CosineFunction<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -476,7 +476,7 @@ namespace Functions
       {
         const double v = value(points[i]);
         for (unsigned int k = 0; k < values[i].size(); ++k)
-          values[i](k) = v;
+          values[i][k] = v;
       }
   }
 
@@ -746,28 +746,28 @@ namespace Functions
   template <int dim>
   void
   CosineGradFunction<dim>::vector_value(const Point<dim> &p,
-                                        Vector<double>   &result) const
+                                        ArrayView<double> result) const
   {
     AssertDimension(result.size(), dim);
     switch (dim)
       {
         case 1:
-          result(0) = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0));
+          result[0] = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0));
           break;
         case 2:
-          result(0) = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
+          result[0] = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
                       std::cos(numbers::PI_2 * p(1));
-          result(1) = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
+          result[1] = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
                       std::sin(numbers::PI_2 * p(1));
           break;
         case 3:
-          result(0) = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
+          result[0] = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
                       std::cos(numbers::PI_2 * p(1)) *
                       std::cos(numbers::PI_2 * p(2));
-          result(1) = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
+          result[1] = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
                       std::sin(numbers::PI_2 * p(1)) *
                       std::cos(numbers::PI_2 * p(2));
-          result(2) = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
+          result[2] = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
                       std::cos(numbers::PI_2 * p(1)) *
                       std::sin(numbers::PI_2 * p(2));
           break;
@@ -817,7 +817,7 @@ namespace Functions
   void
   CosineGradFunction<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -828,22 +828,22 @@ namespace Functions
         switch (dim)
           {
             case 1:
-              values[i](0) = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0));
+              values[i][0] = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0));
               break;
             case 2:
-              values[i](0) = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
+              values[i][0] = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
                              std::cos(numbers::PI_2 * p(1));
-              values[i](1) = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
+              values[i][1] = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
                              std::sin(numbers::PI_2 * p(1));
               break;
             case 3:
-              values[i](0) = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
+              values[i][0] = -numbers::PI_2 * std::sin(numbers::PI_2 * p(0)) *
                              std::cos(numbers::PI_2 * p(1)) *
                              std::cos(numbers::PI_2 * p(2));
-              values[i](1) = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
+              values[i][1] = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
                              std::sin(numbers::PI_2 * p(1)) *
                              std::cos(numbers::PI_2 * p(2));
-              values[i](2) = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
+              values[i][2] = -numbers::PI_2 * std::cos(numbers::PI_2 * p(0)) *
                              std::cos(numbers::PI_2 * p(1)) *
                              std::sin(numbers::PI_2 * p(2));
               break;
@@ -1215,8 +1215,8 @@ namespace Functions
 
   void
   LSingularityFunction::vector_value_list(
-    const std::vector<Point<2>> &points,
-    std::vector<Vector<double>> &values) const
+    const std::vector<Point<2>>   &points,
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -1229,13 +1229,13 @@ namespace Functions
         const double y = points[i](1);
 
         if ((x >= 0) && (y >= 0))
-          values[i](0) = 0.;
+          values[i][0] = 0.;
         else
           {
             const double phi       = std::atan2(y, -x) + numbers::PI;
             const double r_squared = x * x + y * y;
 
-            values[i](0) =
+            values[i][0] =
               std::pow(r_squared, 1. / 3.) * std::sin(2. / 3. * phi);
           }
       }
@@ -1393,8 +1393,8 @@ namespace Functions
 
   void
   LSingularityGradFunction::vector_value_list(
-    const std::vector<Point<2>> &points,
-    std::vector<Vector<double>> &values) const
+    const std::vector<Point<2>>   &points,
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -1408,10 +1408,10 @@ namespace Functions
         const double    phi = std::atan2(y, -x) + numbers::PI;
         const double    r43 = std::pow(x * x + y * y, 2. / 3.);
 
-        values[i](0) =
+        values[i][0] =
           2. / 3. *
           (std::sin(2. / 3. * phi) * x + std::cos(2. / 3. * phi) * y) / r43;
-        values[i](1) =
+        values[i][1] =
           2. / 3. *
           (std::sin(2. / 3. * phi) * y - std::cos(2. / 3. * phi) * x) / r43;
       }
@@ -1511,7 +1511,7 @@ namespace Functions
   void
   SlitSingularityFunction<dim>::vector_value_list(
     const std::vector<Point<dim>> &points,
-    std::vector<Vector<double>>   &values) const
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -1527,7 +1527,7 @@ namespace Functions
         const double phi       = std::atan2(x, y) + numbers::PI;
         const double r_squared = x * x + y * y;
 
-        values[i](0) = std::pow(r_squared, .25) * std::sin(.5 * phi);
+        values[i][0] = std::pow(r_squared, .25) * std::sin(.5 * phi);
       }
   }
 
@@ -1677,8 +1677,8 @@ namespace Functions
 
   void
   SlitHyperSingularityFunction::vector_value_list(
-    const std::vector<Point<2>> &points,
-    std::vector<Vector<double>> &values) const
+    const std::vector<Point<2>>   &points,
+    std::vector<ArrayView<double>> values) const
   {
     Assert(values.size() == points.size(),
            ExcDimensionMismatch(values.size(), points.size()));
@@ -1694,7 +1694,7 @@ namespace Functions
         const double phi       = std::atan2(x, y) + numbers::PI;
         const double r_squared = x * x + y * y;
 
-        values[i](0) = std::pow(r_squared, .125) * std::sin(.25 * phi);
+        values[i][0] = std::pow(r_squared, .125) * std::sin(.25 * phi);
       }
   }
 
@@ -2210,13 +2210,13 @@ namespace Functions
   template <int dim, typename Number>
   void
   Monomial<dim, Number>::vector_value(const Point<dim> &p,
-                                      Vector<Number>   &values) const
+                                      ArrayView<Number> values) const
   {
     Assert(values.size() == this->n_components,
            ExcDimensionMismatch(values.size(), this->n_components));
 
     for (unsigned int i = 0; i < values.size(); ++i)
-      values(i) = Monomial<dim, Number>::value(p, i);
+      values[i] = Monomial<dim, Number>::value(p, i);
   }
 
 
@@ -2959,7 +2959,7 @@ namespace Functions
   template <int dim>
   void
   RayleighKotheVortex<dim>::vector_value(const Point<dim> &point,
-                                         Vector<double>   &values) const
+                                         ArrayView<double> values) const
   {
     const double pi_x = numbers::PI * point(0);
     const double pi_y = numbers::PI * point(1);

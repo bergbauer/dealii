@@ -160,7 +160,8 @@ namespace VectorTools
         {
           if (weight->n_components > 1)
             weight->vector_value_list(fe_values.get_quadrature_points(),
-                                      data.weight_vectors);
+                                      make_vector_of_array_views(
+                                        data.weight_vectors));
           else
             {
               weight->value_list(fe_values.get_quadrature_points(),
@@ -191,7 +192,8 @@ namespace VectorTools
           if (fe_is_system)
             {
               exact_solution.vector_value_list(
-                fe_values.get_quadrature_points(), data.tmp_vector_values);
+                fe_values.get_quadrature_points(),
+                make_vector_of_array_views(data.tmp_vector_values));
               for (const auto i : fe_values.quadrature_point_indices())
                 data.psi_values[i] = data.tmp_vector_values[i];
             }

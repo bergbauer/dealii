@@ -405,7 +405,7 @@ namespace internal
             parallel_data.coefficients->vector_value_list(
               fe_face_values_cell.get_present_fe_values()
                 .get_quadrature_points(),
-              parallel_data.coefficient_values);
+              make_vector_of_array_views(parallel_data.coefficient_values));
             for (unsigned int n = 0; n < n_solution_vectors; ++n)
               for (unsigned int component = 0; component < n_components;
                    ++component)
@@ -446,7 +446,7 @@ namespace internal
               ->second->vector_value_list(fe_face_values_cell
                                             .get_present_fe_values()
                                             .get_quadrature_points(),
-                                          g);
+                                          make_vector_of_array_views(g));
 
             for (unsigned int n = 0; n < n_solution_vectors; ++n)
               for (unsigned int component = 0; component < n_components;

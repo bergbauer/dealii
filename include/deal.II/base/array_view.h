@@ -1703,6 +1703,19 @@ make_const_array_view(const Container &container)
   return make_array_view(container);
 }
 
+template <typename ContiguousContainer>
+inline std::vector<ArrayView<typename ContiguousContainer::value_type>>
+make_vector_of_array_views(std::vector<ContiguousContainer> &vector_of_vectors)
+{
+  std::vector<ArrayView<typename ContiguousContainer::value_type>>
+    vector_of_array_views;
+
+  for (auto &v : vector_of_vectors)
+    vector_of_array_views.emplace_back(v);
+
+  return vector_of_array_views;
+}
+
 
 DEAL_II_NAMESPACE_CLOSE
 

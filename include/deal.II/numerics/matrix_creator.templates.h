@@ -205,7 +205,8 @@ namespace MatrixCreator
               data.rhs_vector_values.resize(
                 n_q_points, dealii::Vector<number>(n_components));
               data.rhs_function->vector_value_list(
-                fe_values.get_quadrature_points(), data.rhs_vector_values);
+                fe_values.get_quadrature_points(),
+                make_vector_of_array_views(data.rhs_vector_values));
             }
         }
 
@@ -224,7 +225,7 @@ namespace MatrixCreator
                 n_q_points, dealii::Vector<number>(n_components));
               data.coefficient->vector_value_list(
                 fe_values.get_quadrature_points(),
-                data.coefficient_vector_values);
+                make_vector_of_array_views(data.coefficient_vector_values));
             }
         }
 
@@ -416,7 +417,8 @@ namespace MatrixCreator
               data.rhs_vector_values.resize(
                 n_q_points, dealii::Vector<Number>(n_components));
               data.rhs_function->vector_value_list(
-                fe_values.get_quadrature_points(), data.rhs_vector_values);
+                fe_values.get_quadrature_points(),
+                make_vector_of_array_views(data.rhs_vector_values));
             }
         }
 
@@ -435,7 +437,7 @@ namespace MatrixCreator
                 n_q_points, dealii::Vector<Number>(n_components));
               data.coefficient->vector_value_list(
                 fe_values.get_quadrature_points(),
-                data.coefficient_vector_values);
+                make_vector_of_array_views(data.coefficient_vector_values));
             }
         }
 
@@ -1055,14 +1057,15 @@ namespace MatrixCreator
               {
                 boundary_functions.find(cell->face(face)->boundary_id())
                   ->second->vector_value_list(fe_values.get_quadrature_points(),
-                                              rhs_values_system);
+                                              make_vector_of_array_views(
+                                                rhs_values_system));
 
                 if (coefficient_is_vector)
                   // If coefficient is vector valued, fill all
                   // components
                   coefficient->vector_value_list(
                     fe_values.get_quadrature_points(),
-                    coefficient_vector_values);
+                    make_vector_of_array_views(coefficient_vector_values));
                 else
                   {
                     // If a scalar function is given, update the
@@ -1508,13 +1511,14 @@ namespace MatrixCreator
                                          Vector<number>(n_function_components));
                 boundary_functions.find(cell->face(face)->boundary_id())
                   ->second->vector_value_list(fe_values.get_quadrature_points(),
-                                              rhs_values_system);
+                                              make_vector_of_array_views(
+                                                rhs_values_system));
                 if (coefficient_is_vector)
                   // In case coefficient is vector-valued, fill
                   // all components
                   coefficient->vector_value_list(
                     fe_values.get_quadrature_points(),
-                    coefficient_vector_values);
+                    make_vector_of_array_views(coefficient_vector_values));
                 else
                   // In case the scalar function is given, update the
                   // values, if not - use the default (1.0)

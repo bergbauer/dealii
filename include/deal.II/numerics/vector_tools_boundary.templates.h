@@ -296,8 +296,9 @@ namespace VectorTools
                                                      fe.n_components()));
 
                           function_map.find(boundary_component)
-                            ->second->vector_value_list(dof_locations,
-                                                        dof_values_system);
+                            ->second->vector_value_list(
+                              dof_locations,
+                              make_vector_of_array_views(dof_values_system));
 
                           // enter those dofs into the list that match the
                           // component signature. avoid the usual complication
@@ -1021,7 +1022,8 @@ namespace VectorTools
       // Get boundary function values
       // at quadrature points.
       AssertDimension(boundary_function.n_components, fe.n_components());
-      boundary_function.vector_value_list(quadrature_points, values);
+      boundary_function.vector_value_list(quadrature_points,
+                                          make_vector_of_array_views(values));
 
       // Find the group of vector components we want to project onto
       // (dim of them, starting at first_vector_component) within the
@@ -1327,7 +1329,8 @@ namespace VectorTools
 
       // Get boundary function values at quadrature points.
       AssertDimension(boundary_function.n_components, fe.n_components());
-      boundary_function.vector_value_list(quadrature_points, values);
+      boundary_function.vector_value_list(quadrature_points,
+                                          make_vector_of_array_views(values));
 
       // Find where the group of vector components (dim of them,
       // starting at first_vector_component) are within an FESystem.
@@ -2170,7 +2173,8 @@ namespace VectorTools
         const std::vector<Point<2>> &quadrature_points =
           fe_values.get_quadrature_points();
 
-        boundary_function.vector_value_list(quadrature_points, values);
+        boundary_function.vector_value_list(quadrature_points,
+                                            make_vector_of_array_views(values));
       }
 
       for (unsigned int q_point = 0; q_point < fe_values.n_quadrature_points;
@@ -2272,7 +2276,8 @@ namespace VectorTools
         const std::vector<Point<3>> &quadrature_points =
           fe_values.get_quadrature_points();
 
-        boundary_function.vector_value_list(quadrature_points, values);
+        boundary_function.vector_value_list(quadrature_points,
+                                            make_vector_of_array_views(values));
       }
 
       for (unsigned int q_point = 0; q_point < fe_values.n_quadrature_points;

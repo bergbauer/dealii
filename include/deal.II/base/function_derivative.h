@@ -90,7 +90,7 @@ public:
   value(const Point<dim> &p, const unsigned int component = 0) const override;
 
   virtual void
-  vector_value(const Point<dim> &p, Vector<double> &value) const override;
+  vector_value(const Point<dim> &p, ArrayView<double> value) const override;
 
   virtual void
   value_list(const std::vector<Point<dim>> &points,

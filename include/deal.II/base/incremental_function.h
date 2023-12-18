@@ -92,8 +92,8 @@ namespace Functions
      * this function is called.
      */
     virtual void
-    vector_value(const Point<dim>        &p,
-                 Vector<RangeNumberType> &values) const override;
+    vector_value(const Point<dim>          &p,
+                 ArrayView<RangeNumberType> values) const override;
 
     /**
      * Set the time decrement.

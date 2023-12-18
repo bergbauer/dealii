@@ -189,7 +189,7 @@ namespace Functions
      * p.
      */
     virtual void
-    vector_value(const Point<dim> &p, Vector<double> &values) const override;
+    vector_value(const Point<dim> &p, ArrayView<double> values) const override;
 
     /**
      * Return the value of the function at the given point. Unless there is

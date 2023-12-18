@@ -164,7 +164,7 @@ namespace Functions
   template <int dim>
   void
   ParsedFunction<dim>::vector_value(const Point<dim> &p,
-                                    Vector<double>   &values) const
+                                    ArrayView<double> values) const
   {
     function_object.vector_value(p, values);
   }

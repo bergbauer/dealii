@@ -19,6 +19,7 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/array_view.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/function_time.h>
 #include <deal.II/base/point.h>
@@ -34,8 +35,6 @@ DEAL_II_NAMESPACE_OPEN
 
 // Forward declarations
 #ifndef DOXYGEN
-template <typename number>
-class Vector;
 template <int rank, int dim, typename Number, typename Number2>
 class TensorFunction;
 #endif
@@ -64,7 +63,7 @@ class TensorFunction;
  * // return all components at one point
  * void
  * vector_value(const Point<dim, PointNumberType> &p,
- *              Vector<double>   &value) const;
+ *              ArrayView<double>   &value) const;
  * @endcode
  *
  * For more efficiency, there are other functions returning one or all
@@ -79,7 +78,7 @@ class TensorFunction;
  * // return all components at several points
  * void
  * vector_value_list(const std::vector<Point<dim, PointNumberType>> &point_list,
- *                   std::vector<Vector<double>>   &value_list) const;
+ *                   std::vector<ArrayView<double>>   &value_list) const;
  * @endcode
  *
  * Furthermore, there are functions returning the gradient of the function or
@@ -244,7 +243,7 @@ public:
    */
   virtual void
   vector_value(const Point<dim, PointNumberType> &p,
-               Vector<RangeNumberType>           &values) const;
+               ArrayView<RangeNumberType>         values) const;
 
   /**
    * Set <tt>values</tt> to the point values of the specified component of the
@@ -272,7 +271,7 @@ public:
    */
   virtual void
   vector_value_list(const std::vector<Point<dim, PointNumberType>> &points,
-                    std::vector<Vector<RangeNumberType>> &values) const;
+                    std::vector<ArrayView<RangeNumberType>> values) const;
 
   /**
    * For each component of the function, fill a vector of values, one for each
@@ -353,7 +352,7 @@ public:
    */
   virtual void
   vector_laplacian(const Point<dim, PointNumberType> &p,
-                   Vector<RangeNumberType>           &values) const;
+                   ArrayView<RangeNumberType>         values) const;
 
   /**
    * Compute the Laplacian of one component at a set of points.
@@ -368,7 +367,7 @@ public:
    */
   virtual void
   vector_laplacian_list(const std::vector<Point<dim, PointNumberType>> &points,
-                        std::vector<Vector<RangeNumberType>> &values) const;
+                        std::vector<ArrayView<RangeNumberType>> values) const;
 
   /**
    * Compute the Hessian of a given component at point <tt>p</tt>, that is the
@@ -445,11 +444,11 @@ namespace Functions
     explicit ConstantFunction(const std::vector<RangeNumberType> &values);
 
     /**
-     * Constructor; takes an <tt>Vector<RangeNumberType></tt> object as an
+     * Constructor; takes an <tt>ArrayView<RangeNumberType></tt> object as an
      * argument. The number of components is determined by
      * <tt>values.size()</tt>.
      */
-    explicit ConstantFunction(const Vector<RangeNumberType> &values);
+    explicit ConstantFunction(const ArrayView<RangeNumberType> values);
 
     /**
      * Constructor; uses whatever stores in [begin_ptr, begin_ptr+n_components)
@@ -464,7 +463,7 @@ namespace Functions
 
     virtual void
     vector_value(const Point<dim, PointNumberType> &p,
-                 Vector<RangeNumberType> &return_value) const override;
+                 ArrayView<RangeNumberType> return_value) const override;
 
     virtual void
     value_list(const std::vector<Point<dim, PointNumberType>> &points,
@@ -474,7 +473,7 @@ namespace Functions
     virtual void
     vector_value_list(
       const std::vector<Point<dim, PointNumberType>> &points,
-      std::vector<Vector<RangeNumberType>> &return_values) const override;
+      std::vector<ArrayView<RangeNumberType>> return_values) const override;
 
     virtual Tensor<1, dim, RangeNumberType>
     gradient(const Point<dim, PointNumberType> &p,
@@ -662,7 +661,7 @@ public:
    */
   virtual void
   vector_value(const Point<dim, PointNumberType> &p,
-               Vector<RangeNumberType>           &return_value) const override;
+               ArrayView<RangeNumberType>         return_value) const override;
 
   /**
    * Set <tt>values</tt> to the point values of the function at the
@@ -673,7 +672,7 @@ public:
   virtual void
   vector_value_list(
     const std::vector<Point<dim, PointNumberType>> &points,
-    std::vector<Vector<RangeNumberType>>           &values) const override;
+    std::vector<ArrayView<RangeNumberType>>         values) const override;
 
   /**
    * Return an estimate for the memory consumption, in bytes, of this object.
@@ -777,7 +776,7 @@ protected:
  * resides in the following variables:
  * @code
  *   DoFHandler<1>  dof_handler_1d;
- *   Vector<double> solution_1d;
+ *   ArrayView<double> solution_1d;
  * @endcode
  * We will denote this solution function described by this DoFHandler
  * and vector object by $u_h(x)$ where $x$ is a vector with just one
@@ -943,7 +942,7 @@ public:
    */
   virtual void
   vector_value(const Point<dim, PointNumberType> &p,
-               Vector<RangeNumberType>           &values) const override;
+               ArrayView<RangeNumberType>         values) const override;
 
 private:
   /**
@@ -1105,7 +1104,7 @@ private:
  * This class is built as a means of translating the <code>Tensor<1,dim,
  * RangeNumberType> </code> values produced by objects of type TensorFunction
  * and returning them as a multiple component version of the same thing as a
- * Vector for use in, for example, the VectorTools::interpolate or the many
+ * ArrayView for use in, for example, the VectorTools::interpolate or the many
  * other functions taking Function objects. It allows the user to place the
  * desired components into an <tt>n_components</tt> long vector starting at
  * the <tt>selected_component</tt> location in that vector and have all other
@@ -1148,11 +1147,11 @@ public:
    * <tt>Tensor<1,dim, RangeNumberType></tt> value, convert this into an object
    * that matches the Function@<dim@> interface.
    *
-   * By default, create a Vector object of the same size as
+   * By default, create a ArrayView object of the same size as
    * <tt>tensor_function</tt> returns, i.e., with <tt>dim</tt> components.
    *
    * @param tensor_function The TensorFunction that will form one component of
-   * the resulting Vector Function object.
+   * the resulting ArrayView Function object.
    * @param n_components The total number of vector components of the
    * resulting TensorFunction object.
    * @param selected_component The first component that should be filled by
@@ -1185,7 +1184,7 @@ public:
    */
   virtual void
   vector_value(const Point<dim, PointNumberType> &p,
-               Vector<RangeNumberType>           &values) const override;
+               ArrayView<RangeNumberType>         values) const override;
 
   /**
    * Return all components of a vector-valued function at a list of points.
@@ -1197,7 +1196,7 @@ public:
   virtual void
   vector_value_list(
     const std::vector<Point<dim, PointNumberType>> &points,
-    std::vector<Vector<RangeNumberType>>           &value_list) const override;
+    std::vector<ArrayView<RangeNumberType>>         value_list) const override;
 
   /**
    * Return the gradient of the specified component of the function at the given

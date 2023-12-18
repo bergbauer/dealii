@@ -207,8 +207,8 @@ namespace Functions
      */
     virtual void
     vector_value(
-      const Point<dim>                        &p,
-      Vector<typename VectorType::value_type> &values) const override;
+      const Point<dim>                          &p,
+      ArrayView<typename VectorType::value_type> values) const override;
 
     /**
      * Return the value of the function at the given point. Unless there is
@@ -268,8 +268,8 @@ namespace Functions
      */
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<typename VectorType::value_type>>
-                        &values) const override;
+                      std::vector<ArrayView<typename VectorType::value_type>>
+                        values) const override;
 
     /**
      * Return the gradient of all components of the function at the given
@@ -378,8 +378,8 @@ namespace Functions
      */
     virtual void
     vector_laplacian(
-      const Point<dim>                        &p,
-      Vector<typename VectorType::value_type> &values) const override;
+      const Point<dim>                          &p,
+      ArrayView<typename VectorType::value_type> values) const override;
 
     /**
      * Compute the Laplacian of one component at a set of points.
@@ -409,9 +409,10 @@ namespace Functions
      * information.
      */
     virtual void
-    vector_laplacian_list(const std::vector<Point<dim>> &points,
-                          std::vector<Vector<typename VectorType::value_type>>
-                            &values) const override;
+    vector_laplacian_list(
+      const std::vector<Point<dim>>                          &points,
+      std::vector<ArrayView<typename VectorType::value_type>> values)
+      const override;
 
     /**
      * Given a set of points located in the domain (or, in the case of

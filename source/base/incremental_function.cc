@@ -77,8 +77,8 @@ namespace Functions
   template <int dim, typename RangeNumberType>
   void
   IncrementalFunction<dim, RangeNumberType>::vector_value(
-    const Point<dim>        &p,
-    Vector<RangeNumberType> &values) const
+    const Point<dim>          &p,
+    ArrayView<RangeNumberType> values) const
   {
     // since we modify a mutable member variable, lock the
     // the data via a mutex
@@ -95,7 +95,8 @@ namespace Functions
     base.set_time(this->get_time() - delta_t);
     base.vector_value(p, values_old);
 
-    values -= values_old;
+    for (unsigned int i = 0; i < values.size(); ++i)
+      values[i] -= values_old[i];
 
     // Reset wrapped function time setting
     base.set_time(orig_time);

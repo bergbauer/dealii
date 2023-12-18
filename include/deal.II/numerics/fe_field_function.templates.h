@@ -71,8 +71,8 @@ namespace Functions
   template <int dim, typename VectorType, int spacedim>
   void
   FEFieldFunction<dim, VectorType, spacedim>::vector_value(
-    const Point<dim>                        &p,
-    Vector<typename VectorType::value_type> &values) const
+    const Point<dim>                          &p,
+    ArrayView<typename VectorType::value_type> values) const
   {
     Assert(values.size() == this->n_components,
            ExcDimensionMismatch(values.size(), this->n_components));
@@ -110,7 +110,8 @@ namespace Functions
     std::vector<Vector<typename VectorType::value_type>> vvalues(
       1, Vector<typename VectorType::value_type>(values.size()));
     fe_v.get_function_values(data_vector, vvalues);
-    values = vvalues[0];
+    for (unsigned int i = 0; i < values.size(); ++i)
+      values[i] = vvalues[0][i];
   }
 
 
@@ -209,8 +210,8 @@ namespace Functions
   template <int dim, typename VectorType, int spacedim>
   void
   FEFieldFunction<dim, VectorType, spacedim>::vector_laplacian(
-    const Point<dim>                        &p,
-    Vector<typename VectorType::value_type> &values) const
+    const Point<dim>                          &p,
+    ArrayView<typename VectorType::value_type> values) const
   {
     Assert(values.size() == this->n_components,
            ExcDimensionMismatch(values.size(), this->n_components));
@@ -248,7 +249,8 @@ namespace Functions
     std::vector<Vector<typename VectorType::value_type>> vvalues(
       1, Vector<typename VectorType::value_type>(values.size()));
     fe_v.get_function_laplacians(data_vector, vvalues);
-    values = vvalues[0];
+    for (unsigned int i = 0; i < values.size(); ++i)
+      values[i] = vvalues[0][i];
   }
 
 
@@ -271,8 +273,8 @@ namespace Functions
   template <int dim, typename VectorType, int spacedim>
   void
   FEFieldFunction<dim, VectorType, spacedim>::vector_value_list(
-    const std::vector<Point<dim>>                        &points,
-    std::vector<Vector<typename VectorType::value_type>> &values) const
+    const std::vector<Point<dim>>                          &points,
+    std::vector<ArrayView<typename VectorType::value_type>> values) const
   {
     Assert(points.size() == values.size(),
            ExcDimensionMismatch(points.size(), values.size()));
@@ -315,7 +317,8 @@ namespace Functions
         fe_v.get_present_fe_values().get_function_values(data_vector, vvalues);
 
         for (unsigned int q = 0; q < nq; ++q)
-          values[maps[i][q]] = vvalues[q];
+          for (unsigned int j = 0; j < values.size(); ++j)
+            values[maps[i][q]][j] = vvalues[q][j];
       }
   }
 
@@ -339,7 +342,7 @@ namespace Functions
       points.size(),
       Vector<typename VectorType::value_type>(this->n_components));
 
-    vector_value_list(points, vvalues);
+    vector_value_list(points, make_vector_of_array_views(vvalues));
 
     for (unsigned int q = 0; q < points.size(); ++q)
       values[q] = vvalues[q](component);
@@ -440,8 +443,8 @@ namespace Functions
   template <int dim, typename VectorType, int spacedim>
   void
   FEFieldFunction<dim, VectorType, spacedim>::vector_laplacian_list(
-    const std::vector<Point<dim>>                        &points,
-    std::vector<Vector<typename VectorType::value_type>> &values) const
+    const std::vector<Point<dim>>                          &points,
+    std::vector<ArrayView<typename VectorType::value_type>> values) const
   {
     Assert(points.size() == values.size(),
            ExcDimensionMismatch(points.size(), values.size()));
@@ -486,7 +489,8 @@ namespace Functions
                                                              vvalues);
 
         for (unsigned int q = 0; q < nq; ++q)
-          values[maps[i][q]] = vvalues[q];
+          for (unsigned int j = 0; j < values.size(); ++j)
+            values[maps[i][q]][j] = vvalues[q][j];
       }
   }
 
@@ -510,7 +514,7 @@ namespace Functions
       points.size(),
       Vector<typename VectorType::value_type>(this->n_components));
 
-    vector_laplacian_list(points, vvalues);
+    vector_laplacian_list(points, make_vector_of_array_views(vvalues));
 
     for (unsigned int q = 0; q < points.size(); ++q)
       values[q] = vvalues[q](component);

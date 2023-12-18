@@ -363,7 +363,8 @@ namespace VectorTools
           // Get all function values:
           AssertDimension(n_components, function(cell)->n_components);
           function(cell)->vector_value_list(generalized_support_points,
-                                            function_values);
+                                            make_vector_of_array_views(
+                                              function_values));
 
           {
             // Before we can average, we have to transform all function values

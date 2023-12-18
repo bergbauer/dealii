@@ -121,16 +121,18 @@ FunctionDerivative<dim>::value(const Point<dim>  &p,
 template <int dim>
 void
 FunctionDerivative<dim>::vector_value(const Point<dim> &p,
-                                      Vector<double>   &result) const
+                                      ArrayView<double> resultt) const
 {
   Assert(incr.size() == 1,
          ExcMessage(
            "FunctionDerivative was not initialized for constant direction"));
-  Vector<double> aux(result.size());
+
+  Vector<double> aux(resultt.size());
+  Vector<double> result(resultt.size());
 
   // Formulas are the same as in
   // value, but here we have to use
-  // Vector arithmetic
+  // ArrayView arithmetic
   switch (formula)
     {
       case AutoDerivativeFunction<dim>::Euler:
@@ -156,6 +158,9 @@ FunctionDerivative<dim>::vector_value(const Point<dim> &p,
       default:
         Assert(false, ExcNotImplemented());
     }
+
+  for (unsigned int i = 0; i < resultt.size(); ++i)
+    resultt[i] = result[i];
 }
 
 
@@ -172,9 +177,9 @@ FunctionDerivative<dim>::value_list(const std::vector<Point<dim>> &points,
     Assert(incr.size() == points.size(),
            ExcDimensionMismatch(incr.size(), points.size()));
 
-  // Vector of auxiliary values
+  // ArrayView of auxiliary values
   std::vector<double> aux(n);
-  // Vector of auxiliary points
+  // ArrayView of auxiliary points
   std::vector<Point<dim>> paux(n);
   // Use the same formulas as in
   // value, but with vector

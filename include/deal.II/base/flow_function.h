@@ -96,13 +96,13 @@ namespace Functions
 
     virtual void
     vector_value(const Point<dim> &points,
-                 Vector<double>   &value) const override;
+                 ArrayView<double> value) const override;
     virtual double
     value(const Point<dim>  &points,
           const unsigned int component) const override;
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
     virtual void
     vector_gradient_list(
       const std::vector<Point<dim>>            &points,
@@ -112,7 +112,7 @@ namespace Functions
      */
     virtual void
     vector_laplacian_list(const std::vector<Point<dim>> &points,
-                          std::vector<Vector<double>>   &values) const override;
+                          std::vector<ArrayView<double>> values) const override;
 
     /**
      * Return an estimate for the memory consumption, in bytes, of this object.

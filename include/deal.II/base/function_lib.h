@@ -54,7 +54,7 @@ namespace Functions
     virtual double
     value(const Point<dim> &p, const unsigned int component = 0) const override;
     virtual void
-    vector_value(const Point<dim> &p, Vector<double> &values) const override;
+    vector_value(const Point<dim> &p, ArrayView<double> values) const override;
     virtual void
     value_list(const std::vector<Point<dim>> &points,
                std::vector<double>           &values,
@@ -100,7 +100,7 @@ namespace Functions
 
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, dim>
     gradient(const Point<dim>  &p,
@@ -235,7 +235,7 @@ namespace Functions
 
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, dim>
     gradient(const Point<dim>  &p,
@@ -295,7 +295,7 @@ namespace Functions
     virtual double
     value(const Point<dim> &p, const unsigned int component) const override;
     virtual void
-    vector_value(const Point<dim> &p, Vector<double> &values) const override;
+    vector_value(const Point<dim> &p, ArrayView<double> values) const override;
     virtual void
     value_list(const std::vector<Point<dim>> &points,
                std::vector<double>           &values,
@@ -303,7 +303,7 @@ namespace Functions
 
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, dim>
     gradient(const Point<dim> &p, const unsigned int component) const override;
@@ -419,8 +419,8 @@ namespace Functions
                const unsigned int           component = 0) const override;
 
     virtual void
-    vector_value_list(const std::vector<Point<2>> &points,
-                      std::vector<Vector<double>> &values) const override;
+    vector_value_list(const std::vector<Point<2>>   &points,
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, 2>
     gradient(const Point<2>    &p,
@@ -472,8 +472,8 @@ namespace Functions
                const unsigned int           component) const override;
 
     virtual void
-    vector_value_list(const std::vector<Point<2>> &points,
-                      std::vector<Vector<double>> &values) const override;
+    vector_value_list(const std::vector<Point<2>>   &points,
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, 2>
     gradient(const Point<2> &p, const unsigned int component) const override;
@@ -518,7 +518,7 @@ namespace Functions
 
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, dim>
     gradient(const Point<dim>  &p,
@@ -562,8 +562,8 @@ namespace Functions
                const unsigned int           component = 0) const override;
 
     virtual void
-    vector_value_list(const std::vector<Point<2>> &points,
-                      std::vector<Vector<double>> &values) const override;
+    vector_value_list(const std::vector<Point<2>>   &points,
+                      std::vector<ArrayView<double>> values) const override;
 
     virtual Tensor<1, 2>
     gradient(const Point<2>    &p,
@@ -1138,7 +1138,7 @@ namespace Functions
      */
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
   };
 
 
@@ -1186,7 +1186,7 @@ namespace Functions
      */
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
   };
 
 
@@ -1235,7 +1235,7 @@ namespace Functions
      */
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
 
     /**
      * Function gradient at one point.
@@ -1291,7 +1291,7 @@ namespace Functions
      */
     virtual void
     vector_value_list(const std::vector<Point<dim>> &points,
-                      std::vector<Vector<double>>   &values) const override;
+                      std::vector<ArrayView<double>> values) const override;
 
     /**
      * Function gradient at one point.
@@ -1342,7 +1342,7 @@ namespace Functions
      * #n_components.
      */
     virtual void
-    vector_value(const Point<dim> &p, Vector<Number> &values) const override;
+    vector_value(const Point<dim> &p, ArrayView<Number> values) const override;
 
     /**
      * Function values at multiple points.
@@ -1706,7 +1706,7 @@ namespace Functions
    * x_{d}^{\alpha_{i,d}})$, where $a_{i}$ are the coefficients of the
    * monomials and $\alpha_{i,d}$ are their exponents. The class's constructor
    * takes a Table<2,double> to describe the set of exponents and a
-   * Vector<double> to describe the set of coefficients.
+   * ArrayView<double> to describe the set of coefficients.
    *
    * @ingroup functions
    */
@@ -1823,7 +1823,7 @@ picture-in-picture" allowfullscreen></iframe>
      */
     virtual void
     vector_value(const Point<dim> &point,
-                 Vector<double>   &values) const override;
+                 ArrayView<double> values) const override;
 
   private:
     /**
