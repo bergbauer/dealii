@@ -36,7 +36,7 @@ check_function_value_consistency(const Function<dim> &f,
   std::vector<Vector<double>> f2(quadrature.size(),
                                  Vector<double>(f.n_components));
 
-  f.vector_value_list(quadrature.get_points(), f2);
+  f.vector_value_list(quadrature.get_points(), make_vector_of_array_views(f2));
 
   deallog << "value vs vector value list";
   for (unsigned int d = 0; d < f.n_components; ++d)
@@ -144,7 +144,7 @@ DerivativeTestFunction<dim>::vector_value_list(
   const std::vector<Point<dim>> &points,
   std::vector<Vector<double>>   &values) const
 {
-  func.vector_value_list(points, values);
+  func.vector_value_list(points, make_vector_of_array_views(values));
 }
 
 

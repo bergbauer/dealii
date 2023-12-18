@@ -78,7 +78,7 @@ check_vector_value_list(const Function<dim> &f)
       point_vector[j] = p;
     }
   std::vector<Vector<double>> values(max_points, Vector<double>(1));
-  f.vector_value_list(point_vector, values);
+  f.vector_value_list(point_vector, make_vector_of_array_views(values));
   for (unsigned int j = 0; j < max_points; ++j)
     deallog << values[j](0) << std::endl;
   deallog << " vector_value_list checked" << std::endl;

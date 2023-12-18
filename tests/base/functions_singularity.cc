@@ -52,7 +52,8 @@ check_function_consistency(const Function<dim> &f,
   // fg2, g1, and g2
   f.gradient_list(quadrature.get_points(), fg1, 0);
   f.vector_gradient_list(quadrature.get_points(), fg2);
-  gradf.vector_value_list(quadrature.get_points(), g2);
+  gradf.vector_value_list(quadrature.get_points(),
+                          make_vector_of_array_views(g2));
   deallog << "Gradient consistency ";
 
   for (unsigned int d = 0; d < dim; ++d)

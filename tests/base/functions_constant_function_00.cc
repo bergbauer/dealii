@@ -94,7 +94,7 @@ test_one_object(const TESTEE<dim> &f,
     deallog << std::endl;
     std::vector<Vector<Number>> return_values(n_points,
                                               Vector<Number>(n_component));
-    f.vector_value_list(points, return_values);
+    f.vector_value_list(points, make_vector_of_array_views(return_values));
     for (unsigned int p = 0; p < n_points; ++p)
       {
         for (unsigned int c = 0; c < n_component; ++c)

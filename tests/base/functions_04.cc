@@ -90,7 +90,7 @@ check_function(const Functions::FlowFunction<dim> &f,
                                      Vector<double>(f.n_components));
   std::vector<std::vector<double>> values2(f.n_components,
                                            std::vector<double>(points.size()));
-  f.vector_value_list(points, values);
+  f.vector_value_list(points, make_vector_of_array_views(values));
   f.vector_values(points, values2);
   for (unsigned int i = 0; i < values.size(); ++i)
     for (unsigned int j = 0; j < values[i].size(); ++j)
@@ -168,7 +168,7 @@ check_function(const Functions::FlowFunction<dim> &f,
     }
   deallog << "tested" << std::endl;
 
-  f.vector_laplacian_list(points, values);
+  f.vector_laplacian_list(points, make_vector_of_array_views(values));
   f.vector_laplacians(points, values2);
   double sum = 0.;
   for (unsigned int i = 0; i < values.size(); ++i)

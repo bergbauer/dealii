@@ -42,7 +42,8 @@ public:
   }
 
   virtual void
-  vector_value(const Point<dim> & /*p*/, Vector<double> &values) const override
+  vector_value(const Point<dim> & /*p*/,
+               ArrayView<double> values) const override
   {
     for (unsigned int i = 0; i < dim; ++i)
       values[i] = a * this->get_time() + b;
