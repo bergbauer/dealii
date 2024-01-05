@@ -3394,7 +3394,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
         is_linear ? Utilities::pow(2, dim - 1) : this->dofs_per_component_face;
       for (unsigned int comp = 0; comp < n_components; ++comp)
         for (unsigned int i = 0; i < 2 * dofs_per_comp_face; ++i)
-          ETT::read_value(face_dof_values[i + comp * 3 * dofs_per_comp_face],
+          ETT::read_value(face_dof_values[(i + comp * 3 * dofs_per_comp_face) * stride_face_dof],
                           comp,
                           this->solution_renumbered[i]);
 
@@ -3418,7 +3418,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 scalar_value_type,
                 VectorizedArrayType,
                 2,
-                stride_face_dof>(face_dof_values_ptr,
+                n_components == 1 ? stride_face_dof : 1>(face_dof_values_ptr,
                                  this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_and_gradient_shapes<
                 dim - 1,
@@ -3426,7 +3426,7 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 VectorizedArrayType,
                 2,
                 false,
-                stride_face_dof>(this->shapes_faces.data() + qb * n_shapes,
+                n_components == 1 ? stride_face_dof : 1>(this->shapes_faces.data() + qb * n_shapes,
                                  n_shapes,
                                  face_dof_values_ptr);
 
@@ -3477,14 +3477,14 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
-                stride_face_dof>(face_dof_values_ptr,
+          n_components == 1 ? stride_face_dof : 1>(face_dof_values_ptr,
                                  this->unit_point_faces_ptr[qb]) :
               internal::evaluate_tensor_product_value_shapes<
                 dim - 1,
                 scalar_value_type,
                 VectorizedArrayType,
                 false,
-                stride_face_dof>(this->shapes_faces.data() + qb * n_shapes,
+          n_components == 1 ? stride_face_dof : 1>(this->shapes_faces.data() + qb * n_shapes,
                                  n_shapes,
                                  face_dof_values_ptr);
         }
