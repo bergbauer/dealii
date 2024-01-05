@@ -1618,97 +1618,98 @@ namespace internal
 
   class MGTwoLevelTransferImplementation
   {
-    template <int dim, typename Number>
-    static void
-    compute_weights(
-      const dealii::AffineConstraints<Number> &constraints_fine,
-      const MGTwoLevelTransfer<dim, LinearAlgebra::distributed::Vector<Number>>
-                                                 &transfer,
-      LinearAlgebra::distributed::Vector<Number> &touch_count)
-    {
-      touch_count.reinit(transfer.partitioner_fine);
-
-      for (const auto i : transfer.constraint_info_fine.dof_indices)
-        touch_count.local_element(i) += 1;
-      touch_count.compress(VectorOperation::add);
-
-      for (unsigned int i = 0; i < touch_count.locally_owned_size(); ++i)
-        touch_count.local_element(i) =
-          constraints_fine.is_constrained(
-            touch_count.get_partitioner()->local_to_global(i)) ?
-            Number(0.) :
-            Number(1.) / touch_count.local_element(i);
-
-      touch_count.update_ghost_values();
-    }
-
-
-
     /**
-     * Try to compress weights to Utilities::pow(3, dim) doubles.
-     * Weights of a cell can be compressed if all components have the
-     * same weights.
+     * Compute weights.
      */
     template <int dim, typename Number>
     static void
-    compress_weights(
+    setup_weights(
+      const dealii::AffineConstraints<Number> &constraints_fine,
       MGTwoLevelTransfer<dim, LinearAlgebra::distributed::Vector<Number>>
-        &transfer)
+          &transfer,
+      bool is_feq)
     {
-      unsigned int n_cells = 0;
-      for (const auto &scheme : transfer.schemes)
-        n_cells += scheme.n_coarse_cells;
+      if (transfer.fine_element_is_continuous == false)
+        return; // nothing to do
 
-      std::vector<std::array<Number, Utilities::pow(3, dim)>> masks(n_cells);
+      // 1) compute weights globally
+      LinearAlgebra::distributed::Vector<Number> weight_vector;
 
-      const Number *weight_ptr = transfer.weights.data();
-      std::array<Number, Utilities::pow(3, dim)> *mask_ptr = masks.data();
+      weight_vector.reinit(transfer.partitioner_fine);
 
-      // (try to) compress weights for each cell
-      for (const auto &scheme : transfer.schemes)
-        for (unsigned int cell = 0; cell < scheme.n_coarse_cells;
-             ++cell, weight_ptr += scheme.n_dofs_per_cell_fine, ++mask_ptr)
-          if (!compute_weights_fe_q_dofs_by_entity<dim, -1, Number>(
-                weight_ptr,
-                transfer.n_components,
-                scheme.degree_fine + 1,
-                mask_ptr->data()))
-            return;
+      // ... compute valence of DoFs
+      for (const auto i : transfer.constraint_info_fine.dof_indices)
+        weight_vector.local_element(i) += 1;
+      weight_vector.compress(VectorOperation::add);
 
-      // vectorize weights
-      AlignedVector<VectorizedArray<Number>> masks_vectorized;
+      // ... invert valence
+      for (unsigned int i = 0; i < weight_vector.locally_owned_size(); ++i)
+        weight_vector.local_element(i) =
+          Number(1.) / weight_vector.local_element(i);
+
+      // ... clear constrained indices
+      for (const auto &i : constraints_fine.get_lines())
+        if (weight_vector.locally_owned_elements().is_element(i.index))
+          weight_vector[i.index] = 0.0;
+
+      weight_vector.update_ghost_values();
+
+      // 2) store data cell-wise a DG format and try to compress
+      transfer.weights.resize(transfer.constraint_info_fine.dof_indices.size());
 
       const unsigned int n_lanes = VectorizedArray<Number>::size();
+      unsigned int       offset  = 0;
+      std::array<VectorizedArray<Number>, Utilities::pow(3, dim)>
+                                                 mask_vectorized;
+      std::array<Number, Utilities::pow(3, dim)> mask;
 
-      unsigned int c = 0;
-
+      // ... loop over cells
       for (const auto &scheme : transfer.schemes)
-        {
-          for (unsigned int cell = 0; cell < scheme.n_coarse_cells;
-               cell += n_lanes)
-            {
-              const unsigned int n_lanes_filled =
-                (cell + n_lanes > scheme.n_coarse_cells) ?
-                  (scheme.n_coarse_cells - cell) :
-                  n_lanes;
+        for (unsigned int cell = 0; cell < scheme.n_coarse_cells;
+             cell += n_lanes)
+          {
+            const unsigned int n_lanes_filled =
+              (cell + n_lanes > scheme.n_coarse_cells) ?
+                (scheme.n_coarse_cells - cell) :
+                n_lanes;
 
-              std::array<VectorizedArray<Number>, Utilities::pow(3, dim)> mask;
-              mask.fill(VectorizedArray<Number>());
+            if (is_feq)
+              mask_vectorized.fill(VectorizedArray<Number>());
 
-              for (unsigned int v = 0; v < n_lanes_filled; ++v, ++c)
-                {
-                  for (unsigned int i = 0;
-                       i < Utilities::pow<unsigned int>(3, dim);
-                       ++i)
-                    mask[i][v] = masks[c][i];
-                }
+            for (unsigned int v = 0; v < n_lanes_filled;
+                 ++v, offset += scheme.n_dofs_per_cell_fine)
+              {
+                // ... store data cell-wise a DG format
+                for (unsigned int i = 0; i < scheme.n_dofs_per_cell_fine; ++i)
+                  transfer.weights[offset + i] = weight_vector.local_element(
+                    transfer.constraint_info_fine.dof_indices[offset + i]);
 
-              masks_vectorized.insert_back(mask.begin(), mask.end());
-            }
-        }
+                if (is_feq)
+                  {
+                    // ... try to compress
+                    is_feq =
+                      compute_weights_fe_q_dofs_by_entity<dim, -1, Number>(
+                        transfer.weights.data() + offset,
+                        transfer.n_components,
+                        scheme.degree_fine + 1,
+                        mask.data());
 
-      // copy result
-      transfer.weights_compressed = masks_vectorized;
+                    // ... vectorize data
+                    for (unsigned int j = 0; j < mask_vectorized.size(); ++j)
+                      mask_vectorized[j][v] = mask[j];
+                  }
+              }
+
+            if (is_feq)
+              transfer.weights_compressed.insert_back(mask_vectorized.begin(),
+                                                      mask_vectorized.end());
+          }
+
+      // 3) clean up
+      if (is_feq)
+        transfer.weights.clear();
+      else
+        transfer.weights_compressed.clear();
     }
 
 
@@ -1773,6 +1774,9 @@ namespace internal
               mg_level_coarse == numbers::invalid_unsigned_int) ||
                (mg_level_coarse + 1 == mg_level_fine),
              ExcNotImplemented());
+
+      AssertDimension(constraints_fine.n_inhomogeneities(), 0);
+      AssertDimension(constraints_coarse.n_inhomogeneities(), 0);
 
       transfer.dof_handler_fine = &dof_handler_fine;
       transfer.mg_level_fine    = mg_level_fine;
@@ -2235,55 +2239,7 @@ namespace internal
 
 
       // ------------------------------- weights -------------------------------
-      if (transfer.fine_element_is_continuous)
-        {
-          // compute weights globally
-          LinearAlgebra::distributed::Vector<Number> weight_vector;
-          compute_weights(constraints_fine, transfer, weight_vector);
-
-          // ... and store them cell-wise a DG format
-          transfer.weights.resize(n_dof_indices_fine.back());
-
-          Number *weights_0 = transfer.weights.data() + n_dof_indices_fine[0];
-          Number *weights_1 = transfer.weights.data() + n_dof_indices_fine[1];
-          unsigned int *dof_indices_fine_0 =
-            transfer.constraint_info_fine.dof_indices.data() +
-            n_dof_indices_fine[0];
-          unsigned int *dof_indices_fine_1 =
-            transfer.constraint_info_fine.dof_indices.data() +
-            n_dof_indices_fine[1];
-
-          process_cells(
-            [&](const auto &, const auto &) {
-              for (unsigned int i = 0;
-                   i < transfer.schemes[0].n_dofs_per_cell_fine;
-                   ++i)
-                weights_0[i] =
-                  weight_vector.local_element(dof_indices_fine_0[i]);
-
-              dof_indices_fine_0 += transfer.schemes[0].n_dofs_per_cell_fine;
-              weights_0 += transfer.schemes[0].n_dofs_per_cell_fine;
-            },
-            [&](const auto &, const auto &, const auto c) {
-              for (unsigned int i = 0;
-                   i < transfer.schemes[1].n_dofs_per_cell_coarse;
-                   ++i)
-                weights_1[cell_local_children_indices[c][i]] =
-                  weight_vector.local_element(
-                    dof_indices_fine_1[cell_local_children_indices[c][i]]);
-
-              // move pointers (only once at the end)
-              if (c + 1 == GeometryInfo<dim>::max_children_per_cell)
-                {
-                  dof_indices_fine_1 +=
-                    transfer.schemes[1].n_dofs_per_cell_fine;
-                  weights_1 += transfer.schemes[1].n_dofs_per_cell_fine;
-                }
-            });
-
-          if (is_feq)
-            compress_weights(transfer);
-        }
+      setup_weights(constraints_fine, transfer, is_feq);
     }
 
 
@@ -2316,6 +2272,9 @@ namespace internal
           "Polynomial transfer is only allowed on the active level "
           "(numbers::invalid_unsigned_int) or on refinement levels without "
           "hanging nodes."));
+
+      AssertDimension(constraints_fine.n_inhomogeneities(), 0);
+      AssertDimension(constraints_coarse.n_inhomogeneities(), 0);
 
       transfer.dof_handler_fine = &dof_handler_fine;
       transfer.mg_level_fine    = mg_level_fine;
@@ -2744,47 +2703,7 @@ namespace internal
         }
 
       // ------------------------------- weights -------------------------------
-      if (transfer.fine_element_is_continuous)
-        {
-          // compute weights globally
-          LinearAlgebra::distributed::Vector<Number> weight_vector;
-          compute_weights(constraints_fine, transfer, weight_vector);
-
-          // ... and store them cell-wise a DG format
-          transfer.weights.resize(n_dof_indices_fine.back());
-
-          std::vector<unsigned int *> level_dof_indices_fine_(
-            fe_index_pairs.size());
-          std::vector<Number *> weights_(fe_index_pairs.size());
-
-          for (unsigned int i = 0; i < fe_index_pairs.size(); ++i)
-            {
-              level_dof_indices_fine_[i] =
-                transfer.constraint_info_fine.dof_indices.data() +
-                n_dof_indices_fine[i];
-              weights_[i] = transfer.weights.data() + n_dof_indices_fine[i];
-            }
-
-          process_cells([&](const auto &cell_coarse, const auto &cell_fine) {
-            const auto fe_pair_no =
-              fe_index_pairs[std::pair<unsigned int, unsigned int>(
-                cell_coarse->active_fe_index(), cell_fine->active_fe_index())];
-
-            for (unsigned int i = 0;
-                 i < transfer.schemes[fe_pair_no].n_dofs_per_cell_fine;
-                 i++)
-              weights_[fe_pair_no][i] = weight_vector.local_element(
-                level_dof_indices_fine_[fe_pair_no][i]);
-
-            level_dof_indices_fine_[fe_pair_no] +=
-              transfer.schemes[fe_pair_no].n_dofs_per_cell_fine;
-            weights_[fe_pair_no] +=
-              transfer.schemes[fe_pair_no].n_dofs_per_cell_fine;
-          });
-
-          if (is_feq)
-            compress_weights(transfer);
-        }
+      setup_weights(constraints_fine, transfer, is_feq);
     }
   };
 

@@ -2124,9 +2124,9 @@ namespace GridTools
       constexpr int dim      = CellIterator::AccessorType::dimension;
       constexpr int spacedim = CellIterator::AccessorType::space_dimension;
       // For parallel::fullydistributed::Triangulation there might be unmatched
-      // faces on periodic boundaries on the coarse grid, which results that
-      // this assert is not fulfilled (not a bug!). See also the discussion in
-      // the method collect_periodic_faces.
+      // faces on periodic boundaries on the coarse grid. As a result
+      // this assert is not fulfilled (which is not a bug!). See also the
+      // discussion in the method collect_periodic_faces.
       if (!(((pairs1.size() > 0) &&
              (dynamic_cast<const parallel::fullydistributed::
                              Triangulation<dim, spacedim> *>(
@@ -2176,11 +2176,11 @@ namespace GridTools
           }
       }
 
-    // Assure that all faces are matched if not
-    // parallel::fullydistributed::Triangulation is used. This is related to the
-    // fact that the faces might not be successfully matched on the coarse grid
-    // (not a bug!). See also the comment above and in the
-    // method collect_periodic_faces.
+    // Assure that all faces are matched if
+    // parallel::fullydistributed::Triangulation is not used. This is related to
+    // the fact that the faces might not be successfully matched on the coarse
+    // grid (not a bug!). See also the comment above and in the method
+    // collect_periodic_faces.
     {
       constexpr int dim      = CellIterator::AccessorType::dimension;
       constexpr int spacedim = CellIterator::AccessorType::space_dimension;
@@ -2269,7 +2269,8 @@ namespace GridTools
     const unsigned int size_new = matched_pairs.size();
     for (unsigned int i = size_old; i < size_new; ++i)
       {
-        Assert(matched_pairs[i].orientation == 1,
+        Assert(matched_pairs[i].orientation ==
+                 ReferenceCell::default_combined_face_orientation(),
                ExcMessage(
                  "Found a face match with non standard orientation. "
                  "This function is only suitable for meshes with cells "
@@ -2327,10 +2328,10 @@ namespace GridTools
           }
       }
 
-    // Assure that all faces are matched on the coare grid. This requirement
+    // Assure that all faces are matched on the coarse grid. This requirement
     // can only fulfilled if a process owns the complete coarse grid. This is
-    // not the case for a parallel::fullydistributed::Triangulation, i.e. this
-    // requirement has not to be met neither (consider faces on the outside of a
+    // not the case for a parallel::fullydistributed::Triangulation, i.e., this
+    // requirement has not to be met (consider faces on the outside of a
     // ghost cell that are periodic but for which the ghost neighbor doesn't
     // exist).
     if (!(((pairs1.size() > 0) &&
@@ -2471,17 +2472,9 @@ namespace GridTools
         // value so we have to do an additional translation step
         else if (dim == 2)
           {
-            // In 2D, calls in set_periodicity_constraints() ultimately require
-            // calling FiniteElement::face_to_cell_index(), which in turn (for
-            // hypercubes) calls GeometryInfo<2>::child_cell_on_face(). The
-            // final function assumes that orientation in 2D is encoded solely
-            // in face_flip (the second bit) whereas the orientation bit is
-            // ignored. Hence, the backwards orientation is 1 + 2 and the
-            // standard orientation is 1 + 0.
-            constexpr std::array<unsigned int, 2> translation{{3, 1}};
-            AssertIndexRange(combined_orientation, translation.size());
-            orientation =
-              translation[std::min<unsigned int>(combined_orientation, 1u)];
+            // In 2D only the first bit (orientation) is set
+            AssertIndexRange(combined_orientation, 2);
+            orientation = combined_orientation;
           }
         else
           {

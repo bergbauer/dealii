@@ -288,12 +288,22 @@ CellData<structdim>::serialize(Archive &ar, const unsigned int /*version*/)
 
 /**
  * A namespace dedicated to the struct Description, which can be used in
- * Triangulation::create_triangulation().
+ * one of the overloads of Triangulation::create_triangulation(). All
+ * triangulations in deal.II are, in one way or the other, created by
+ * calling Triangulation::create_triangulation(); for example, all of the
+ * functions in class GridIn and namespace GridGenerator call these
+ * functions. Most of these call the overload that takes a vector of
+ * vertices plus a vector of CellData objects that describe which vertices
+ * form each cell (along with some other information). But there are other
+ * overloads of Triangulation::create_triangulation() that require more
+ * elaborate descriptions of triangulations, and these typically use an
+ * object of type TriangulationDescription::Description declared in this
+ * namespace.
  */
 namespace TriangulationDescription
 {
   /**
-   * Configuration flags for Triangulations.
+   * Configuration flags for Triangulation objects.
    * Settings can be combined using bitwise OR.
    */
   enum Settings
@@ -311,20 +321,29 @@ namespace TriangulationDescription
   };
 
   /**
-   * Information needed for each locally relevant cell, stored in
-   * Description and used during construction of a
-   * Triangulation. This struct stores
-   * the cell id, the subdomain_id and the level_subdomain_id as well as
+   * This class stores information needed for creating a locally relevant
+   * cell when calling the overload of Triangulation::create_triangulation()
+   * that takes an object of type TriangulationDescription::Description.
+   * Objects of the current type are stored in Description. In contrast to
+   * the dealii::CellData class, the current class also stores information
+   * relevant for the parallel partitioning of a triangulation, such as
+   * a global cell id, the subdomain_id, and the level_subdomain_id as well as
    * information related to manifold_id and boundary_id.
    *
-   * @note Similarly to dealii::CellData, this structure stores information
-   * about a cell. However, in contrast to dealii::CellData, it also stores
-   * a unique id, partitioning information, and information related to cell
-   * faces and edges.
+   * In contrast to dealii::CellData, it does not store geometric information
+   * such as vertex locations. This information is only needed on the coarsest
+   * level of a triangulation (whereas the current structure is also used for
+   * refined levels of a triangulation) and is stored separately by
+   * the Description class.
    */
   template <int dim>
   struct CellData
   {
+    /**
+     * Constructor
+     */
+    CellData();
+
     /**
      * Read or write the data of this object to or from a stream for the
      * purpose of serialization using the [BOOST serialization
@@ -384,12 +403,21 @@ namespace TriangulationDescription
     std::vector<std::pair<unsigned int, types::boundary_id>> boundary_ids;
   };
 
+
   /**
-   * Data used in Triangulation::create_triangulation().
+   * Data used in the Triangulation::create_triangulation() overloads that
+   * builds a triangulation out of objects of the current type. The contents
+   * of this kind of object are typically creates by functions such as
+   * TriangulationDescription::Utilities::create_description_from_triangulation().
    */
-  template <int dim, int spacedim>
+  template <int dim, int spacedim = dim>
   struct Description
   {
+    /**
+     * Constructor.
+     */
+    Description();
+
     /**
      * Read or write the data of this object to or from a stream for the
      * purpose of serialization using the [BOOST serialization
@@ -460,69 +488,90 @@ namespace TriangulationDescription
   namespace Utilities
   {
     /**
-     * Construct TriangulationDescription::Description from a given
-     * partitioned triangulation `tria` and a specified process.
+     * Construct a TriangulationDescription::Description object that for the
+     * current process, using a given triangulation `tria` describes how
+     * one can re-create a partitioned triangulation (such as a
+     * parallel::fullydistributed::Triangulation).
      * The input triangulation can be either
      * a serial triangulation of type dealii::Triangulation which has been
-     * colored (subdomain_id and/or level_subdomain_id has been set) or a
-     * distributed triangulation of type
-     * dealii::parallel::distributed::Triangulation, where the partitioning is
-     * adopted unaltered.
+     * colored (i.e., for which the subdomain_id and/or level_subdomain_id have
+     * been set to create partitions), or a distributed triangulation of type
+     * dealii::parallel::distributed::Triangulation, where the output of
+     * this function takes over the existing partitioning unaltered.
      *
-     * Example for a serial Triangulation:
-     *
+     * An example for a serial Triangulation looks like this:
      * @code
      * Triangulation<dim, spacedim> tria_base;
      *
-     * // fill serial triangulation (e.g., read external mesh)
+     * // Create a serial triangulation (here by reading an external mesh):
      * GridIn<dim, spacedim> grid_in;
      * grid_in.attach_triangulation(tria_base);
      * grid_in.read(file_name);
      *
-     * // partition serial triangulation
+     * // Partition serial triangulation:
      * GridTools::partition_triangulation(
      *   Utilities::MPI::n_mpi_processes(comm), tria_base);
      *
-     * // create description
+     * // Create building blocks:
      * const TriangulationDescription::Description<dim, spacedim> description =
      *   TriangulationDescription::Utilities::
      *     create_description_from_triangulation(tria_base, comm);
      *
-     * // create triangulation
+     * // Create a fully distributed triangulation:
      * parallel::fullydistributed::Triangulation<dim, spacedim> tria_pft(comm);
      * tria_pft.create_triangulation(description);
      * @endcode
+     * In this example, *all* processes in a parallel universe read the same
+     * mesh, and partition it in the same way based on the subdomain ids set
+     * by GridTools::partition_triangulation(). Then, on each process,
+     * the current function creates building blocks that extract information
+     * about those cells whose subdomain ids match the current process's
+     * rank (plus perhaps other necessary information), and in a last step,
+     * we create a fully distributed triangulation out of these building blocks.
      *
-     * Example for parallel::distributed::Triangulation (partitioning can be
-     * skipped, since the triangulation has already been partitioned by p4est):
-     *
+     * In contrast, when starting with a parallel::distributed::Triangulation
+     * object, partitioning can be skipped, since the triangulation has already
+     * been partitioned and the corresponding code looks as follows:
      * @code
      * parallel::distributed::Triangulation<dim, spacedim> tria_base(comm);
      *
-     * // fill tria_base (not shown)
+     * // Create a triangulation (not shown, see for example step-40)
+     * ...
      *
-     * // create triangulation
+     * // Create building blocks:
      * const TriangulationDescription::Description<dim, spacedim> description =
      *   TriangulationDescription::Utilities::
      *     create_description_from_triangulation(tria_base, comm);
      *
-     * // create triangulation
+     * // Create a fully distributed triangulation:
      * parallel::fullydistributed::Triangulation<dim, spacedim> tria_pft(comm);
      * tria_pft.create_triangulation(description);
      * @endcode
+     * This code therefore takes a dealii::parallel::distributed::Triangulation
+     * object (such as the ones used, for example, in step-40 and many other
+     * tutorial programs) and converts it into a
+     * dealii::parallel::fullydistributed::Triangulation.
      *
-     * @param tria Partitioned input triangulation.
-     * @param comm MPI_Communicator to be used. In the case
-     *   of dealii::parallel::distributed::Triangulation, the communicators have
-     * to match.
-     * @param settings See the description of the Settings enumerator.
-     * @param my_rank_in Construct Description for the specified rank (only
-     *   working for serial triangulations that have been partitioned by
-     *   functions like GridTools::partition_triangulation()).
-     * @return Description to be used to set up a Triangulation.
+     * @param[in] tria The input triangulation. This function uses the
+     * partitioning provided by either explicitly setting subdomain_ids (if the
+     * triangulation is sequential) or based on how the existing triangulation
+     * is already distributed to different processes.
+     * @param[in] comm The MPI communicator to be used. If the input
+     * triangulation is parallel, then the communicators have to match.
+     * @param[in] settings See the description of the Settings enumerator.
+     * @param[in] my_rank_in Construct Description for the specified rank. This
+     *   parameter can only be set for serial input triangulations that have
+     * been partitioned by functions like GridTools::partition_triangulation().
+     * For parallel input triangulations, `my_rank_in` needs to equal to the
+     * default value, or to the rank of the current process within the given
+     *   communicator.
+     * @return The Description object that can then be used to set up a
+     *   dealii::parallel::fullydistributed::Triangulation.
      *
-     * @note If construct_multigrid_hierarchy is set in the settings, the source
-     *   triangulation has to be set up with limit_level_difference_at_vertices.
+     * @note If `construct_multigrid_hierarchy` is set in the @p settings, then
+     *   the input triangulation has to be set up with
+     *   `limit_level_difference_at_vertices` among the triangulation's
+     * smoothing flags provided to the triangulation constructor.
      */
     template <int dim, int spacedim = dim>
     Description<dim, spacedim>
@@ -534,14 +583,16 @@ namespace TriangulationDescription
       const unsigned int my_rank_in = numbers::invalid_unsigned_int);
 
     /**
-     * Similar to the above function but the owner of active cells are provided
-     * by a cell vector (see also
+     * Similar to the above function but the desired owners of active cells are
+     * not provided via the subdomain_ids of cells, but rather by the
+     * corresponding values of a cell vector (see also
      * parallel::TriangulationBase::global_active_cell_index_partitioner() and
-     * CellAccessor::global_active_cell_index()). This function allows to
-     * repartition distributed Triangulation objects.
+     * CellAccessor::global_active_cell_index()). This function allows
+     * repartitioning Triangulation objects that are already distributed and
+     * that may be partitioned differently than the desired partitioning.
      *
-     * If the setup of multigrid levels is requested, they are partitioned
-     * according to a first-child policy.
+     * If the setup of multigrid levels is requested by the @p settings argument,
+     * they are partitioned according to a first-child policy.
      *
      * @note The communicator is extracted from the vector @p partition.
      *
@@ -550,7 +601,7 @@ namespace TriangulationDescription
      *   subcommunicator need to set up the local triangulation with the
      *   special-purpose communicator MPI_COMM_NULL.
      *
-     * @note The multgrid levels are currently not constructed, since
+     * @note The multigrid levels are currently not constructed, since
      *   @p partition only describes the partitioning of the active level.
      */
     template <int dim, int spacedim>
@@ -655,6 +706,23 @@ namespace TriangulationDescription
 
 
   template <int dim>
+  CellData<dim>::CellData()
+    : subdomain_id(numbers::invalid_subdomain_id)
+    , level_subdomain_id(numbers::invalid_subdomain_id)
+    , manifold_id(numbers::flat_manifold_id)
+  {
+    std::fill(id.begin(), id.end(), numbers::invalid_unsigned_int);
+    std::fill(manifold_line_ids.begin(),
+              manifold_line_ids.end(),
+              numbers::flat_manifold_id);
+    std::fill(manifold_quad_ids.begin(),
+              manifold_quad_ids.end(),
+              numbers::flat_manifold_id);
+  }
+
+
+
+  template <int dim>
   template <class Archive>
   void
   CellData<dim>::serialize(Archive &ar, const unsigned int /*version*/)
@@ -669,6 +737,16 @@ namespace TriangulationDescription
       ar &manifold_quad_ids;
     ar &boundary_ids;
   }
+
+
+
+  template <int dim, int spacedim>
+  Description<dim, spacedim>::Description()
+    : comm(MPI_COMM_NULL)
+    , settings(Settings::default_setting)
+    , smoothing(Triangulation<dim, spacedim>::MeshSmoothing::none)
+  {}
+
 
 
   template <int dim, int spacedim>

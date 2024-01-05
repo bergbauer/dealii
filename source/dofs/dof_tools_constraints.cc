@@ -1869,6 +1869,11 @@ namespace DoFTools
       static const int dim      = FaceIterator::AccessorType::dimension;
       static const int spacedim = FaceIterator::AccessorType::space_dimension;
 
+      const unsigned char combined_face_orientation =
+        ::dealii::internal::combined_face_orientation(face_orientation,
+                                                      face_rotation,
+                                                      face_flip);
+
       const bool use_mg = (level != numbers::invalid_unsigned_int);
 
       // If we don't use multigrid, we should be in the case where face_1 is
@@ -2008,15 +2013,10 @@ namespace DoFTools
       // Build up a cell to face index for face_2:
       for (unsigned int i = 0; i < dofs_per_face; ++i)
         {
-          const unsigned int cell_index =
-            fe.face_to_cell_index(i,
-                                  0, /* It doesn't really matter, just
-                                      * assume we're on the first face...
-                                      */
-                                  true,
-                                  false,
-                                  false // default orientation
-            );
+          const unsigned int cell_index = fe.face_to_cell_index(
+            i,
+            // It doesn't really matter, just assume we're on the first face...
+            0);
           cell_to_rotated_face_index[cell_index] = i;
         }
 
@@ -2100,7 +2100,7 @@ namespace DoFTools
                   // given orientation:
                   const unsigned int j =
                     cell_to_rotated_face_index[fe.face_to_cell_index(
-                      jj, 0, face_orientation, face_flip, face_rotation)];
+                      jj, 0, combined_face_orientation)];
 
                   if (std::abs(transformation(i, jj)) > eps)
                     constraint_entries.emplace_back(dofs_1[j],
@@ -2123,7 +2123,7 @@ namespace DoFTools
           // orientation:
           const unsigned int j =
             cell_to_rotated_face_index[fe.face_to_cell_index(
-              target, 0, face_orientation, face_flip, face_rotation)];
+              target, 0, combined_face_orientation)];
 
           auto dof_left  = dofs_1[j];
           auto dof_right = dofs_2[i];
@@ -2355,7 +2355,7 @@ namespace DoFTools
                       "(face_orientation, face_flip, face_rotation) "
                       "is invalid for 1d"));
 
-    Assert((dim != 2) || (face_orientation == true && face_rotation == false),
+    Assert((dim != 2) || (face_flip == false && face_rotation == false),
            ExcMessage("The supplied orientation "
                       "(face_orientation, face_flip, face_rotation) "
                       "is invalid for 2d"));
@@ -2375,6 +2375,11 @@ namespace DoFTools
     Assert(first_vector_components.empty() || matrix.m() == spacedim,
            ExcMessage("first_vector_components is nonempty, so matrix must "
                       "be a rotation matrix exactly of size spacedim"));
+
+    const unsigned char combined_orientation =
+      ::dealii::internal::combined_face_orientation(face_orientation,
+                                                    face_rotation,
+                                                    face_flip);
 
 #ifdef DEBUG
     if (!face_1->has_children())
@@ -2426,43 +2431,10 @@ namespace DoFTools
       }
 #endif
 
-    // A lookup table on how to go through the child faces depending on the
-    // orientation:
-
-    static const int lookup_table_2d[2][2] = {
-      //          flip:
-      {0, 1}, //  false
-      {1, 0}, //  true
-    };
-
-    static const int lookup_table_3d[2][2][2][4] = {
-      //                    orientation flip  rotation
-      {
-        {
-          {0, 2, 1, 3}, //  false       false false
-          {2, 3, 0, 1}, //  false       false true
-        },
-        {
-          {3, 1, 2, 0}, //  false       true  false
-          {1, 0, 3, 2}, //  false       true  true
-        },
-      },
-      {
-        {
-          {0, 1, 2, 3}, //  true        false false
-          {1, 3, 0, 2}, //  true        false true
-        },
-        {
-          {3, 2, 1, 0}, //  true        true  false
-          {2, 0, 3, 1}, //  true        true  true
-        },
-      },
-    };
-
     if (face_1->has_children() && face_2->has_children())
       {
         // In the case that both faces have children, we loop over all children
-        // and apply make_periodicty_constrains recursively:
+        // and apply make_periodicity_constraints() recursively:
 
         Assert(face_1->n_children() ==
                    GeometryInfo<dim>::max_children_per_face &&
@@ -2473,20 +2445,18 @@ namespace DoFTools
         for (unsigned int i = 0; i < GeometryInfo<dim>::max_children_per_face;
              ++i)
           {
-            // Lookup the index for the second face
-            unsigned int j;
-            switch (dim)
-              {
-                case 2:
-                  j = lookup_table_2d[face_flip][i];
-                  break;
-                case 3:
-                  j = lookup_table_3d[face_orientation][face_flip]
-                                     [face_rotation][i];
-                  break;
-                default:
-                  AssertThrow(false, ExcNotImplemented());
-              }
+            // We need to access the subface indices without knowing the face
+            // number. Hence, we pick the lowest-value face: i.e., face 2 in 2D
+            // has subfaces {0, 1} and face 4 in 3D has subfaces {0, 1, 2, 3}.
+            const unsigned int face_no = dim == 2 ? 2 : 4;
+
+            // Lookup the index for the second face. Like the assertions above,
+            // this is only presently valid for hypercube meshes.
+            const auto reference_cell = ReferenceCells::get_hypercube<dim>();
+            const unsigned int j =
+              reference_cell.child_cell_on_face(face_no,
+                                                i,
+                                                combined_orientation);
 
             make_periodicity_constraints(face_1->child(i),
                                          face_2->child(j),

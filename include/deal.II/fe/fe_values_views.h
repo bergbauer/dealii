@@ -19,6 +19,7 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/lazy.h>
 #include <deal.II/base/smartpointer.h>
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
@@ -548,13 +549,13 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    const SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The single scalar component this view represents of the FEValuesBase
      * object.
      */
-    const unsigned int component;
+    unsigned int component;
 
     /**
      * Store the data about shape functions.
@@ -1271,13 +1272,13 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    const SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The first component of the vector this view represents of the
      * FEValuesBase object.
      */
-    const unsigned int first_vector_component;
+    unsigned int first_vector_component;
 
     /**
      * Store the data about shape functions.
@@ -1584,13 +1585,13 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    const SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The first component of the vector this view represents of the
      * FEValuesBase object.
      */
-    const unsigned int first_tensor_component;
+    unsigned int first_tensor_component;
 
     /**
      * Store the data about shape functions.
@@ -1958,13 +1959,13 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    const SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The first component of the vector this view represents of the
      * FEValuesBase object.
      */
-    const unsigned int first_tensor_component;
+    unsigned int first_tensor_component;
 
     /**
      * Store the data about shape functions.
@@ -2054,11 +2055,12 @@ namespace internal
        * Caches for scalar and vector, and symmetric second-order tensor
        * valued views.
        */
-      std::vector<dealii::FEValuesViews::Scalar<dim, spacedim>> scalars;
-      std::vector<dealii::FEValuesViews::Vector<dim, spacedim>> vectors;
-      std::vector<dealii::FEValuesViews::SymmetricTensor<2, dim, spacedim>>
+      std::vector<Lazy<dealii::FEValuesViews::Scalar<dim, spacedim>>> scalars;
+      std::vector<Lazy<dealii::FEValuesViews::Vector<dim, spacedim>>> vectors;
+      std::vector<
+        Lazy<dealii::FEValuesViews::SymmetricTensor<2, dim, spacedim>>>
         symmetric_second_order_tensors;
-      std::vector<dealii::FEValuesViews::Tensor<2, dim, spacedim>>
+      std::vector<Lazy<dealii::FEValuesViews::Tensor<2, dim, spacedim>>>
         second_order_tensors;
 
       /**

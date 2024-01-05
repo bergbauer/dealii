@@ -1665,7 +1665,7 @@ namespace
                       "(face_orientation, face_flip, face_rotation) "
                       "is invalid for 1d"));
 
-    Assert((dim != 2) || (face_orientation == true && face_rotation == false),
+    Assert((dim != 2) || (face_flip == false && face_rotation == false),
            ExcMessage("The supplied orientation "
                       "(face_orientation, face_flip, face_rotation) "
                       "is invalid for 2d"));
@@ -1731,10 +1731,10 @@ namespace
         // see Documentation of GeometryInfo for details
 
         static const int lookup_table_2d[2][2] =
-          //               flip:
+          //               orientation:
           {
-            {0, 1}, // false
-            {1, 0}  // true
+            {1, 0}, // false
+            {0, 1}  // true
           };
 
         static const int lookup_table_3d[2][2][2][4] =
@@ -1779,7 +1779,7 @@ namespace
                     switch (dim)
                       {
                         case 2:
-                          j = lookup_table_2d[face_flip][i];
+                          j = lookup_table_2d[face_orientation][i];
                           break;
                         case 3:
                           j = lookup_table_3d[face_orientation][face_flip]
@@ -2182,7 +2182,7 @@ namespace internal
             total_cells - tria_level.global_level_cell_indices.size(),
             numbers::invalid_dof_index);
 
-          if (dimension < space_dimension)
+          if (dimension == space_dimension - 1)
             {
               tria_level.direction_flags.reserve(total_cells);
               tria_level.direction_flags.insert(
@@ -3646,7 +3646,7 @@ namespace internal
 
         level.parents.assign((size + 1) / 2, -1);
 
-        if (dim < spacedim)
+        if (dim == spacedim - 1)
           level.direction_flags.assign(size, true);
 
         level.neighbors.assign(size * max_faces_per_cell, {-1, -1});
@@ -4947,7 +4947,7 @@ namespace internal
         // already cleared at the
         // beginning of this function
 
-        if (dim < spacedim)
+        if (dim == spacedim - 1)
           for (unsigned int c = 0; c < n_children; ++c)
             cell->child(c)->set_direction_flag(cell->direction_flag());
       }
@@ -5414,7 +5414,7 @@ namespace internal
 
           cell->set_refinement_case(ref_case);
 
-          if (dim < spacedim)
+          if (dim == spacedim - 1)
             for (unsigned int c = 0; c < n_children; ++c)
               cell->child(c)->set_direction_flag(cell->direction_flag());
         };
@@ -5595,7 +5595,8 @@ namespace internal
                   first_child->set_material_id(cell->material_id());
                   first_child->set_manifold_id(cell->manifold_id());
                   first_child->set_subdomain_id(subdomainid);
-                  first_child->set_direction_flag(cell->direction_flag());
+                  if (dim == spacedim - 1)
+                    first_child->set_direction_flag(cell->direction_flag());
 
                   first_child->set_parent(cell->index());
 
@@ -5646,7 +5647,8 @@ namespace internal
                   second_child->set_material_id(cell->material_id());
                   second_child->set_manifold_id(cell->manifold_id());
                   second_child->set_subdomain_id(subdomainid);
-                  second_child->set_direction_flag(cell->direction_flag());
+                  if (dim == spacedim - 1)
+                    second_child->set_direction_flag(cell->direction_flag());
 
                   if (cell->neighbor(1).state() != IteratorState::valid)
                     second_child->set_neighbor(1, cell->neighbor(1));
@@ -12294,7 +12296,10 @@ void Triangulation<dim, spacedim>::reset_manifold(
   AssertIndexRange(m_number, numbers::flat_manifold_id);
 
   // delete the entry located at number.
-  manifolds.erase(m_number);
+  manifolds[m_number] =
+    internal::TriangulationImplementation::get_default_flat_manifold<dim,
+                                                                     spacedim>()
+      .clone();
 }
 
 
@@ -12302,7 +12307,10 @@ template <int dim, int spacedim>
 DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
 void Triangulation<dim, spacedim>::reset_all_manifolds()
 {
-  manifolds.clear();
+  for (auto &m : manifolds)
+    m.second = internal::TriangulationImplementation::
+                 get_default_flat_manifold<dim, spacedim>()
+                   .clone();
 }
 
 
@@ -12384,6 +12392,11 @@ DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
 const Manifold<dim, spacedim> &Triangulation<dim, spacedim>::get_manifold(
   const types::manifold_id m_number) const
 {
+  // check if flat manifold has been queried
+  if (m_number == numbers::flat_manifold_id)
+    return internal::TriangulationImplementation::
+      get_default_flat_manifold<dim, spacedim>();
+
   // look, if there is a manifold stored at
   // manifold_id number.
   const auto it = manifolds.find(m_number);
@@ -12394,10 +12407,15 @@ const Manifold<dim, spacedim> &Triangulation<dim, spacedim>::get_manifold(
       return *(it->second);
     }
 
-  // if we have not found an entry connected with number, we return
-  // the default (flat) manifold
+  Assert(
+    false,
+    ExcMessage(
+      "No manifold of the manifold id " + std::to_string(m_number) +
+      " has been attached to the triangulation. "
+      "Please attach the right manifold with Triangulation::set_manifold()."));
+
   return internal::TriangulationImplementation::
-    get_default_flat_manifold<dim, spacedim>();
+    get_default_flat_manifold<dim, spacedim>(); // never reached
 }
 
 
@@ -12646,7 +12664,7 @@ void Triangulation<dim, spacedim>::create_triangulation(
       orientation.
 
       To determine if 2 neighbors have the same or opposite orientation we use
-      a table of truth. Its entries are indexes by the local indices of the
+      a truth table. Its entries are indexed by the local indices of the
       common face. For example if two elements share a face, and this face is
       face 0 for element 0 and face 1 for element 1, then table(0,1) will tell
       whether the orientation are the same (true) or opposite (false).
@@ -12656,7 +12674,7 @@ void Triangulation<dim, spacedim>::create_triangulation(
       in 1D and 2D to generate the table.
 
       Assuming that a surface respects the standard orientation for 2d meshes,
-      the tables of truth are symmetric and their true values are the following
+      the truth tables are symmetric and their true values are the following
 
       - 1D curves:  (0,1)
       - 2D surface: (0,1),(0,2),(1,3),(2,3)
@@ -12666,7 +12684,7 @@ void Triangulation<dim, spacedim>::create_triangulation(
       more readable.
 
     */
-  if (dim < spacedim && all_reference_cells_are_hyper_cube())
+  if ((dim == spacedim - 1) && all_reference_cells_are_hyper_cube())
     {
       Table<2, bool> correct(GeometryInfo<dim>::faces_per_cell,
                              GeometryInfo<dim>::faces_per_cell);
@@ -12674,18 +12692,18 @@ void Triangulation<dim, spacedim>::create_triangulation(
         {
           case 1:
             {
-              bool values[][2] = {{false, true}, {true, false}};
+              const bool values[][2] = {{false, true}, {true, false}};
               for (const unsigned int i : GeometryInfo<dim>::face_indices())
                 for (const unsigned int j : GeometryInfo<dim>::face_indices())
-                  correct(i, j) = (values[i][j]);
+                  correct(i, j) = values[i][j];
               break;
             }
           case 2:
             {
-              bool values[][4] = {{false, true, true, false},
-                                  {true, false, false, true},
-                                  {true, false, false, true},
-                                  {false, true, true, false}};
+              const bool values[][4] = {{false, true, true, false},
+                                        {true, false, false, true},
+                                        {true, false, false, true},
+                                        {false, true, true, false}};
               for (const unsigned int i : GeometryInfo<dim>::face_indices())
                 for (const unsigned int j : GeometryInfo<dim>::face_indices())
                   correct(i, j) = (values[i][j]);
@@ -12699,57 +12717,62 @@ void Triangulation<dim, spacedim>::create_triangulation(
       std::list<active_cell_iterator> this_round, next_round;
       active_cell_iterator            neighbor;
 
+      // Start with the first cell and (arbitrarily) decide that its
+      // direction flag should be 'true':
       this_round.push_back(begin_active());
       begin_active()->set_direction_flag(true);
       begin_active()->set_user_flag();
 
       while (this_round.size() > 0)
         {
-          for (typename std::list<active_cell_iterator>::iterator cell =
-                 this_round.begin();
-               cell != this_round.end();
-               ++cell)
+          for (const auto &cell : this_round)
             {
-              for (const unsigned int i : (*cell)->face_indices())
+              for (const unsigned int i : cell->face_indices())
                 {
-                  if (!((*cell)->face(i)->at_boundary()))
+                  if (cell->face(i)->at_boundary() == false)
                     {
-                      neighbor = (*cell)->neighbor(i);
+                      // Consider the i'th neighbor of a cell for
+                      // which we have already set the direction:
+                      neighbor = cell->neighbor(i);
 
-                      unsigned int cf = (*cell)->face_index(i);
-                      unsigned int j  = 0;
-                      while (neighbor->face_index(j) != cf)
-                        {
-                          ++j;
-                        }
+                      const unsigned int nb_of_nb =
+                        cell->neighbor_of_neighbor(i);
 
-
-                      // If we already saw this guy, check that everything is
-                      // fine
+                      // If we already saw this neighboring cell,
+                      // check that everything is fine:
                       if (neighbor->user_flag_set())
                         {
-                          // If we have visited this guy, then the ordering and
-                          // the orientation should agree
-                          Assert(!(correct(i, j) ^
-                                   (neighbor->direction_flag() ==
-                                    (*cell)->direction_flag())),
-                                 ExcNonOrientableTriangulation());
+                          Assert(
+                            !(correct(i, nb_of_nb) ^
+                              (neighbor->direction_flag() ==
+                               cell->direction_flag())),
+                            ExcMessage(
+                              "The triangulation you are trying to create is not orientable."));
                         }
                       else
                         {
-                          next_round.push_back(neighbor);
-                          neighbor->set_user_flag();
-                          if ((correct(i, j) ^ (neighbor->direction_flag() ==
-                                                (*cell)->direction_flag())))
+                          // We had not seen this cell yet. Set its
+                          // orientation flag (if necessary), mark it
+                          // as treated via the user flag, and push it
+                          // onto the list of cells to start work from
+                          // the next time around:
+                          if (correct(i, nb_of_nb) ^
+                              (neighbor->direction_flag() ==
+                               cell->direction_flag()))
                             neighbor->set_direction_flag(
                               !neighbor->direction_flag());
+                          neighbor->set_user_flag();
+                          next_round.push_back(neighbor);
                         }
                     }
                 }
             }
 
           // Before we quit let's check that if the triangulation is
-          // disconnected that we still get all cells
+          // disconnected that we still get all cells by starting
+          // again from the first cell we haven't treated yet -- that
+          // is, the first cell of the next disconnected component we
+          // had not yet touched.
           if (next_round.empty())
             for (const auto &cell : this->active_cell_iterators())
               if (cell->user_flag_set() == false)
@@ -12760,7 +12783,8 @@ void Triangulation<dim, spacedim>::create_triangulation(
                   break;
                 }
 
-          this_round = next_round;
+          // Go on to the next round:
+          next_round.swap(this_round);
           next_round.clear();
         }
       clear_user_flags();
@@ -12907,7 +12931,8 @@ DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
 void Triangulation<dim, spacedim>::flip_all_direction_flags()
 {
   AssertThrow(dim + 1 == spacedim,
-              ExcMessage("Only works for dim == spacedim-1"));
+              ExcMessage(
+                "This function can only be called if dim == spacedim-1."));
   for (const auto &cell : this->active_cell_iterators())
     cell->set_direction_flag(!cell->direction_flag());
 }

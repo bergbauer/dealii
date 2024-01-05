@@ -94,7 +94,7 @@ identity_operator(const LinearOperator<Range, Domain, Payload> &);
  *
  * But, in contrast to a usual matrix object, the domain and range of the
  * linear operator are also bound to the LinearOperator class on the type
- * level. Because of this, <code>LinearOperator <Range, Domain></code> has two
+ * level. Because of this, `LinearOperator<Range, Domain>` has two
  * additional function objects
  * @code
  *   std::function<void(Range &, bool)> reinit_range_vector;
@@ -169,9 +169,31 @@ identity_operator(const LinearOperator<Range, Domain, Payload> &);
  * for linear operators have been provided within the respective
  * TrilinosWrappers (and, in the future, PETScWrappers) namespaces.
  *
- * @note The step-20 tutorial program has a detailed usage example of the
+ * <h3> Examples of use </h3>
+ * The step-20 tutorial program has a detailed usage example of the
  * LinearOperator class.
  *
+ * <h3> Instrumenting operations </h3>
+ * It is sometimes useful to know when functions are called, or to inject
+ * additional operations. In such cases, what one wants is to replace, for
+ * example, the `vmult` object of this class with one that does the additional
+ * operations and then calls what was originally supposed to happen. This
+ * can be done with commands such as the following:
+ * @code
+ *    auto A_inv  = inverse_operator(A, solver_A, preconditioner_A);
+ *    A_inv.vmult = [base_vmult = A_inv.vmult](Vector<double>       &dst,
+ *                                             const Vector<double> &src) {
+ *      std::cout << "Calling A_inv.vmult()" << std::endl;
+ *      base_vmult(dst, src);
+ *    };
+ * @endcode
+ * Here, we replace `A_inv.vmult` with a lambda function that first captures
+ * the previous value of `A_inv.vmult` and stores it in the `base_vmult`
+ * object. The newly installed `A_inv.vmult` function then first outputs some
+ * status information, and then calls the original functionality.
+ *
+ * This approach works for all of the other function objects mentioned above
+ * as well.
  *
  * @ingroup LAOperators
  */
@@ -1427,10 +1449,10 @@ linear_operator(const OperatorExemplar &operator_exemplar, const Matrix &matrix)
       Domain>::reinit_domain_vector(operator_exemplar, v, omit_zeroing_entries);
   };
 
-  typename std::conditional<
+  std::conditional_t<
     has_vmult_add_and_Tvmult_add<Range, Domain, Matrix>::type::value,
     MatrixInterfaceWithVmultAdd<Range, Domain, Payload>,
-    MatrixInterfaceWithoutVmultAdd<Range, Domain, Payload>>::type()
+    MatrixInterfaceWithoutVmultAdd<Range, Domain, Payload>>()
     .
     operator()(return_op, matrix);
 
@@ -1464,10 +1486,10 @@ linear_operator(const LinearOperator<Range, Domain, Payload> &operator_exemplar,
   // Initialize the payload based on the LinearOperator exemplar
   auto return_op = operator_exemplar;
 
-  typename std::conditional<
+  std::conditional_t<
     has_vmult_add_and_Tvmult_add<Range, Domain, Matrix>::type::value,
     MatrixInterfaceWithVmultAdd<Range, Domain, Payload>,
-    MatrixInterfaceWithoutVmultAdd<Range, Domain, Payload>>::type()
+    MatrixInterfaceWithoutVmultAdd<Range, Domain, Payload>>()
     .
     operator()(return_op, matrix);
 

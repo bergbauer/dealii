@@ -2868,7 +2868,9 @@ namespace Step32
     // minimal mesh size as in step-31, we compute local CFL numbers, i.e., on
     // each cell we compute the maximum velocity times the mesh size, and
     // compute the maximum of them. Hence, we need to choose the factor in
-    // front of the time step slightly smaller.
+    // front of the time step slightly smaller. (We later re-considered this
+    // approach towards time stepping. If you're curious about this, you may
+    // want to read the time stepping section in @cite HDGB17 .)
     //
     // After temperature right hand side assembly, we solve the linear system
     // for temperature (with fully distributed vectors without any ghosts),
@@ -3326,8 +3328,11 @@ namespace Step32
         temperature_constraints.distribute(distributed_temp1);
         temperature_constraints.distribute(distributed_temp2);
 
-        temperature_solution     = std::move(distributed_temp1);
-        old_temperature_solution = std::move(distributed_temp2);
+        temperature_solution     = distributed_temp1;
+        old_temperature_solution = distributed_temp2;
+
+        Assert(old_temperature_solution.has_ghost_elements(),
+               ExcInternalError());
       }
 
       {
@@ -3344,8 +3349,8 @@ namespace Step32
         stokes_constraints.distribute(distributed_stokes);
         stokes_constraints.distribute(old_distributed_stokes);
 
-        stokes_solution     = std::move(distributed_stokes);
-        old_stokes_solution = std::move(old_distributed_stokes);
+        stokes_solution     = distributed_stokes;
+        old_stokes_solution = old_distributed_stokes;
       }
     }
   }

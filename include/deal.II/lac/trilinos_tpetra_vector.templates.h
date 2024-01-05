@@ -47,8 +47,11 @@ namespace LinearAlgebra
     template <typename Number>
     Vector<Number>::Vector()
       : Subscriptor()
-      , vector(new VectorType(Teuchos::rcp(
-          new MapType(0, 0, Utilities::Trilinos::tpetra_comm_self()))))
+      , vector(Utilities::Trilinos::internal::make_rcp<VectorType>(
+          Utilities::Trilinos::internal::make_rcp<MapType>(
+            0,
+            0,
+            Utilities::Trilinos::tpetra_comm_self())))
     {}
 
 
@@ -56,7 +59,9 @@ namespace LinearAlgebra
     template <typename Number>
     Vector<Number>::Vector(const Vector<Number> &V)
       : Subscriptor()
-      , vector(new VectorType(V.trilinos_vector(), Teuchos::Copy))
+      , vector(Utilities::Trilinos::internal::make_rcp<VectorType>(
+          V.trilinos_vector(),
+          Teuchos::Copy))
     {}
 
 
@@ -73,7 +78,7 @@ namespace LinearAlgebra
     Vector<Number>::Vector(const IndexSet &parallel_partitioner,
                            const MPI_Comm  communicator)
       : Subscriptor()
-      , vector(new VectorType(
+      , vector(Utilities::Trilinos::internal::make_rcp<VectorType>(
           parallel_partitioner.make_tpetra_map_rcp(communicator, false)))
     {}
 
@@ -89,7 +94,7 @@ namespace LinearAlgebra
         parallel_partitioner.make_tpetra_map_rcp(communicator, false);
 
       if (vector->getMap()->isSameAs(*input_map) == false)
-        vector = Teuchos::rcp(new VectorType(input_map));
+        vector = Utilities::Trilinos::internal::make_rcp<VectorType>(input_map);
       else if (omit_zeroing_entries == false)
         {
           vector->putScalar(0.);
@@ -110,7 +115,7 @@ namespace LinearAlgebra
       Teuchos::RCP<MapType> input_map =
         parallel_partitioner.make_tpetra_map_rcp(communicator, true);
 
-      vector = Teuchos::rcp(new VectorType(input_map));
+      vector = Utilities::Trilinos::internal::make_rcp<VectorType>(input_map);
     }
 
 
@@ -188,7 +193,8 @@ namespace LinearAlgebra
                                Tpetra::REPLACE);
             }
           else
-            vector = Teuchos::rcp(new VectorType(V.trilinos_vector()));
+            vector = Utilities::Trilinos::internal::make_rcp<VectorType>(
+              V.trilinos_vector());
         }
 
       return *this;
@@ -229,12 +235,10 @@ namespace LinearAlgebra
                V.get_stored_elements().size()) ||
               (source_stored_elements != V.get_stored_elements()))
             {
-              const Teuchos::MpiComm<int> *mpi_comm =
-                dynamic_cast<const Teuchos::MpiComm<int> *>(
-                  vector->getMap()->getComm().get());
-              Assert(mpi_comm != nullptr, ExcInternalError());
-              create_tpetra_comm_pattern(V.get_stored_elements(),
-                                         *(mpi_comm->getRawMpiComm())());
+              create_tpetra_comm_pattern(
+                V.get_stored_elements(),
+                Utilities::Trilinos::teuchos_comm_to_mpi_comm(
+                  vector->getMap()->getComm()));
             }
         }
       else
@@ -520,12 +524,10 @@ namespace LinearAlgebra
         }
 
       // Check that the vector is zero on _all_ processors.
-      const Teuchos::MpiComm<int> *mpi_comm =
-        dynamic_cast<const Teuchos::MpiComm<int> *>(
-          vector->getMap()->getComm().get());
-      Assert(mpi_comm != nullptr, ExcInternalError());
       unsigned int num_nonzero =
-        Utilities::MPI::sum(flag, *(mpi_comm->getRawMpiComm())());
+        Utilities::MPI::sum(flag,
+                            Utilities::Trilinos::teuchos_comm_to_mpi_comm(
+                              vector->getMap()->getComm()));
 
       return num_nonzero == 0;
     }
@@ -603,11 +605,8 @@ namespace LinearAlgebra
     MPI_Comm
     Vector<Number>::get_mpi_communicator() const
     {
-      const auto *const tpetra_comm =
-        dynamic_cast<const Teuchos::MpiComm<int> *>(
-          vector->getMap()->getComm().get());
-      Assert(tpetra_comm != nullptr, ExcInternalError());
-      return *(tpetra_comm->getRawMpiComm())();
+      return Utilities::Trilinos::teuchos_comm_to_mpi_comm(
+        vector->getMap()->getComm());
     }
 
 
@@ -733,16 +732,8 @@ namespace LinearAlgebra
     MPI_Comm
     Vector<Number>::mpi_comm() const
     {
-      MPI_Comm out;
-#  ifdef DEAL_II_WITH_MPI
-      const Teuchos::MpiComm<int> *mpi_comm =
-        dynamic_cast<const Teuchos::MpiComm<int> *>(
-          vector->getMap()->getComm().get());
-      out = *mpi_comm->getRawMpiComm();
-#  else
-      out            = MPI_COMM_SELF;
-#  endif
-      return out;
+      return Utilities::Trilinos::teuchos_comm_to_mpi_comm(
+        vector->getMap()->getComm());
     }
 
 
@@ -763,10 +754,10 @@ namespace LinearAlgebra
                                                const MPI_Comm  mpi_comm)
     {
       source_stored_elements = source_index_set;
-
-      tpetra_comm_pattern =
-        Teuchos::rcp(new TpetraWrappers::CommunicationPattern(
-          locally_owned_elements(), source_index_set, mpi_comm));
+      tpetra_comm_pattern    = Utilities::Trilinos::internal::make_rcp<
+        TpetraWrappers::CommunicationPattern>(locally_owned_elements(),
+                                              source_index_set,
+                                              mpi_comm);
     }
   } // namespace TpetraWrappers
 } // namespace LinearAlgebra

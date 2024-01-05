@@ -1990,6 +1990,17 @@ namespace GridGenerator
 
 
 
+  namespace
+  {
+    static constexpr int circle_cell_vertices[5][4] = {{0, 1, 2, 3},
+                                                       {0, 2, 6, 4},
+                                                       {2, 3, 4, 5},
+                                                       {1, 7, 3, 5},
+                                                       {6, 4, 7, 5}};
+  }
+
+
+
   template <>
   void
   torus<3, 3>(Triangulation<3, 3> &tria,
@@ -2002,9 +2013,9 @@ namespace GridGenerator
            ExcMessage("Outer radius R must be greater than the inner "
                       "radius r."));
     Assert(r > 0.0, ExcMessage("The inner radius r must be positive."));
-    Assert(n_cells_toroidal > 2,
+    Assert(n_cells_toroidal > static_cast<unsigned int>(phi / numbers::PI),
            ExcMessage("Number of cells in toroidal direction has "
-                      "to be at least 3."));
+                      "to be at least 3 for a torus of polar extent 2*pi."));
     AssertThrow(phi > 0.0 && phi < 2.0 * numbers::PI + 1.0e-15,
                 ExcMessage("Invalid angle phi specified."));
 
@@ -2052,37 +2063,17 @@ namespace GridGenerator
             const unsigned int offset =
               (8 * (c + j)) % (8 * n_point_layers_toroidal);
 
-            // cell 0 in x-y-plane
-            cells[5 * c].vertices[0 + j * 4] = offset + 0;
-            cells[5 * c].vertices[1 + j * 4] = offset + 1;
-            cells[5 * c].vertices[2 + j * 4] = offset + 2;
-            cells[5 * c].vertices[3 + j * 4] = offset + 3;
-            // cell 1 in x-y-plane (cell on torus centerline)
-            cells[5 * c + 1].vertices[0 + j * 4] = offset + 2;
-            cells[5 * c + 1].vertices[1 + j * 4] = offset + 3;
-            cells[5 * c + 1].vertices[2 + j * 4] = offset + 4;
-            cells[5 * c + 1].vertices[3 + j * 4] = offset + 5;
-            // cell 2 in x-y-plane
-            cells[5 * c + 2].vertices[0 + j * 4] = offset + 4;
-            cells[5 * c + 2].vertices[1 + j * 4] = offset + 5;
-            cells[5 * c + 2].vertices[2 + j * 4] = offset + 6;
-            cells[5 * c + 2].vertices[3 + j * 4] = offset + 7;
-            // cell 3 in x-y-plane
-            cells[5 * c + 3].vertices[0 + j * 4] = offset + 0;
-            cells[5 * c + 3].vertices[1 + j * 4] = offset + 2;
-            cells[5 * c + 3].vertices[2 + j * 4] = offset + 6;
-            cells[5 * c + 3].vertices[3 + j * 4] = offset + 4;
-            // cell 4 in x-y-plane
-            cells[5 * c + 4].vertices[0 + j * 4] = offset + 3;
-            cells[5 * c + 4].vertices[1 + j * 4] = offset + 1;
-            cells[5 * c + 4].vertices[2 + j * 4] = offset + 5;
-            cells[5 * c + 4].vertices[3 + j * 4] = offset + 7;
+            // cells in x-y-plane
+            for (unsigned int c2 = 0; c2 < 5; ++c2)
+              for (unsigned int i = 0; i < 4; ++i)
+                cells[5 * c + c2].vertices[i + j * 4] =
+                  offset + circle_cell_vertices[c2][i];
           }
 
         cells[5 * c].material_id = 0;
         // mark cell on torus centerline
-        cells[5 * c + 1].material_id = 1;
-        cells[5 * c + 2].material_id = 0;
+        cells[5 * c + 1].material_id = 0;
+        cells[5 * c + 2].material_id = 1;
         cells[5 * c + 3].material_id = 0;
         cells[5 * c + 4].material_id = 0;
       }
@@ -2118,6 +2109,8 @@ namespace GridGenerator
     tria.set_manifold(2,
                       CylindricalManifold<3>(Tensor<1, 3>({0., 1., 0.}),
                                              Point<3>()));
+
+    tria.set_manifold(0, FlatManifold<3>());
     TransfiniteInterpolationManifold<3> transfinite;
     transfinite.initialize(tria);
     tria.set_manifold(0, transfinite);
@@ -3501,6 +3494,7 @@ namespace GridGenerator
 
     PolarManifold<2> polar_manifold(new_center);
     tria.set_manifold(polar_manifold_id, polar_manifold);
+    tria.set_manifold(tfi_manifold_id, FlatManifold<2>());
     TransfiniteInterpolationManifold<2> inner_manifold;
     inner_manifold.initialize(tria);
     tria.set_manifold(tfi_manifold_id, inner_manifold);
@@ -3550,8 +3544,11 @@ namespace GridGenerator
     const CylindricalManifold<3> cylindrical_manifold(
       direction,
       /*axial_point*/ new_center);
+    tria.set_manifold(polar_manifold_id, FlatManifold<3>());
+    tria.set_manifold(tfi_manifold_id, FlatManifold<3>());
     TransfiniteInterpolationManifold<3> inner_manifold;
     inner_manifold.initialize(tria);
+
     tria.set_manifold(polar_manifold_id, cylindrical_manifold);
     tria.set_manifold(tfi_manifold_id, inner_manifold);
   }
@@ -3757,6 +3754,8 @@ namespace GridGenerator
     // attach manifolds
     PolarManifold<2> polar_manifold(Point<2>(0.2, 0.2));
     tria.set_manifold(polar_manifold_id, polar_manifold);
+
+    tria.set_manifold(tfi_manifold_id, FlatManifold<2>());
     TransfiniteInterpolationManifold<2> inner_manifold;
     inner_manifold.initialize(tria);
     tria.set_manifold(tfi_manifold_id, inner_manifold);
@@ -3811,6 +3810,8 @@ namespace GridGenerator
     const Point<3>     axial_point(m_ptr->center[0], m_ptr->center[1], 0.0);
     const Tensor<1, 3> direction{{0.0, 0.0, 1.0}};
 
+    tria.set_manifold(cylindrical_manifold_id, FlatManifold<3>());
+    tria.set_manifold(tfi_manifold_id, FlatManifold<3>());
     const CylindricalManifold<3> cylindrical_manifold(direction, axial_point);
     TransfiniteInterpolationManifold<3> inner_manifold;
     inner_manifold.initialize(tria);
@@ -4318,15 +4319,12 @@ namespace GridGenerator
       p + Point<2>(-1, +1) * (radius / std::sqrt(2.0)),
       p + Point<2>(+1, +1) * (radius / std::sqrt(2.0))};
 
-    const int cell_vertices[5][4] = {
-      {0, 1, 2, 3}, {0, 2, 6, 4}, {2, 3, 4, 5}, {1, 7, 3, 5}, {6, 4, 7, 5}};
-
     std::vector<CellData<2>> cells(5, CellData<2>());
 
     for (unsigned int i = 0; i < 5; ++i)
       {
         for (unsigned int j = 0; j < 4; ++j)
-          cells[i].vertices[j] = cell_vertices[i][j];
+          cells[i].vertices[j] = circle_cell_vertices[i][j];
         cells[i].material_id = 0;
         cells[i].manifold_id = i == 2 ? numbers::flat_manifold_id : 1;
       }
@@ -4339,6 +4337,8 @@ namespace GridGenerator
     tria.set_manifold(0, SphericalManifold<2>(p));
     if (internal_manifolds)
       tria.set_manifold(1, SphericalManifold<2>(p));
+    else
+      tria.set_manifold(1, FlatManifold<2>());
   }
 
 
@@ -4455,6 +4455,9 @@ namespace GridGenerator
     SphericalManifold<dim> inner_manifold(inner_center);
     SphericalManifold<dim> outer_manifold(outer_center);
 
+    tria.set_manifold(0, FlatManifold<dim>());
+    tria.set_manifold(1, FlatManifold<dim>());
+    tria.set_manifold(2, FlatManifold<dim>());
     TransfiniteInterpolationManifold<dim> transfinite;
     transfinite.initialize(tria);
 
@@ -5115,6 +5118,8 @@ namespace GridGenerator
     tria.set_manifold(0, SphericalManifold<3>(p));
     if (internal_manifold)
       tria.set_manifold(1, SphericalManifold<3>(p));
+    else
+      tria.set_manifold(1, FlatManifold<3>());
   }
 
 
@@ -5927,6 +5932,8 @@ namespace GridGenerator
         cell->set_all_manifold_ids(numbers::flat_manifold_id);
     GridTools::shift(p, tria);
 
+    tria.set_manifold(1, FlatManifold<dim>());
+
     tria.set_all_manifold_ids_on_boundary(0);
     tria.set_manifold(0, SphericalManifold<dim>(p));
   }
@@ -6589,19 +6596,20 @@ namespace GridGenerator
     // if either Triangulation is empty then merging is just a copy.
     if (triangulation_1.n_cells() == 0)
       {
-        result.copy_triangulation(triangulation_2);
-        return;
+        if (&result != &triangulation_2)
+          result.copy_triangulation(triangulation_2);
       }
-    if (triangulation_2.n_cells() == 0)
+    else if (triangulation_2.n_cells() == 0)
       {
-        result.copy_triangulation(triangulation_1);
-        return;
+        if (&result != &triangulation_1)
+          result.copy_triangulation(triangulation_1);
       }
-    merge_triangulations({&triangulation_1, &triangulation_2},
-                         result,
-                         duplicated_vertex_tolerance,
-                         copy_manifold_ids,
-                         copy_boundary_ids);
+    else
+      merge_triangulations({&triangulation_1, &triangulation_2},
+                           result,
+                           duplicated_vertex_tolerance,
+                           copy_manifold_ids,
+                           copy_boundary_ids);
   }
 
 
@@ -7810,6 +7818,10 @@ namespace GridGenerator
       }
 
     out_tria.create_triangulation(v, cells, subcelldata);
+
+    for (const auto i : out_tria.get_manifold_ids())
+      if (i != numbers::flat_manifold_id)
+        out_tria.set_manifold(i, FlatManifold<dim, spacedim2>());
   }
 
 
@@ -8219,7 +8231,12 @@ namespace GridGenerator
           }
       }
 
+    out_tria.clear();
     out_tria.create_triangulation(vertices, cells, subcell_data);
+
+    for (const auto i : out_tria.get_manifold_ids())
+      if (i != numbers::flat_manifold_id)
+        out_tria.set_manifold(i, FlatManifold<dim, spacedim>());
   }
 
 
@@ -8519,6 +8536,17 @@ namespace GridGenerator
     for (unsigned int i = 0; i < temporary_map_boundary_cell_face.size(); ++i)
       surface_to_volume_mapping[temporary_map_boundary_cell_face[i].first] =
         temporary_map_boundary_cell_face[i].second.first;
+
+    // TODO: we attach flat manifolds here; one should attach submanifolds here
+    const auto attached_mids =
+      surface_mesh.get_triangulation().get_manifold_ids();
+    for (const auto i : volume_mesh.get_triangulation().get_manifold_ids())
+      if (i != numbers::flat_manifold_id &&
+          std::find(attached_mids.begin(), attached_mids.end(), i) ==
+            attached_mids.end())
+        const_cast<Triangulation<dim - 1, spacedim> &>(
+          surface_mesh.get_triangulation())
+          .set_manifold(i, FlatManifold<dim - 1, spacedim>());
 
     return surface_to_volume_mapping;
   }

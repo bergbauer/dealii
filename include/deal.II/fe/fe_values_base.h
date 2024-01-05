@@ -46,7 +46,9 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <type_traits>
+#include <variant>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -1556,8 +1558,18 @@ protected:
    * to the present cell in order to be able to extract the values of the
    * degrees of freedom on this cell in the get_function_values() and assorted
    * functions.
+   *
+   * The problem is that the iterators given to the various reinit() functions
+   * can either be Triangulation iterators, or DoFHandler cell or level
+   * iterators. All three are valid, and provide different functionality that is
+   * used in different contexts; as a consequence we need to be able to store
+   * all three. This class provides the ability to store an object of any of
+   * these types, via a member variable that is a std::variant that encapsulates
+   * an object of any of the three types. Because a std::variant always stores
+   * an object of *one* of these types, we wrap the std::variant object into a
+   * std::optional that allows us to encode a "not yet initialized" state.
    */
-  class CellIteratorContainer
+  class CellIteratorWrapper
   {
   public:
     DeclExceptionMsg(
@@ -1571,22 +1583,28 @@ protected:
       "degrees of freedom, such as DoFHandler<dim,spacedim>::cell_iterator.");
 
     /**
-     * Constructor.
+     * Constructor. Creates an unusable object that is not associated with
+     * any cell at all.
      */
-    CellIteratorContainer();
+    CellIteratorWrapper() = default;
 
     /**
      * Constructor.
      */
-    template <bool lda>
-    CellIteratorContainer(
-      const TriaIterator<DoFCellAccessor<dim, spacedim, lda>> &cell);
-
-    /**
-     * Constructor.
-     */
-    CellIteratorContainer(
+    CellIteratorWrapper(
       const typename Triangulation<dim, spacedim>::cell_iterator &cell);
+
+    /**
+     * Constructor.
+     */
+    CellIteratorWrapper(
+      const typename DoFHandler<dim, spacedim>::cell_iterator &cell);
+
+    /**
+     * Constructor.
+     */
+    CellIteratorWrapper(
+      const typename DoFHandler<dim, spacedim>::level_cell_iterator &cell);
 
     /**
      * Indicate whether FEValues::reinit() was called.
@@ -1618,19 +1636,17 @@ protected:
     get_interpolated_dof_values(const ReadVector<Number> &in,
                                 Vector<Number>           &out) const;
 
-    /**
-     * Call @p get_interpolated_dof_values of the iterator with the
-     * given arguments.
-     */
-    void
-    get_interpolated_dof_values(const IndexSet               &in,
-                                Vector<IndexSet::value_type> &out) const;
-
   private:
-    bool                                                 initialized;
-    typename Triangulation<dim, spacedim>::cell_iterator cell;
-    const DoFHandler<dim, spacedim>                     *dof_handler;
-    bool                                                 level_dof_access;
+    /**
+     * The cell in question, if one has been assigned to this object. The
+     * concrete data type can either be a Triangulation cell iterator, a
+     * DoFHandler cell iterator, or a DoFHandler level cell iterator.
+     */
+    std::optional<
+      std::variant<typename Triangulation<dim, spacedim>::cell_iterator,
+                   typename DoFHandler<dim, spacedim>::cell_iterator,
+                   typename DoFHandler<dim, spacedim>::level_cell_iterator>>
+      cell;
   };
 
   /**
@@ -1638,7 +1654,7 @@ protected:
    * is necessary for the <tt>get_function_*</tt> functions as well as the
    * functions of same name in the extractor classes.
    */
-  CellIteratorContainer present_cell;
+  CellIteratorWrapper present_cell;
 
   /**
    * A signal connection we use to ensure we get informed whenever the
@@ -1785,26 +1801,16 @@ private:
 /*---------------------- Inline functions: FEValuesBase ---------------------*/
 
 template <int dim, int spacedim>
-template <bool lda>
-inline FEValuesBase<dim, spacedim>::CellIteratorContainer::
-  CellIteratorContainer(
-    const TriaIterator<DoFCellAccessor<dim, spacedim, lda>> &cell)
-  : initialized(true)
-  , cell(cell)
-  , dof_handler(&cell->get_dof_handler())
-  , level_dof_access(lda)
-{}
-
-
-
-template <int dim, int spacedim>
 inline const FEValuesViews::Scalar<dim, spacedim> &
 FEValuesBase<dim, spacedim>::operator[](
   const FEValuesExtractors::Scalar &scalar) const
 {
   AssertIndexRange(scalar.component, fe_values_views_cache.scalars.size());
 
-  return fe_values_views_cache.scalars[scalar.component];
+  return fe_values_views_cache.scalars[scalar.component].value_or_initialize(
+    [scalar, this]() {
+      return FEValuesViews::Scalar<dim, spacedim>(*this, scalar.component);
+    });
 }
 
 
@@ -1817,7 +1823,11 @@ FEValuesBase<dim, spacedim>::operator[](
   AssertIndexRange(vector.first_vector_component,
                    fe_values_views_cache.vectors.size());
 
-  return fe_values_views_cache.vectors[vector.first_vector_component];
+  return fe_values_views_cache.vectors[vector.first_vector_component]
+    .value_or_initialize([vector, this]() {
+      return FEValuesViews::Vector<dim, spacedim>(
+        *this, vector.first_vector_component);
+    });
 }
 
 
@@ -1835,7 +1845,11 @@ FEValuesBase<dim, spacedim>::operator[](
                   fe_values_views_cache.symmetric_second_order_tensors.size()));
 
   return fe_values_views_cache
-    .symmetric_second_order_tensors[tensor.first_tensor_component];
+    .symmetric_second_order_tensors[tensor.first_tensor_component]
+    .value_or_initialize([tensor, this]() {
+      return FEValuesViews::SymmetricTensor<2, dim, spacedim>(
+        *this, tensor.first_tensor_component);
+    });
 }
 
 
@@ -1849,7 +1863,11 @@ FEValuesBase<dim, spacedim>::operator[](
                    fe_values_views_cache.second_order_tensors.size());
 
   return fe_values_views_cache
-    .second_order_tensors[tensor.first_tensor_component];
+    .second_order_tensors[tensor.first_tensor_component]
+    .value_or_initialize([tensor, this]() {
+      return FEValuesViews::Tensor<2, dim, spacedim>(
+        *this, tensor.first_tensor_component);
+    });
 }
 
 

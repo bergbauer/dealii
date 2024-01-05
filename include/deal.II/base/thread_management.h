@@ -544,7 +544,7 @@ namespace Threads
           // and at least some TBB variants require that as well. So
           // instead we move the std::unique_ptr used above into a
           // std::shared_ptr to be stored within the lambda function object.
-          task_data->task_group.run(
+          task_data->task_group->run(
             [function_object,
              promise =
                std::shared_ptr<std::promise<RT>>(std::move(promise))]() {
@@ -633,6 +633,68 @@ namespace Threads
      * i.e., joinable() will return false.
      */
     Task() = default;
+
+    /**
+     * Copy constructor. At the end of this operation, both the original and the
+     * new object refer to the same task, and both can ask for the returned
+     * object. That is, if you do
+     * @code
+     *   Threads::Task<T> t1 = Threads::new_task(...);
+     *   Threads::Task<T> t2 (t1);
+     * @endcode
+     * then calling `t2.return_value()` will return the same object (not just an
+     * object with the same value, but in fact the same address!) as
+     * calling `t1.return_value()`.
+     */
+    Task(const Task &other) = default;
+
+    /**
+     * Move constructor. At the end of this operation, the original object no
+     * longer refers to a task, and the new object refers to the same task
+     * as the original one originally did. That is, if you do
+     * @code
+     *   Threads::Task<T> t1 = Threads::new_task(...);
+     *   Threads::Task<T> t2 (std::move(t1));
+     * @endcode
+     * then calling `t2.return_value()` will return the object computed by
+     * the task, and `t1.return_value()` will result in an error because `t1`
+     * no longer refers to a task and consequently does not know anything
+     * about a return value.
+     */
+    Task(Task &&other) noexcept = default;
+
+    /**
+     * Copy operator. At the end of this operation, both the right hand and the
+     * left hand object refer to the same task, and both can ask for the
+     * returned object. That is, if you do
+     * @code
+     *   Threads::Task<T> t1 = Threads::new_task(...);
+     *   Threads::Task<T> t2;
+     *   t2 = t1;
+     * @endcode
+     * then calling `t2.return_value()` will return the same object (not just an
+     * object with the same value, but in fact the same address!) as
+     * calling `t1.return_value()`.
+     */
+    Task &
+    operator=(const Task &other) = default;
+
+    /**
+     * Move operator. At the end of this operation, the right hand side object
+     * no longer refers to a task, and the left hand side object refers to the
+     * same task as the right hand side one originally did. That is, if you do
+     * @code
+     *   Threads::Task<T> t1 = Threads::new_task(...);
+     *   Threads::Task<T> t2;
+     *   t2 = std::move(t1);
+     * @endcode
+     * then calling `t2.return_value()` will return the object computed by
+     * the task, and `t1.return_value()` will result in an error because `t1`
+     * no longer refers to a task and consequently does not know anything
+     * about a return value.
+     */
+    Task &
+    operator=(Task &&other) noexcept = default;
 
     /**
      * Join the task represented by this object, i.e. wait for it to finish.
@@ -786,6 +848,9 @@ namespace Threads
       TaskData(std::future<RT> &&future) noexcept
         : future(std::move(future))
         , task_has_finished(false)
+#ifdef DEAL_II_WITH_TBB
+        , task_group(std::make_unique<tbb::task_group>())
+#endif
       {}
 
       /**
@@ -883,7 +948,17 @@ namespace Threads
             // task. The way to avoid this is to add the task to a
             // tbb::task_group, and then here wait for the single task
             // associated with that task group.
-            task_group.wait();
+            //
+            // If we get here, we know for a fact that atomically
+            // (because under a lock), no other thread has so far
+            // determined that we are finished and removed the
+            // 'task_group' object. So we know that the pointer is
+            // still valid. But we also know that, because below we
+            // set the task_has_finished flag to 'true', that no other
+            // thread will ever get back to this point and query the
+            // 'task_group' object, so we can delete it.
+            task_group->wait();
+            task_group.reset();
 #endif
 
             // Wait for the task to finish and then move its
@@ -972,9 +1047,13 @@ namespace Threads
 
 #ifdef DEAL_II_WITH_TBB
       /**
-       * A task group object we can wait for.
+       * A task group object we can wait for. This object is created in
+       * the constructor, and is removed as soon as we have determined
+       * that the task has finished, so as to free any resources the TBB
+       * may still be holding in order to allow programs to still check
+       * on the status of a task in this group.
        */
-      tbb::task_group task_group;
+      std::unique_ptr<tbb::task_group> task_group;
 
       friend class Task<RT>;
 #endif
@@ -1119,6 +1198,64 @@ namespace Threads
     auto dummy = std::make_tuple(internal::maybe_make_ref<Args>::act(args)...);
     return new_task(
       [dummy, fun_ptr]() -> RT { return std::apply(fun_ptr, dummy); });
+  }
+
+
+
+  /**
+   * Overload of the new_task function for other kinds of function objects
+   * passed as first argument. This overload applies to cases where the first
+   * argument is a lambda function that takes arguments (whose values are then
+   * provided via subsequent arguments), or other objects that have function
+   * call operators.
+   *
+   * This overload is useful when creating multiple tasks using the same lambda
+   * function, but for different arguments. Say in code such as this:
+   * @code
+   *   std::vector<Triangulation<dim>> triangulations;
+   *   [... initialize triangulations ...]
+   *
+   *   auto something_expensive = [](const Triangulation<dim> &t) {...};
+   *
+   *   // Apply something_expensive() to all elements of the collection of
+   *   // triangulations:
+   *   Threads::TaskGroup<> task_group;
+   *   for (const Triangulation<dim> &t : triangulations)
+   *     task_group += Threads::new_task (something_expensive, t);
+   *   task_group.join_all();
+   * @endcode
+   *
+   * See the other functions of same name for more information.
+   *
+   * @note This overload is disabled if the first argument is a
+   * pointer or reference to a function, as there is another overload
+   * for that case. (Strictly speaking, this overload is disabled if the
+   * first argument is a reference to a function or any kind of pointer.
+   * But since only pointers to functions are invocable like functions,
+   * and since another part of the declaration checks that the first
+   * argument is invocable, testing that the first argument is not a
+   * pointer is sufficient. We use this scheme because there is no type
+   * trait to check whether something is a pointer-to-function: there
+   * is only `std::is_pointer` and `std::is_function`, the latter of
+   * which checks whether a type is a reference-to-function; but there is
+   * no type trait for pointer-to-function.)
+   *
+   * @ingroup threads
+   */
+  template <
+    typename FunctionObject,
+    typename... Args,
+    typename = std::enable_if_t<std::is_invocable_v<FunctionObject, Args...>>,
+    typename = std::enable_if_t<std::is_function_v<FunctionObject> == false>,
+    typename =
+      std::enable_if_t<std::is_member_pointer_v<FunctionObject> == false>,
+    typename = std::enable_if_t<std::is_pointer_v<FunctionObject> == false>>
+  inline Task<std::invoke_result_t<FunctionObject, Args...>>
+  new_task(const FunctionObject &fun, Args &&...args)
+  {
+    using RT   = std::invoke_result_t<FunctionObject, Args...>;
+    auto dummy = std::make_tuple(std::forward<Args>(args)...);
+    return new_task([dummy, fun]() -> RT { return std::apply(fun, dummy); });
   }
 
 

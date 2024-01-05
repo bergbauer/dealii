@@ -1893,6 +1893,10 @@ public:
    * assignment of a different Manifold object by the function
    * Triangulation::set_manifold().
    *
+   * @note Geometric objects with the manifold ID @p manifold_number will
+   *   still have the same ID after calling this function so that the function
+   *   get_manifold_ids() will still return the same set of IDs.
+   *
    * @ingroup manifold
    *
    * @see
@@ -1906,6 +1910,11 @@ public:
    * manifold_id, to use a FlatManifold object. This undoes assignment
    * of all Manifold objects by the function
    * Triangulation::set_manifold().
+   *
+   * @note Geometric objects not having numbers::flat_manifold_id as manifold ID
+   *   will after calling this function still have the same IDs. Their IDs are
+   *   not replaced by numbers::flat_manifold_id so that the function
+   *   get_manifold_ids() will still return the same set of IDs.
    *
    * @ingroup manifold
    *
@@ -2089,10 +2098,12 @@ public:
       &construction_data);
 
   /**
-   * Revert or flip the direction_flags of a dim<spacedim triangulation, see
+   * Revert or flip the direction flags of a triangulation with
+   * `dim==spacedim-1`, see
    * @ref GlossDirectionFlag.
    *
-   * This function throws an exception if dim equals spacedim.
+   * This function throws an exception if `dim==spacedim` or if
+   * `dim<spacedim-1`.
    */
   void
   flip_all_direction_flags();
@@ -3973,12 +3984,6 @@ public:
                  int,
                  << "You tried to do something on level " << arg1
                  << ", but this level is empty.");
-  /**
-   * Exception
-   *
-   * @ingroup Exceptions
-   */
-  DeclException0(ExcNonOrientableTriangulation);
 
   /**
    * Exception

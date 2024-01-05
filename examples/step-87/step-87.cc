@@ -31,6 +31,7 @@
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/dofs/dof_renumbering.h>
+#include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_nothing.h>
 #include <deal.II/fe/fe_q.h>
@@ -80,10 +81,10 @@ namespace Step87
 // triangulation is 1D, e.g., in the case of codim-1 meshes.
 #ifdef DEAL_II_WITH_P4EST
   template <int dim, int spacedim = dim>
-  using DistributedTriangulation = typename std::conditional<
+  using DistributedTriangulation = typename std::conditional_t<
     dim == 1,
     parallel::shared::Triangulation<dim, spacedim>,
-    parallel::distributed::Triangulation<dim, spacedim>>::type;
+    parallel::distributed::Triangulation<dim, spacedim>>;
 #else
   template <int dim, int spacedim = dim>
   using DistributedTriangulation =

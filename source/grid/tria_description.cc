@@ -442,11 +442,11 @@ namespace TriangulationDescription
             tria, coinciding_vertex_groups, vertex_to_coinciding_vertex_group);
         }
 
-        template <typename T>
-        T
+        template <typename DescriptionType>
+        DescriptionType
         create_description_for_rank(const unsigned int my_rank) const
         {
-          T construction_data;
+          DescriptionType construction_data;
 
           set_additional_data(construction_data);
 
@@ -741,41 +741,46 @@ namespace TriangulationDescription
       const TriangulationDescription::Settings    settings,
       const unsigned int                          my_rank_in)
     {
-      if (const auto tria_pdt = dynamic_cast<
-            const parallel::distributed::Triangulation<dim, spacedim> *>(&tria))
-        Assert(comm == tria_pdt->get_communicator(),
-               ExcMessage("MPI communicators do not match."));
+      if (const auto ptria =
+            dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+              &tria))
+        {
+          Assert(comm == ptria->get_communicator(),
+                 ExcMessage("MPI communicators do not match."));
+          Assert(my_rank_in == numbers::invalid_unsigned_int ||
+                   my_rank_in == dealii::Utilities::MPI::this_mpi_process(comm),
+                 ExcMessage(
+                   "For creation from a parallel::Triangulation, "
+                   "my_rank has to equal the rank of the current process "
+                   "in the given communicator."));
+        }
+
+      // If we are dealing with a sequential triangulation, then someone
+      // will have needed to set the subdomain_ids by hand. Make sure that
+      // all ids we see are less than the number of processes we are
+      // supposed to split the triangulation into.
+      if (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+            &tria) == nullptr)
+        {
+#if DEBUG
+          const unsigned int n_mpi_processes =
+            dealii::Utilities::MPI::n_mpi_processes(comm);
+          for (const auto &cell : tria.active_cell_iterators())
+            Assert(cell->subdomain_id() < n_mpi_processes,
+                   ExcMessage("You can't have a cell with subdomain_id of " +
+                              std::to_string(cell->subdomain_id()) +
+                              " when splitting the triangulation using an MPI "
+                              " communicator with only " +
+                              std::to_string(n_mpi_processes) + " processes."));
+#endif
+        }
 
       // First, figure out for what rank we are supposed to build the
       // TriangulationDescription::Description object
-      unsigned int my_rank = my_rank_in;
-      Assert(my_rank == numbers::invalid_unsigned_int ||
-               my_rank < dealii::Utilities::MPI::n_mpi_processes(comm),
-             ExcMessage("Rank has to be smaller than available processes."));
-
-      if (auto tria_pdt = dynamic_cast<
-            const parallel::distributed::Triangulation<dim, spacedim> *>(&tria))
-        {
-          Assert(my_rank == numbers::invalid_unsigned_int ||
-                   my_rank == dealii::Utilities::MPI::this_mpi_process(comm),
-                 ExcMessage(
-                   "For creation from a parallel::distributed::Triangulation, "
-                   "my_rank has to equal global rank."));
-
-          my_rank = dealii::Utilities::MPI::this_mpi_process(comm);
-        }
-      else if (auto tria_serial =
-                 dynamic_cast<const dealii::Triangulation<dim, spacedim> *>(
-                   &tria))
-        {
-          if (my_rank == numbers::invalid_unsigned_int)
-            my_rank = dealii::Utilities::MPI::this_mpi_process(comm);
-        }
-      else
-        {
-          Assert(false,
-                 ExcMessage("This type of triangulation is not supported!"));
-        }
+      const unsigned int my_rank =
+        (my_rank_in == numbers::invalid_unsigned_int ?
+           dealii::Utilities::MPI::this_mpi_process(comm) :
+           my_rank_in);
 
       const auto subdomain_id_function = [](const auto &cell) {
         return cell->subdomain_id();
@@ -950,42 +955,59 @@ namespace TriangulationDescription
 
       std::vector<LinearAlgebra::distributed::Vector<double>> partitions_mg;
 
-      if (construct_multigrid) // perform first child policy
+      // If desired, also create a multigrid hierarchy. For this, we have to
+      // build a hierarchy of partitions (one for each level of the
+      // triangulation) in which each cell is assigned to the same process
+      // as its first child (if not active) or to the same process that already
+      // owns the cell (for an active level-cell).
+      if (construct_multigrid)
         {
           const auto tria_parallel =
             dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
               &tria);
+          Assert(tria_parallel, ExcNotImplemented());
 
-          Assert(tria_parallel, ExcInternalError());
-
-          partition.update_ghost_values();
-
+          // Give the level partitioners the right size:
           partitions_mg.resize(tria.n_global_levels());
-
           for (unsigned int l = 0; l < tria.n_global_levels(); ++l)
             partitions_mg[l].reinit(
               tria_parallel->global_level_cell_index_partitioner(l).lock());
 
+          // Make sure we know about all of the owners of the active cells,
+          // whether locally owned or not. Then we traverse the triangulation
+          // from the finest level to the coarsest level.
+          //
+          // On each level, traverse the cell. If the cell is not locally
+          // owned, we don't care about it. If it is active, we copy the
+          // owner process from the cell's non-level owner. Otherwise,
+          // use the owner of the first cell.
+          partition.update_ghost_values();
           for (int level = tria.n_global_levels() - 1; level >= 0; --level)
             {
               for (const auto &cell : tria.cell_iterators_on_level(level))
                 {
-                  if (cell->is_locally_owned_on_level() == false)
-                    continue;
-
-                  if (cell->is_active())
-                    partitions_mg[level][cell->global_level_cell_index()] =
-                      partition[cell->global_active_cell_index()];
-                  else
-                    partitions_mg[level][cell->global_level_cell_index()] =
-                      partitions_mg[level + 1]
-                                   [cell->child(0)->global_level_cell_index()];
+                  if (cell->is_locally_owned_on_level())
+                    {
+                      if (cell->is_active())
+                        partitions_mg[level][cell->global_level_cell_index()] =
+                          partition[cell->global_active_cell_index()];
+                      else
+                        partitions_mg[level][cell->global_level_cell_index()] =
+                          partitions_mg[level + 1]
+                                       [cell->child(0)
+                                          ->global_level_cell_index()];
+                    }
                 }
 
+              // Having touched all of the locally owned cells on the
+              // current level, exchange information with the other processes
+              // about the cells that are ghosts so that on the next coarser
+              // level we can access information about children again:
               partitions_mg[level].update_ghost_values();
             }
         }
 
+      // Forward to the other function.
       return create_description_from_triangulation(tria,
                                                    partition,
                                                    partitions_mg,
@@ -1038,31 +1060,33 @@ namespace TriangulationDescription
                                          relevant_processes.end());
       }();
 
-      const bool construct_multigrid = partitions_mg.size() > 0;
+      const bool construct_multigrid = (partitions_mg.size() > 0);
 
-      TriangulationDescription::Settings settings = settings_in;
+      const TriangulationDescription::Settings settings =
+        (construct_multigrid ?
+           static_cast<TriangulationDescription::Settings>(
+             settings_in | TriangulationDescription::Settings::
+                             construct_multigrid_hierarchy) :
+           settings_in);
 
-      if (construct_multigrid)
-        settings = static_cast<TriangulationDescription::Settings>(
-          settings |
-          TriangulationDescription::Settings::construct_multigrid_hierarchy);
-
-      const auto subdomain_id_function = [&partition](const auto &cell) {
+      const auto subdomain_id_function =
+        [&partition](const auto &cell) -> types::subdomain_id {
         if ((cell->is_active() && (cell->is_artificial() == false)))
-          return static_cast<unsigned int>(
+          return static_cast<types::subdomain_id>(
             partition[cell->global_active_cell_index()]);
         else
           return numbers::artificial_subdomain_id;
       };
 
       const auto level_subdomain_id_function =
-        [&construct_multigrid, &partitions_mg](const auto &cell) {
-          if (construct_multigrid && (cell->is_artificial_on_level() == false))
-            return static_cast<unsigned int>(
-              partitions_mg[cell->level()][cell->global_level_cell_index()]);
-          else
-            return numbers::artificial_subdomain_id;
-        };
+        [&construct_multigrid,
+         &partitions_mg](const auto &cell) -> types::subdomain_id {
+        if (construct_multigrid && (cell->is_artificial_on_level() == false))
+          return static_cast<types::subdomain_id>(
+            partitions_mg[cell->level()][cell->global_level_cell_index()]);
+        else
+          return numbers::artificial_subdomain_id;
+      };
 
       CreateDescriptionFromTriangulationHelper<dim, spacedim> helper(
         tria,
