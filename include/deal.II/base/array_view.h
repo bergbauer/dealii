@@ -781,6 +781,18 @@ public:
   StridedArrayView(value_type *starting_element, const std::size_t n_elements);
 
   /**
+   * Copy constructor from array views that point to non-@p const elements. If
+   * the current object will point to non-@p const elements, then this is a
+   * straight forward copy constructor. On the other hand, if the current
+   * type's @p ElementType template argument is a @p const qualified type,
+   * then the current constructor is a conversion constructor that converts a
+   * non-@p const view to a @p const view, akin to converting a non-@p const
+   * pointer to a @p const pointer.
+   */
+  StridedArrayView(
+    const StridedArrayView<std::remove_cv_t<value_type>, stride> &view);
+
+  /**
    * Return the size (in elements) of the view of memory this object
    * represents.
    */
@@ -877,6 +889,15 @@ StridedArrayView<ElementType, stride>::StridedArrayView(
   const std::size_t n_elements)
   : starting_element(starting_element)
   , n_elements(n_elements)
+{}
+
+
+
+template <typename ElementType, std::size_t stride>
+inline StridedArrayView<ElementType, stride>::StridedArrayView(
+  const StridedArrayView<std::remove_cv_t<value_type>, stride> &view)
+  : starting_element(view.starting_element)
+  , n_elements(view.n_elements)
 {}
 
 
