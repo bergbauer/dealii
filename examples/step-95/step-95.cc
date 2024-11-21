@@ -772,7 +772,7 @@ namespace Step95
     }
 
     // The implementation of the right-hand-side term evaluating the rhs
-    // function (unfortunately we cannot evaluate a function vectorized, so we
+    // function (unfortunately we cannot evaluate a Function vectorized, so we
     // have to reshuffle the quadrature point data).
     template <typename Integrator>
     inline void do_rhs_cell_term(Integrator          &evaluator,
@@ -1292,7 +1292,7 @@ namespace Step95
         update_normal_vectors);
     mapping_info_surface->reinit_surface(vector_accessors, quad_vec_surface);
 
-    // faces
+    // In case of DG, we also have to compute mapping data for cut faces.
     if (is_dg)
       {
         NonMatching::DiscreteFaceQuadratureGenerator<dim>
@@ -1313,7 +1313,7 @@ namespace Step95
            matrix_free.n_boundary_face_batches() +
            matrix_free.n_ghost_inner_face_batches()) *
           n_lanes);
-        // fill container for inner face batches
+        // Fill container for inner face batches,
         unsigned int face_batch = 0;
         for (; face_batch < matrix_free.n_inner_face_batches(); ++face_batch)
           {
@@ -1340,7 +1340,7 @@ namespace Step95
                   quad_vec_faces.emplace_back();
               }
           }
-        // and boundary face batches
+        // then for boundary face batches,
         for (; face_batch < (matrix_free.n_inner_face_batches() +
                              matrix_free.n_boundary_face_batches());
              ++face_batch)
@@ -1368,6 +1368,7 @@ namespace Step95
                   quad_vec_faces.emplace_back();
               }
           }
+        // and finally for ghost inner face batches.
         for (; face_batch < (matrix_free.n_inner_face_batches() +
                              matrix_free.n_boundary_face_batches() +
                              matrix_free.n_ghost_inner_face_batches());
@@ -1409,6 +1410,8 @@ namespace Step95
 
 
   // @sect3{Solving the System}
+  // Here we create the Jacobi preconditioner, which assembles the diagonal on
+  // construction. Then, we call the preconditioned conjugate gradient solver.
   template <int dim>
   void PoissonSolver<dim>::solve()
   {
