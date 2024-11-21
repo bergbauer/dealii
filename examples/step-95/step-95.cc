@@ -1227,7 +1227,7 @@ namespace Step95
                NonMatching::LocationToLevelSet::intersected;
       };
 
-    // We start by filling the containers in matrix-free ordering.
+    // We start by filling the containers in matrix-free ordering,
     std::vector<Quadrature<dim>> quad_vec_cells;
     quad_vec_cells.reserve(
       (matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches()) *
@@ -1278,8 +1278,8 @@ namespace Step95
             }
         }
 
-    // initialize NonMatching::MappingInfo objects to precompute mapping
-    // information
+    // then we initialize the NonMatching::MappingInfo objects to precompute
+    // mapping information for cells and surface quadrature points.
     mapping_info_cell = std::make_unique<
       NonMatching::MappingInfo<dim, dim, VectorizedArray<Number>>>(
       mapping, update_values | update_gradients | update_JxW_values);
@@ -1292,7 +1292,8 @@ namespace Step95
         update_normal_vectors);
     mapping_info_surface->reinit_surface(vector_accessors, quad_vec_surface);
 
-    // In case of DG, we also have to compute mapping data for cut faces.
+    // In case of DG, we also have to compute mapping data for cut faces, so we
+    // again fill the containers in matrix-free ordering.
     if (is_dg)
       {
         NonMatching::DiscreteFaceQuadratureGenerator<dim>
@@ -1398,6 +1399,8 @@ namespace Step95
               }
           }
 
+        // And finally, initialize the NonMatching::MappingInfo object for the
+        // cut faces.
         mapping_info_faces = std::make_unique<
           NonMatching::MappingInfo<dim, dim, VectorizedArray<Number>>>(
           mapping,
