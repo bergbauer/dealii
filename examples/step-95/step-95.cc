@@ -1063,9 +1063,8 @@ namespace Step95
 
     // The second DoFHandler manages the DoFs for the solution of the Poisson
     // equation.
-    hp::FECollection<dim> fe_collection;
-    DoFHandler<dim>       dof_handler;
-    VectorType            solution;
+    DoFHandler<dim> dof_handler;
+    VectorType      solution;
 
     NonMatching::MeshClassifier<dim> mesh_classifier;
 
@@ -1168,6 +1167,7 @@ namespace Step95
     else
       fe = std::make_unique<FE_Q<dim>>(fe_degree);
 
+    hp::FECollection<dim> fe_collection;
     fe_collection.push_back(*fe);               // inside
     fe_collection.push_back(FE_Nothing<dim>()); // outside
     fe_collection.push_back(*fe);               // intersected

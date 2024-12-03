@@ -2,7 +2,7 @@
 
 The results of the convergence studies are shown in the tables below.
 
-For $p=1$ we get (for both CG and DG):
+For $p=1$ we get (for CG):
 
 | Cycle | Mesh size | $L^2$-Error | EOC  |
 |:-----:|:---------:|:-----------:|:----:|
@@ -14,7 +14,7 @@ For $p=1$ we get (for both CG and DG):
 We see that the $L^2$ error decreases as we refine and that the estimated
 order of convergence, EOC, is close to 2.
 
-For $p=2$ we get (for both CG and DG):
+For $p=2$ we get (for CG):
 
 | Cycle | Mesh size | $L^2$-Error | EOC  |
 |:-----:|:---------:|:-----------:|:----:|
