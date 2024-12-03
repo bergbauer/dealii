@@ -1134,12 +1134,20 @@ namespace Step95
 
     fe_level_set = std::make_unique<FE_Q<dim>>(fe_degree);
     level_set_dof_handler.distribute_dofs(*fe_level_set);
-    level_set.reinit(level_set_dof_handler.n_dofs());
+
+    // We set up the level set vector with all locally relevant DoFs. This is
+    // currently required by the NonMatching::MeshClassifier.
+    level_set.reinit(level_set_dof_handler.locally_owned_dofs(),
+                     DoFTools::extract_locally_relevant_dofs(
+                       level_set_dof_handler),
+                     triangulation.get_communicator());
 
     const Functions::SignedDistance::Sphere<dim> signed_distance_sphere;
     VectorTools::interpolate(level_set_dof_handler,
                              signed_distance_sphere,
                              level_set);
+
+    level_set.update_ghost_values();
   }
 
 
