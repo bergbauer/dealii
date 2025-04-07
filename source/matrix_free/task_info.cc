@@ -630,6 +630,10 @@ namespace internal
                       if (boundary_partition_data[i + 1] >
                           boundary_partition_data[i])
                         funct.boundary(i);
+                      const bool do_ghost_faces = true;
+                      if (do_ghost_faces && (ghost_face_partition_data[i + 1] >
+                                             ghost_face_partition_data[i]))
+                        funct.face(i);
                     }
                   funct.cell_loop_post_range(i);
                 }
