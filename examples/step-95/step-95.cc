@@ -132,9 +132,8 @@ namespace Step95
            const NonMatching::MappingInfo<dim, dim, VectorizedArrayType>
              *mapping_info_surface_in,
            const NonMatching::MappingInfo<dim, dim, VectorizedArrayType>
-                             *mapping_info_faces_in,
-           const bool         is_dg_in,
-           const unsigned int degree)
+                     *mapping_info_faces_in,
+           const bool is_dg_in)
     {
       matrix_free          = &matrix_free_in;
       mapping_info_cell    = mapping_info_cell_in;
@@ -142,21 +141,21 @@ namespace Step95
       mapping_info_faces   = mapping_info_faces_in;
       is_dg                = is_dg_in;
 
-      fe_dgq = std::make_unique<FE_DGQ<dim>>(degree);
+      const auto &fe = matrix_free->get_dof_handler().get_fe();
 
-      evaluator_cell =
-        std::make_unique<GenericCellIntegrator>(*mapping_info_cell, *fe_dgq);
-      evaluator_surface =
-        std::make_unique<GenericCellIntegrator>(*mapping_info_surface, *fe_dgq);
+      evaluator_cell = std::make_unique<GenericCellIntegrator>(
+        *mapping_info_cell, fe, 0, true);
+      evaluator_surface = std::make_unique<GenericCellIntegrator>(
+        *mapping_info_surface, fe, 0, true);
       if (is_dg)
         {
           evaluator_face_m =
             std::make_unique<GenericFaceIntegrator>(*mapping_info_faces,
-                                                    *fe_dgq,
+                                                    fe,
                                                     true);
           evaluator_face_p =
             std::make_unique<GenericFaceIntegrator>(*mapping_info_faces,
-                                                    *fe_dgq,
+                                                    fe,
                                                     false);
         }
 
@@ -949,8 +948,6 @@ namespace Step95
       const NonMatching::MappingInfo<dim, dim, VectorizedArrayType>>
       mapping_info_faces;
 
-    std::unique_ptr<FE_DGQ<dim>> fe_dgq;
-
     std::unique_ptr<GenericCellIntegrator> evaluator_cell;
     std::unique_ptr<GenericCellIntegrator> evaluator_surface;
     std::unique_ptr<GenericFaceIntegrator> evaluator_face_m;
@@ -1662,8 +1659,7 @@ namespace Step95
                                 mapping_info_cell.get(),
                                 mapping_info_surface.get(),
                                 mapping_info_faces.get(),
-                                is_dg,
-                                fe_degree);
+                                is_dg);
 
         matrix_free.initialize_dof_vector(solution);
         matrix_free.initialize_dof_vector(rhs);
