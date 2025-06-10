@@ -16,10 +16,13 @@
 
 #  include <CGAL/Boolean_set_operations_2.h>
 #  include <CGAL/Delaunay_triangulation_2.h>
+#  include <CGAL/Constrained_Delaunay_triangulation_2.h> //test
 #  include <CGAL/Polygon_mesh_processing/clip.h>
 #  include <CGAL/Polygon_with_holes_2.h>
 #  include <CGAL/Side_of_triangle_mesh.h>
 #  include <CGAL/intersections.h>
+#  include <CGAL/partition_2.h>
+#  include <CGAL/Partition_traits_2.h>
 
 #  include "polygon.h"
 
@@ -45,10 +48,11 @@ namespace CGALWrappers
     using CGALTriangulation = CGAL::Triangulation_3<K>;
 
     // 2D
+    using Traits               = CGAL::Partition_traits_2<K>;
+
     using CGALPoint2           = CGAL::Point_2<K>;
     using CGALPolygon          = CGAL::Polygon_2<K>;
     using CGALPolygonWithHoles = CGAL::Polygon_with_holes_2<K>;
-    using Iso_rectangle_2      = CGAL::Iso_rectangle_2<K>;
     using CGALSegment2         = CGAL::Segment_2<K>;
     using Triangulation2       = CGAL::Delaunay_triangulation_2<K>;
 
@@ -346,25 +350,44 @@ namespace CGALWrappers
         // holes
         Assert(!polygon_out_vec[i].has_holes(),
                ExcMessage("The Polygon has holes"));
-
-        Triangulation2 tria;
-        tria.insert(polygon_out_vec[i].outer_boundary().vertices_begin(),
-                    polygon_out_vec[i].outer_boundary().vertices_end());
-
-        // Extract simplices and construct quadratures
-        for (const auto &face : tria.finite_face_handles())
+        
+        if(!polygon_out_vec[i].outer_boundary().is_simple())
           {
-            std::array<dealii::Point<2>, 3> simplex;
-            std::array<dealii::Point<2>, 3> unit_simplex;
-            for (unsigned int i = 0; i < 3; ++i)
+            continue;
+          }
+        
+        Traits partition_traits;
+        std::list<Traits::Polygon_2> convex_polygons;
+        //Note: could use CGAL::approx_convex_partition_2
+        CGAL::optimal_convex_partition_2(
+          polygon_out_vec[i].outer_boundary().vertices_begin(),
+          polygon_out_vec[i].outer_boundary().vertices_end(),
+          std::back_inserter(convex_polygons), 
+          partition_traits);
+          
+        Triangulation2 tria;
+        for(const auto &convex_poly : convex_polygons)
+          {
+            tria.insert(convex_poly.vertices_begin(),
+                        convex_poly.vertices_end());
+            
+            // Extract simplices and construct quadratures
+            for (const auto &face : tria.finite_face_handles())
               {
-                simplex[i] = cgal_point_to_dealii_point<2>(
-                  face->vertex(i)->point());
+                std::array<dealii::Point<2>, 3> simplex;
+                std::array<dealii::Point<2>, 3> unit_simplex;
+                for (unsigned int i = 0; i < 3; ++i)
+                  {
+                    simplex[i] = cgal_point_to_dealii_point<2>(
+                      face->vertex(i)->point());
+                  }
+                mapping->transform_points_real_to_unit_cell(cell,
+                                                            simplex,
+                                                            unit_simplex);
+                vec_of_simplices.push_back(unit_simplex);
               }
-            mapping->transform_points_real_to_unit_cell(cell,
-                                                        simplex,
-                                                        unit_simplex);
-            vec_of_simplices.push_back(unit_simplex);
+
+            tria.clear();
           }
       }
     quad_cells =
