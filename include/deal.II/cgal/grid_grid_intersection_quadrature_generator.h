@@ -189,7 +189,7 @@ namespace CGALWrappers
   {
     Timer timer; // debug
     fitted_2D_mesh.clear();
-    CGALWrappers::dealii_tria_to_cgal_polygon(tria_fitted, fitted_2D_mesh);
+    dealii_tria_to_cgal_polygon(tria_fitted, fitted_2D_mesh);
     timer.stop();
     std::cout << "Elapsed CPU time: " << timer.cpu_time()
               << " seconds.\n"; // debug
@@ -217,7 +217,7 @@ namespace CGALWrappers
     for (const auto &cell : tria_unfitted.active_cell_iterators())
       {
         CGALPolygon polygon_cell;
-        CGALWrappers::dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
+        dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
 
         // requires smooth boundaries otherwise it might make mistakes
         // since it only checks for edge nodes
@@ -228,7 +228,7 @@ namespace CGALWrappers
             auto result = CGAL::bounded_side_2(
               fitted_2D_mesh.begin(),
               fitted_2D_mesh.end(),
-              CGALWrappers::dealii_point_to_cgal_point<CGALPoint2, 2>(
+              dealii_point_to_cgal_point<CGALPoint2, 2>(
                 cell->vertex(i)));
             inside_count += (result == inside_domain);
           }
@@ -269,7 +269,7 @@ namespace CGALWrappers
     const TriangulationType &tria_fitted)
   {
     fitted_surface_mesh.clear();
-    CGALWrappers::dealii_tria_to_cgal_surface_mesh<CGALPoint>(
+    dealii_tria_to_cgal_surface_mesh<CGALPoint>(
       tria_fitted, fitted_surface_mesh);
     CGAL::Polygon_mesh_processing::triangulate_faces(fitted_surface_mesh);
     location_to_geometry_vec.clear();
@@ -294,7 +294,7 @@ namespace CGALWrappers
         for (size_t i = 0; i < cell->n_vertices(); i++)
           {
             auto result = inside_test(
-              CGALWrappers::dealii_point_to_cgal_point<CGALPoint, 3>(
+              dealii_point_to_cgal_point<CGALPoint, 3>(
                 cell->vertex(i)));
             inside_count += (result == inside_domain);
           }
@@ -323,14 +323,14 @@ namespace CGALWrappers
     const typename Triangulation<2>::cell_iterator &cell)
   {
     CGALPolygon polygon_cell;
-    CGALWrappers::dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
+    dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
 
     std::vector<CGALPolygonWithHoles> polygon_out_vec;
 
-    CGALWrappers::compute_boolean_operation(polygon_cell,
-                                            fitted_2D_mesh,
-                                            boolean_operation,
-                                            polygon_out_vec);
+    compute_boolean_operation(polygon_cell,
+                              fitted_2D_mesh,
+                              boolean_operation,
+                              polygon_out_vec);
 
     // quadrature area in a cell could be split into two polygons
     // code should be able to handle this. But occurence is not expected for
@@ -358,7 +358,7 @@ namespace CGALWrappers
             std::array<dealii::Point<2>, 3> unit_simplex;
             for (unsigned int i = 0; i < 3; ++i)
               {
-                simplex[i] = CGALWrappers::cgal_point_to_dealii_point<2>(
+                simplex[i] = cgal_point_to_dealii_point<2>(
                   face->vertex(i)->point());
               }
             mapping->transform_points_real_to_unit_cell(cell,
@@ -387,15 +387,10 @@ namespace CGALWrappers
         if (bs_1 != CGAL::ON_UNBOUNDED_SIDE &&
             bs_2 != CGAL::ON_UNBOUNDED_SIDE) // add directly
           {
-            segment[0] = CGALWrappers::cgal_point_to_dealii_point<2>(
+            segment[0] = cgal_point_to_dealii_point<2>(
               edge_boundary.source());
-            segment[1] = CGALWrappers::cgal_point_to_dealii_point<2>(
+            segment[1] = cgal_point_to_dealii_point<2>(
               edge_boundary.target());
-          }
-        else if (bs_1 == CGAL::ON_BOUNDARY ||
-                 bs_2 == CGAL::ON_BOUNDARY) // only point on boundary
-          {
-            continue;
           }
         else if (bs_1 ==
                  CGAL::ON_BOUNDED_SIDE) // find missing intersection point
@@ -409,10 +404,10 @@ namespace CGALWrappers
                           boost::get<CGALPoint2>(&*result))
                       {
                         segment[0] =
-                          CGALWrappers::cgal_point_to_dealii_point<2>(
+                          cgal_point_to_dealii_point<2>(
                             edge_boundary.source());
                         segment[1] =
-                          CGALWrappers::cgal_point_to_dealii_point<2>(*point);
+                          cgal_point_to_dealii_point<2>(*point);
                         break;
                       }
                   }
@@ -430,9 +425,9 @@ namespace CGALWrappers
                           boost::get<CGALPoint2>(&*result))
                       {
                         segment[0] =
-                          CGALWrappers::cgal_point_to_dealii_point<2>(*point);
+                          cgal_point_to_dealii_point<2>(*point);
                         segment[1] =
-                          CGALWrappers::cgal_point_to_dealii_point<2>(
+                          cgal_point_to_dealii_point<2>(
                             edge_boundary.target());
                         break;
                       }
@@ -447,11 +442,23 @@ namespace CGALWrappers
                 auto result = CGAL::intersection(edge_cell, edge_boundary);
                 if (result)
                   {
-                    if (const CGALPoint2 *point =
+                    if(const CGALSegment2 *seg =
+                          boost::get<CGALSegment2>(&*result))
+                      {
+                        segment[0] =
+                          cgal_point_to_dealii_point<2>(
+                            seg->source());
+                        segment[1] =
+                          cgal_point_to_dealii_point<2>(
+                            seg->target());
+                        i = 2;
+                        break;
+                      }
+                    else if (const CGALPoint2 *point =
                           boost::get<CGALPoint2>(&*result))
                       {
                         segment[i] =
-                          CGALWrappers::cgal_point_to_dealii_point<2>(*point);
+                          cgal_point_to_dealii_point<2>(*point);
                         i += 1;
                         if (i == 2)
                           break;
@@ -475,6 +482,11 @@ namespace CGALWrappers
         // compute normals
         Tensor<1, 2> normal = unit_segment[1] - unit_segment[0];
         std::swap(normal[0], normal[1]);
+        
+        if(normal.norm() < 1e-12)
+          {
+            continue;
+          }
 
         auto test_point =
           0.5 * (unit_segment[1] + unit_segment[0]) + normal * 1;
@@ -482,6 +494,7 @@ namespace CGALWrappers
           CGAL::bounded_side_2(polygon_cell.begin(),
                                polygon_cell.end(),
                                CGALPoint2(test_point[0], test_point[1]));
+                               
         if (boolean_operation == BooleanOperation::compute_intersection &&
             flip == CGAL::ON_BOUNDED_SIDE)
           {
@@ -515,14 +528,14 @@ namespace CGALWrappers
   {
     CGAL::Surface_mesh<CGALPoint> fitted_surface_mesh_copy(fitted_surface_mesh);
     CGAL::Surface_mesh<CGALPoint> surface_cell;
-    CGALWrappers::dealii_cell_to_cgal_surface_mesh(cell,
+    dealii_cell_to_cgal_surface_mesh(cell,
                                                    *mapping,
                                                    surface_cell);
     CGAL::Polygon_mesh_processing::triangulate_faces(surface_cell);
 
     { // not needed for surface calculation
       CGAL::Surface_mesh<CGALPoint> out_surface;
-      CGALWrappers::compute_boolean_operation(surface_cell,
+      compute_boolean_operation(surface_cell,
                                               fitted_surface_mesh_copy,
                                               boolean_operation,
                                               out_surface);
@@ -539,7 +552,7 @@ namespace CGALWrappers
           std::array<dealii::Point<3>, 4> unit_simplex;
           for (unsigned int i = 0; i < 4; ++i)
             {
-              simplex[i] = CGALWrappers::cgal_point_to_dealii_point<3>(
+              simplex[i] = cgal_point_to_dealii_point<3>(
                 face->vertex(i)->point());
             }
           mapping->transform_points_real_to_unit_cell(cell,
@@ -577,7 +590,7 @@ namespace CGALWrappers
              CGAL::vertices_around_face(fitted_surface_mesh_copy.halfedge(face),
                                         fitted_surface_mesh_copy))
           {
-            simplex[i] = CGALWrappers::cgal_point_to_dealii_point<3>(
+            simplex[i] = cgal_point_to_dealii_point<3>(
               fitted_surface_mesh_copy.point(vertex));
             i += 1;
           }
@@ -619,9 +632,9 @@ namespace CGALWrappers
   {
     auto face = cell->face(face_index);
     auto p_1 =
-      CGALWrappers::dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(0));
+      dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(0));
     auto p_2 =
-      CGALWrappers::dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(1));
+      dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(1));
 
     // if on boundary no dg flux!
     if (CGAL::bounded_side_2(fitted_2D_mesh.begin(),
@@ -636,10 +649,10 @@ namespace CGALWrappers
       }
 
     CGALPolygon polygon_cell;
-    CGALWrappers::dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
+    dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
 
     std::vector<CGALPolygonWithHoles> polygon_out_vec;
-    CGALWrappers::compute_boolean_operation(
+    compute_boolean_operation(
       polygon_cell,
       fitted_2D_mesh,
       BooleanOperation::compute_intersection,
@@ -676,8 +689,8 @@ namespace CGALWrappers
                 // only linear mapping!!!
                 mapping->transform_points_real_to_unit_cell(
                   cell,
-                  {{CGALWrappers::cgal_point_to_dealii_point<2>(p_cut_1),
-                    CGALWrappers::cgal_point_to_dealii_point<2>(p_cut_1)}},
+                  {{cgal_point_to_dealii_point<2>(p_cut_1),
+                    cgal_point_to_dealii_point<2>(p_cut_1)}},
                   face_points_unit);
 
                 // only for quadrilateals so far
