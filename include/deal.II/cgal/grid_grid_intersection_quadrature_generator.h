@@ -667,6 +667,136 @@ namespace CGALWrappers
       dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(0));
     auto p_2 =
       dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(1));
+    CGALSegment2 face_seg(p_1, p_2);
+
+    auto bs_1 = CGAL::bounded_side_2(fitted_2D_mesh.begin(),
+      fitted_2D_mesh.end(),
+      p_1);
+    auto bs_2 = CGAL::bounded_side_2(fitted_2D_mesh.begin(),
+      fitted_2D_mesh.end(),
+      p_2);
+
+    CGAL::Bounded_side outside_domain;
+    CGAL::Bounded_side inside_domain;
+    if (boolean_operation == BooleanOperation::compute_intersection)
+      {
+        outside_domain = CGAL::ON_UNBOUNDED_SIDE;
+        inside_domain = CGAL::ON_BOUNDED_SIDE;
+      }
+    else if (boolean_operation == BooleanOperation::compute_difference)
+      {
+        outside_domain = CGAL::ON_BOUNDED_SIDE;
+        inside_domain = CGAL::ON_UNBOUNDED_SIDE;
+      }
+
+    std::array<Point<2>, 2> segment;
+    if(bs_1 != inside_domain && bs_2 != inside_domain)
+    {
+      quad_dg_face = Quadrature<1>();
+      return;
+    }
+    else if(bs_1 == inside_domain && bs_2 == inside_domain)
+    {
+      segment[0] = face->vertex(0);
+      segment[1] = face->vertex(1);
+    }
+    else
+    {
+      for (const auto &edge_boundary : fitted_2D_mesh.edges())
+      {
+        auto result = CGAL::intersection(face_seg, edge_boundary);
+        if (result)
+          {
+            if (const CGALPoint2 *point =
+                  boost::get<CGALPoint2>(&*result))
+              {
+                auto p =
+                  cgal_point_to_dealii_point<2>(*point);
+                if(bs_1 != outside_domain && p.distance(face->vertex(0)) > 1e-12 )
+                {
+                  segment[0] = face->vertex(0);
+                  segment[1] = p;
+                  break;
+                }
+                else if(bs_2 != outside_domain && p.distance(face->vertex(1)) > 1e-12)
+                {
+                  segment[0] = face->vertex(1);
+                  segment[1] = p;
+                  break;
+                }
+              }
+          }
+      }
+
+    }
+
+    std::array<Point<2>, 2> face_points_unit;
+                // only linear mapping!!!
+    mapping->transform_points_real_to_unit_cell(cell,
+                segment, face_points_unit);
+
+    Quadrature<1> quadrature;
+    if (cell->reference_cell() == ReferenceCells::Quadrilateral)
+      {
+        if (face_index == 0 || face_index == 1)
+          {
+            quadrature = QGaussSimplex<1>(quadrature_order)
+                           .compute_affine_transformation(
+                             {{Point<1>(face_points_unit[0][1]),
+                               Point<1>(face_points_unit[1][1])}});
+          }
+        else
+          {
+            quadrature = QGaussSimplex<1>(quadrature_order)
+                           .compute_affine_transformation(
+                             {{Point<1>(face_points_unit[0][0]),
+                               Point<1>(face_points_unit[1][0])}});
+          }
+      }
+    else if (cell->reference_cell() == ReferenceCells::Triangle)
+      {
+        // still need to test. Assume so far:
+        //      v2
+        //     | \
+        //  f0 |   \ f2
+        //     |     \
+        //    v0 ----- v1
+        //         f1
+        if (face_index == 0)
+          {
+            quadrature = QGaussSimplex<1>(quadrature_order)
+                           .compute_affine_transformation(
+                             {{Point<1>(face_points_unit[0][1]),
+                               Point<1>(face_points_unit[1][1])}});
+          }
+        else if (face_index == 1)
+          {
+            quadrature = QGaussSimplex<1>(quadrature_order)
+                           .compute_affine_transformation(
+                             {{Point<1>(face_points_unit[0][0]),
+                               Point<1>(face_points_unit[1][0])}});
+          }
+        else
+          {
+            double distance1 =
+              face_points_unit[0].distance(cell->vertex(1));
+            double distance2 =
+              face_points_unit[0].distance(face_points_unit[1]);
+            quadrature =
+              QGaussSimplex<1>(quadrature_order)
+                .compute_affine_transformation(
+                  {{Point<1>(distance1), Point<1>(distance2)}});
+          }
+      }
+    quad_dg_face = quadrature;
+
+    /*
+    //old code!!! 
+    auto face = cell->face(face_index);
+    auto p_1 =
+      dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(0));
+    auto p_2 =
+      dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(1));
 
     // if on boundary no dg flux!
     if (CGAL::bounded_side_2(fitted_2D_mesh.begin(),
@@ -794,6 +924,7 @@ namespace CGALWrappers
           }
       }
     quad_dg_face = Quadrature<1>(quadrature_points, quadrature_weights);
+    */
   }
 
   template <>
