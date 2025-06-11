@@ -62,7 +62,7 @@ test_quadrilaterals()
                 auto args = info_pair.second;
                 deallog <<"name: " << name << std::endl;
                 GridGenerator::generate_from_name_and_arguments(tria_boundary, name, args);
-                tria_boundary.refine_global(3);
+                tria_boundary.refine_global(2);
                 DoFHandler<2, 2> dof_handler_boundary(tria_boundary); //i think not needed
 
                 for(const auto &boolean_operation : boolean_operations)

@@ -54,7 +54,7 @@ namespace CGALWrappers
     using CGALPolygon          = CGAL::Polygon_2<K>;
     using CGALPolygonWithHoles = CGAL::Polygon_with_holes_2<K>;
     using CGALSegment2         = CGAL::Segment_2<K>;
-    using Triangulation2       = CGAL::Delaunay_triangulation_2<K>;
+    using Triangulation2       = CGAL::Constrained_Delaunay_triangulation_2<K>;
 
   public:
     GridGridIntersectionQuadratureGenerator()
@@ -370,6 +370,10 @@ namespace CGALWrappers
           {
             tria.insert(convex_poly.vertices_begin(),
                         convex_poly.vertices_end());
+
+            tria.insert_constraint(convex_poly.vertices_begin(),
+                    convex_poly.vertices_end(), true);
+
             
             // Extract simplices and construct quadratures
             for (const auto &face : tria.finite_face_handles())
@@ -459,7 +463,8 @@ namespace CGALWrappers
           }
         else // find two missing points or nothing
           {
-            int i = 0;
+            bool found_point = false;
+            bool found_segment = false;
             for (const auto &edge_cell : polygon_cell.edges())
               {
                 auto result = CGAL::intersection(edge_cell, edge_boundary);
@@ -474,22 +479,31 @@ namespace CGALWrappers
                         segment[1] =
                           cgal_point_to_dealii_point<2>(
                             seg->target());
-                        i = 2;
+                        found_segment = true;
                         break;
                       }
                     else if (const CGALPoint2 *point =
                           boost::get<CGALPoint2>(&*result))
                       {
-                        segment[i] =
+                        auto p =
                           cgal_point_to_dealii_point<2>(*point);
-                        i += 1;
-                        if (i == 2)
+                        if(!found_point)
+                        {
+                          segment[0] = p;
+                          found_point = true;
+                        }
+                        else if(found_point &&
+                          (p.distance(segment[0]) > 1e-12 ))
+                        {
+                          segment[1] = p;
+                          found_segment = true;
                           break;
+                        }
                       }
                   }
               }
 
-            if (i < 2)
+            if (!found_segment)
               continue;
           }
 
@@ -505,11 +519,6 @@ namespace CGALWrappers
         // compute normals
         Tensor<1, 2> normal = unit_segment[1] - unit_segment[0];
         std::swap(normal[0], normal[1]);
-        
-        if(normal.norm() < 1e-12)
-          {
-            continue;
-          }
 
         auto test_point =
           0.5 * (unit_segment[1] + unit_segment[0]) + normal * 1;
