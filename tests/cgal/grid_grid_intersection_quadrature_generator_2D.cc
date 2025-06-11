@@ -21,7 +21,7 @@ using CGALPoint2    = CGAL::Point_2<K>;
 using CGALPolygon   = CGAL::Polygon_2<K>;
 
 void
-test_quadrilaterals()
+test(unsigned int refinment_domain, unsigned int refinment_boundary)
 {
         Triangulation<2,2>      tria_domain;
         Triangulation<2,2>      tria_boundary;
@@ -41,20 +41,24 @@ test_quadrilaterals()
         // only for meshes that have no holes
         // extension to CGAL::Polygon_with_holes possible
         names_and_args = {{"hyper_cube", "0.0 : 1.0 : false"}, //extreme case grid borders match complete
-                        {"hyper_cube", "-0.1 : 0.4 : false"}, //grid borders match partially
-                        {"hyper_cube", "0.3 : 0.8 : false"}, //grid borders dont match
-                        {"hyper_cube", "-0.25 : 0.25 : false"}, //only partially in domain
-                        {"hyper_cube", "0.75 : 1.25 : false"}, //only partially in domain
-                        {"hyper_ball", "0.5,0.5 : 0.25 : true"}, //centered circle
-                        {"hyper_ball", "0.0,0.0 : 0.5 : true"}, //only partially in domain
-                        {"simplex", "-0.1, -0.1 ; 1.1 , -0.1 ; -0.1, 1.1"}}; //simplex cutting through diagonal
+                        {"hyper_cube", "-0.1 : 0.9 : false"},  //concave area for difference case
+                        {"hyper_rectangle", "0.0, -0.1 : 1.0 , 0.5 : false"}, //difficult boundary case
+                        {"hyper_rectangle", "-0.1, -0.1 : 0.5 , 1.1 : false"}, //only partially in domain
+                        {"hyper_rectangle", "-0.1, 0.5 : 0.0 , 1.1 : false"}, //only partially in domain
+                        {"simplex", "0.0, 0.0 ; 1.0 , 0.0 ; 0.0, 1.0"}, //simplex cutting through diagonal
+                        {"simplex", "-0.1, -0.1 ; 0.9 , -0.1 ; -0.1, 0.9"},
+                        {"simplex", "-0.5, -0.5 ; 0.5 , 0.5 ; -0.5, 1.5"},
+                        {"hyper_ball_balanced", "0.0,0.0 : 1.0"}, //centered circle
+                        {"hyper_ball_balanced", "-0.1 ,1.0 : 0.5"}}; //only partially in domain
         //Notes: cell size of domain must be a order smaller than the size of the domain mesh because of calssify 
         // this is in FEM always the case (but keep in mind that cells that contain a whole boundary mesh  or
         // only have vertices on the edge of it will be classified as not cut -> change refinement to 1 to see effect)
 
-        GridGenerator::generate_from_name_and_arguments(tria_domain, names_and_args[0].first , names_and_args[0].second);
-        tria_domain.refine_global(4);
-        DoFHandler<2, 2> dof_handler_domain(tria_domain); //i think not needed
+        //The cell to be cut
+        GridGenerator::reference_cell(tria_domain, ReferenceCells::Quadrilateral);
+        tria_domain.refine_global(refinment_domain);
+
+        //DoFHandler<2, 2> dof_handler_domain(tria_domain); //i think not needed
 
         for (const auto &info_pair : names_and_args)
         {
@@ -62,8 +66,8 @@ test_quadrilaterals()
                 auto args = info_pair.second;
                 deallog <<"name: " << name << std::endl;
                 GridGenerator::generate_from_name_and_arguments(tria_boundary, name, args);
-                tria_boundary.refine_global(2);
-                DoFHandler<2, 2> dof_handler_boundary(tria_boundary); //i think not needed
+                tria_boundary.refine_global(refinment_boundary);
+                //DoFHandler<2, 2> dof_handler_boundary(tria_boundary); //i think not needed
 
                 for(const auto &boolean_operation : boolean_operations)
                 {
@@ -131,5 +135,6 @@ int
 main()
 {
   initlog();
-  test_quadrilaterals();
+  test(0, 0);
+  //test(2, 1);
 }
