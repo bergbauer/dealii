@@ -227,14 +227,23 @@ namespace CGALWrappers
         // since it only checks for edge nodes
         // Assert checks for this in debug mode but this is very expensive
         unsigned int inside_count = 0;
-        for (unsigned int i = 0; i < cell->n_vertices(); i++)
+        for (size_t i = 0; i < polygon_cell.size(); ++i)
           {
-            auto result = CGAL::bounded_side_2(
+            const auto &p_1 = *(polygon_cell.begin() + i);
+            const auto &p_2 = *(polygon_cell.begin() + ((i + 1) % polygon_cell.size()));
+            const CGALPoint2 mid_point (0.5 * (p_1[0] + p_2[0]), 0.5 * (p_1[1] + p_2[1]));
+
+            auto result_1 = CGAL::bounded_side_2(
               fitted_2D_mesh.begin(),
               fitted_2D_mesh.end(),
-              dealii_point_to_cgal_point<CGALPoint2, 2>(
-                cell->vertex(i)));
-            inside_count += (result == inside_domain);
+              p_1);
+            inside_count += (result_1 == inside_domain);
+
+            auto result_2 = CGAL::bounded_side_2(
+              fitted_2D_mesh.begin(),
+              fitted_2D_mesh.end(),
+              mid_point);
+            inside_count += (result_2 == inside_domain);
           }
         if (inside_count == 0) // case 1: all vertices outside or on boundary:
                                // not considered (outside)
@@ -245,7 +254,7 @@ namespace CGALWrappers
             // ExcMessage("cell classified as outside although intersected"));
           }
         else if (inside_count ==
-                 cell->n_vertices()) // case 2: all vertices inside: considered
+                 2 * cell->n_vertices()) // case 2: all vertices inside: considered
                                      // (inside)
           {
             location_to_geometry_vec.push_back(
@@ -397,6 +406,101 @@ namespace CGALWrappers
     quad_cells =
       QGaussSimplex<2>(quadrature_order).mapped_quadrature(vec_of_simplices);
 
+    //surface quadrature new
+    std::vector<Point<2>>     quadrature_points;
+    std::vector<double>       quadrature_weights;
+    std::vector<Tensor<1, 2>> normals;
+    for (size_t i_poly = 0; i_poly < polygon_out_vec.size(); i_poly++)
+      {
+        for (const auto &edge_cut : polygon_out_vec[i_poly].outer_boundary().edges())
+          {
+            bool is_dg_face = false;
+            auto p_cut_1 = edge_cut.source();
+            auto p_cut_2 = edge_cut.target();
+            for (const unsigned int i : cell->face_indices())
+              {
+                const typename Triangulation<2, 2>::face_iterator &face =
+                  cell->face(i);
+                if (cell->face(i)->at_boundary())
+                  {
+                    continue;
+                  }
+                else if (location_to_geometry(cell->neighbor(i)) == NonMatching::LocationToLevelSet::outside)
+                  {
+                    continue;
+                  }
+
+                auto p_uncut_1 = dealii_point_to_cgal_point<CGALPoint2, 2>(
+                  face->vertex(0));
+                auto p_uncut_2 = dealii_point_to_cgal_point<CGALPoint2, 2>(
+                  face->vertex(1));
+                if(location_to_geometry(cell->neighbor(i)) == NonMatching::LocationToLevelSet::inside &&
+                   CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
+                   CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
+                  {
+                    is_dg_face = true;
+                    break;
+                  }
+                else if(location_to_geometry(cell->neighbor(i)) == NonMatching::LocationToLevelSet::intersected &&
+                        CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
+                        CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
+                  {
+                    is_dg_face = true;
+                    break;
+                  }
+              }
+            
+              if(!is_dg_face)
+                {
+                  std::array<dealii::Point<2>, 2> unit_segment;
+                  mapping->transform_points_real_to_unit_cell(cell,
+                                {{cgal_point_to_dealii_point<2>(p_cut_1),
+                                  cgal_point_to_dealii_point<2>(p_cut_2)}},
+                                unit_segment);
+
+                  auto quadrature = QGaussSimplex<1>(quadrature_order)
+                                      .compute_affine_transformation(unit_segment);
+                  auto points  = quadrature.get_points();
+                  auto weights = quadrature.get_weights();
+
+                  // compute normals
+                  Tensor<1, 2> normal = unit_segment[1] - unit_segment[0];
+                  std::swap(normal[0], normal[1]);
+
+                  auto test_point =
+                    0.5 * (unit_segment[1] + unit_segment[0]) + normal * 0.1;
+                  auto flip =
+                    CGAL::bounded_side_2(polygon_cell.begin(),
+                                         polygon_cell.end(),
+                                         CGALPoint2(test_point[0], test_point[1]));
+
+                  if (boolean_operation == BooleanOperation::compute_intersection &&
+                      flip == CGAL::ON_BOUNDED_SIDE)
+                    {
+                      normal *= -1;
+                    }
+                  else if (boolean_operation == BooleanOperation::compute_difference &&
+                           flip == CGAL::ON_UNBOUNDED_SIDE)
+                    {
+                      normal *= -1;
+                    }
+                  normal /= normal.norm();
+                  
+                  
+                  quadrature_points.insert(quadrature_points.end(),
+                                           points.begin(),
+                                           points.end());
+                  quadrature_weights.insert(quadrature_weights.end(),
+                                            weights.begin(),
+                                            weights.end());
+                  normals.insert(normals.end(), quadrature.size(), normal);
+                }
+          }
+      }
+    quad_surface = NonMatching::ImmersedSurfaceQuadrature<2>(quadrature_points,
+                                                             quadrature_weights,
+                                                             normals);
+    /*
     // surface quadrature
     std::vector<Point<2>>     quadrature_points;
     std::vector<double>       quadrature_weights;
@@ -551,6 +655,7 @@ namespace CGALWrappers
     quad_surface = NonMatching::ImmersedSurfaceQuadrature<2>(quadrature_points,
                                                              quadrature_weights,
                                                              normals);
+    */
   }
 
   template <>

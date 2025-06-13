@@ -92,6 +92,13 @@ test(unsigned int refinment_domain, unsigned int refinment_boundary)
                                 else if(classification == NonMatching::LocationToLevelSet::inside)
                                 {
                                         measure += cell->measure();
+                                        for(const auto &face : cell->face_iterators())
+                                        {
+                                                if(face->at_boundary())
+                                                {
+                                                        surface += face->measure();
+                                                }
+                                        }
                                 }
                         }
                         //For volume integration
@@ -135,6 +142,6 @@ int
 main()
 {
   initlog();
-  test(0, 0);
-  //test(2, 1);
+  //test(0, 0); //limit case for classification function: domain scale in size of cell dimension
+  test(1, 1);
 }
