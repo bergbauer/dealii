@@ -73,8 +73,9 @@ test(unsigned int refinment_domain, unsigned int refinment_boundary)
                 {
                         double measure = 0;
                         double surface = 0;
-                        ggi_quadrature_generator.reinit(mapping, quadrature_degree , boolean_operation); //see without +1 
-                        ggi_quadrature_generator.reclassify(tria_domain, tria_boundary);
+                        ggi_quadrature_generator.reinit(mapping, quadrature_degree , boolean_operation);
+                        ggi_quadrature_generator.setup_domain_boundary(tria_boundary);
+                        ggi_quadrature_generator.reclassify(tria_domain);
 
                         std::vector<Quadrature<2>> vector_quadratures;
                         std::vector<NonMatching::ImmersedSurfaceQuadrature<2>> vector_quadratures_surface;
