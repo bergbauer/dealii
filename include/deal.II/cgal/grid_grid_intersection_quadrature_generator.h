@@ -464,11 +464,8 @@ namespace CGALWrappers
               {
                 const typename Triangulation<2, 2>::face_iterator &face =
                   cell->face(i);
-                if (cell->face(i)->at_boundary())
-                  {
-                    continue;
-                  }
-                else if (location_to_geometry(cell->neighbor(i)) == NonMatching::LocationToLevelSet::outside)
+                if (cell->face(i)->at_boundary() || location_to_geometry(
+                    cell->neighbor(i)) == NonMatching::LocationToLevelSet::outside )
                   {
                     continue;
                   }
@@ -477,16 +474,8 @@ namespace CGALWrappers
                   face->vertex(0));
                 auto p_uncut_2 = dealii_point_to_cgal_point<CGALPoint2, 2>(
                   face->vertex(1));
-                if(location_to_geometry(cell->neighbor(i)) == NonMatching::LocationToLevelSet::inside &&
-                   CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
+                if(CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
                    CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
-                  {
-                    dg_face_index = i;
-                    break;
-                  }
-                else if(location_to_geometry(cell->neighbor(i)) == NonMatching::LocationToLevelSet::intersected &&
-                        CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
-                        CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
                   {
                     dg_face_index = i;
                     break;
@@ -614,44 +603,133 @@ namespace CGALWrappers
   GridGridIntersectionQuadratureGenerator<3>::generate(
     const typename Triangulation<3>::cell_iterator &cell)
   {
-    CGAL::Surface_mesh<CGALPoint> fitted_surface_mesh_copy(fitted_surface_mesh);
     CGAL::Surface_mesh<CGALPoint> surface_cell;
     dealii_cell_to_cgal_surface_mesh(cell,
-                                                   *mapping,
-                                                   surface_cell);
+                                     *mapping,
+                                     surface_cell);
     CGAL::Polygon_mesh_processing::triangulate_faces(surface_cell);
 
-    { // not needed for surface calculation
-      CGAL::Surface_mesh<CGALPoint> out_surface;
-      compute_boolean_operation(surface_cell,
-                                fitted_surface_mesh_copy,
-                                boolean_operation,
-                                out_surface);
+    CGAL::Surface_mesh<CGALPoint> out_surface;
+    compute_boolean_operation(surface_cell,
+                              fitted_surface_mesh,
+                              boolean_operation,
+                              out_surface);
 
-      // Fill triangulation with vertices from surface mesh
-      CGALTriangulation tria;
-      tria.insert(out_surface.points().begin(), out_surface.points().end());
+    // Fill triangulation with vertices from surface mesh
+    CGALTriangulation tria;
+    tria.insert(out_surface.points().begin(), out_surface.points().end());
 
-      // Extract simplices and construct quadratures
-      std::vector<std::array<dealii::Point<3>, 4>> vec_of_simplices;
-      for (const auto &face : tria.finite_cell_handles())
-        {
-          std::array<dealii::Point<3>, 4> simplex;
-          std::array<dealii::Point<3>, 4> unit_simplex;
-          for (unsigned int i = 0; i < 4; ++i)
+    // Extract simplices and construct quadratures
+    std::vector<std::array<dealii::Point<3>, 4>> vec_of_simplices;
+    for (const auto &face : tria.finite_cell_handles())
+      {
+        std::array<dealii::Point<3>, 4> simplex;
+        std::array<dealii::Point<3>, 4> unit_simplex;
+        for (unsigned int i = 0; i < 4; ++i)
+          {
+            simplex[i] = cgal_point_to_dealii_point<3>(
+              face->vertex(i)->point());
+          }
+        mapping->transform_points_real_to_unit_cell(cell,
+                                                    simplex,
+                                                    unit_simplex);
+        vec_of_simplices.push_back(unit_simplex);
+      }
+    quad_cells =
+      QGaussSimplex<3>(quadrature_order).mapped_quadrature(vec_of_simplices);
+
+    // surface quadrature
+    std::vector<Point<3>>     quadrature_points;
+    std::vector<double>       quadrature_weights;
+    std::vector<Tensor<1, 3>> normals;
+    double ref_area = std::pow(cell->minimum_vertex_distance(), 2) * 0.0000001;   
+    for (const auto &out_surface_face : out_surface.faces())
+      {
+        if (CGAL::abs(CGAL::Polygon_mesh_processing::face_area(
+              out_surface_face, out_surface)) < ref_area)
+          {
+            continue;
+          }
+
+        unsigned int dg_face_index = cell->n_faces() + 1;
+        std::array<CGALPoint, 3> simplex;
+        int                     i = 0;
+        for (const auto &vertex :
+             CGAL::vertices_around_face(out_surface.halfedge(out_surface_face),
+                                        out_surface))
+          {
+            simplex[i] = 
+              out_surface.point(vertex);
+            i += 1;
+          }
+
+        for (const unsigned int i_dealii_face :
+             cell->face_indices())
+          {
+            const typename Triangulation<3, 3>::face_iterator &face =
+              cell->face(i_dealii_face);
+            if (face->at_boundary() || location_to_geometry(
+                cell->neighbor(i_dealii_face)) ==
+                NonMatching::LocationToLevelSet::outside)
+              {
+                continue;
+              }
+            
+            int count = 0;
+            for (unsigned int i_dealii_vertex = 0; i_dealii_vertex < face->n_vertices(); ++i_dealii_vertex)
             {
-              simplex[i] = cgal_point_to_dealii_point<3>(
-                face->vertex(i)->point());
+              auto cgal_point = dealii_point_to_cgal_point<CGALPoint, 3>(
+                face->vertex(i_dealii_vertex));
+              count += CGAL::coplanar(simplex[0], simplex[1], simplex[2],
+                cgal_point);
             }
-          mapping->transform_points_real_to_unit_cell(cell,
-                                                      simplex,
-                                                      unit_simplex);
-          vec_of_simplices.push_back(unit_simplex);
-        }
-      quad_cells =
-        QGaussSimplex<3>(quadrature_order).mapped_quadrature(vec_of_simplices);
-    }
-    
+
+            if(count >= 3)
+            {
+              dg_face_index = i_dealii_face;
+              break;
+            }
+
+          }
+
+        if (dg_face_index == cell->n_faces() + 1)
+          {
+            std::array<Point<3>, 3> unit_simplex;
+     
+            // compute quadrature and fill vectors
+            mapping->transform_points_real_to_unit_cell(cell,
+              {{cgal_point_to_dealii_point<3>(simplex[0]),
+                cgal_point_to_dealii_point<3>(simplex[1]),
+                cgal_point_to_dealii_point<3>(simplex[2])}},
+                unit_simplex);
+            auto quadrature = QGaussSimplex<2>(quadrature_order)
+                                .compute_affine_transformation(unit_simplex);
+            auto points  = quadrature.get_points();
+            auto weights = quadrature.get_weights();
+            quadrature_points.insert(quadrature_points.end(),
+                                     points.begin(),
+                                     points.end());
+            quadrature_weights.insert(quadrature_weights.end(),
+                                      weights.begin(),
+                                      weights.end());
+            
+            const Tensor<1, 3> v1 = cgal_point_to_dealii_point<3>(simplex[2]) - 
+                                        cgal_point_to_dealii_point<3>(simplex[1]);
+            const Tensor<1, 3> v2 = cgal_point_to_dealii_point<3>(simplex[0]) - 
+                                    cgal_point_to_dealii_point<3>(simplex[1]);
+            Tensor<1, 3>       normal = cross_product_3d(v1, v2);
+            normal /= normal.norm();
+            normals.insert(normals.end(), quadrature.size(), normal);
+          }
+      }
+    quad_surface = NonMatching::ImmersedSurfaceQuadrature<3>(quadrature_points,
+                                                             quadrature_weights,
+                                                             normals);
+
+
+    /*
+    // old surface quadrature
+    CGAL::Surface_mesh<CGALPoint> fitted_surface_mesh_copy(fitted_surface_mesh);
     bool manifold =
       CGAL::Polygon_mesh_processing::clip(fitted_surface_mesh_copy,
                                           surface_cell);
@@ -710,6 +788,7 @@ namespace CGALWrappers
     if (quadrature_weights.empty())
       std::cout << "small intersection ignored this should not happen to much"
                 << std::endl;
+    */
   }
 
   template <>
@@ -720,13 +799,9 @@ namespace CGALWrappers
   {
     const typename Triangulation<2, 2>::face_iterator &face =
               cell->face(face_index);
-    if (face->at_boundary())
-      {
-        quad_dg_face = Quadrature<1>();
-        return;
-      }
-    else if ( location_to_geometry(cell->neighbor(face_index))
-              == NonMatching::LocationToLevelSet::outside)
+    if (face->at_boundary() || location_to_geometry(
+        cell->neighbor(face_index))
+        == NonMatching::LocationToLevelSet::outside)
       {
         quad_dg_face = Quadrature<1>();
         return;
@@ -756,20 +831,12 @@ namespace CGALWrappers
               face->vertex(0));
             auto p_uncut_2 = dealii_point_to_cgal_point<CGALPoint2, 2>(
               face->vertex(1));
-            if(location_to_geometry(cell->neighbor(face_index)) == NonMatching::LocationToLevelSet::inside &&
-               CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
+            if(CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
                CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
               {
                 dg_face = true;
               }
-            else if(location_to_geometry(cell->neighbor(face_index)) == NonMatching::LocationToLevelSet::intersected &&
-                    CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
-                    CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
-              {
-                dg_face = true;
-              }
-              
-            
+                     
               if(dg_face)
                 {
                   auto p_unit_1 = mapping->project_real_point_to_unit_point_on_face(
@@ -1006,13 +1073,9 @@ namespace CGALWrappers
   {
     const typename Triangulation<3, 3>::face_iterator &face =
               cell->face(face_index);
-    if (face->at_boundary())
-      {
-        quad_dg_face = Quadrature<2>();
-        return;
-      }
-    else if ( location_to_geometry(cell->neighbor(face_index))
-              == NonMatching::LocationToLevelSet::outside)
+    if (face->at_boundary() || location_to_geometry(
+        cell->neighbor(face_index))
+        == NonMatching::LocationToLevelSet::outside)
       {
         quad_dg_face = Quadrature<2>();
         return;
