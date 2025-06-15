@@ -446,7 +446,7 @@ namespace CGALWrappers
     quad_cells =
       QGaussSimplex<2>(quadrature_order).mapped_quadrature(vec_of_simplices);
 
-    //surface quadrature new
+    //surface quadrature
     std::vector<Quadrature<1>>  quadrature_dg_faces_cell;
     quadrature_dg_faces_cell.resize(cell->n_faces());
 
@@ -529,65 +529,16 @@ namespace CGALWrappers
                 }
               else if (false) //change to true if want to use precomputed dg
                 {
-                  std::array<dealii::Point<2>, 2> unit_segment;
-                  mapping->transform_points_real_to_unit_cell(cell,
-                                {{cgal_point_to_dealii_point<2>(p_cut_1),
-                                  cgal_point_to_dealii_point<2>(p_cut_2)}},
-                                unit_segment);
-                  
-                  Quadrature<1> quadrature;
-                  if (cell->reference_cell() == ReferenceCells::Quadrilateral)
-                    {
-                      if (dg_face_index == 0 || dg_face_index == 1)
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][1]),
-                                             Point<1>(unit_segment[1][1])}});
-                        }
-                      else
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][0]),
-                                             Point<1>(unit_segment[1][0])}});
-                        }
-                    }
-                  else if (cell->reference_cell() == ReferenceCells::Triangle)
-                    {
-                      // still need to test. Assume so far:
-                      //      v2
-                      //     | \
-                      //  f0 |   \ f2
-                      //     |     \
-                      //    v0 ----- v1
-                      //         f1
-                      if (dg_face_index == 0)
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][1]),
-                                             Point<1>(unit_segment[1][1])}});
-                        }
-                      else if (dg_face_index == 1)
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][0]),
-                                             Point<1>(unit_segment[1][0])}});
-                        }
-                      else
-                        {
-                          double distance1 =
-                            unit_segment[0].distance(cell->vertex(1));
-                          double distance2 =
-                            unit_segment[0].distance(unit_segment[1]);
-                          quadrature =
-                            QGaussSimplex<1>(quadrature_order)
-                              .compute_affine_transformation(
-                                {{Point<1>(distance1), Point<1>(distance2)}});
-                        }
-                    }
+                  auto p_unit_1 = mapping->project_real_point_to_unit_point_on_face(
+                  cell, face_index, cgal_point_to_dealii_point<2>(p_cut_1));
+
+                  auto p_unit_2 = mapping->project_real_point_to_unit_point_on_face(
+                  cell, face_index, cgal_point_to_dealii_point<2>(p_cut_2));
+
+                  Quadrature<1> quadrature = QGaussSimplex<1>(quadrature_order)
+                                         .compute_affine_transformation({{p_unit_1,
+                                                                        p_unit_2}});
+
                   quadrature_dg_faces_cell[dg_face_index] = quadrature;
                 }
           }
@@ -595,7 +546,7 @@ namespace CGALWrappers
     quad_surface = NonMatching::ImmersedSurfaceQuadrature<2>(quadrature_points,
                                                              quadrature_weights,
                                                              normals);
-    quad_dg_face_vec[cell->active_cell_index()] = quadrature_dg_faces_cell;
+    quad_dg_face_vec[cell->active_cell_index()] = quadrature_dg_faces_cell; //if want to use precomputed dg
   }
 
   template <>
@@ -726,69 +677,6 @@ namespace CGALWrappers
                                                              quadrature_weights,
                                                              normals);
 
-
-    /*
-    // old surface quadrature
-    CGAL::Surface_mesh<CGALPoint> fitted_surface_mesh_copy(fitted_surface_mesh);
-    bool manifold =
-      CGAL::Polygon_mesh_processing::clip(fitted_surface_mesh_copy,
-                                          surface_cell);
-    Assert(manifold, ExcMessage("The clipped surface mesh is not a manifold"));
-
-    CGAL::Polygon_mesh_processing::remove_degenerate_faces(
-      fitted_surface_mesh_copy);
-
-    std::vector<Point<3>>     quadrature_points;
-    std::vector<double>       quadrature_weights;
-    std::vector<Tensor<1, 3>> normals;
-    double ref_area = std::pow(cell->minimum_vertex_distance(), 2) * 0.0000001;
-    for (const auto &face : fitted_surface_mesh_copy.faces())
-      {
-        if (CGAL::abs(CGAL::Polygon_mesh_processing::face_area(
-              face, fitted_surface_mesh_copy)) < ref_area)
-          {
-            continue;
-          }
-        std::array<Point<3>, 3> simplex;
-        std::array<Point<3>, 3> unit_simplex;
-        int                     i = 0;
-        for (const auto &vertex :
-             CGAL::vertices_around_face(fitted_surface_mesh_copy.halfedge(face),
-                                        fitted_surface_mesh_copy))
-          {
-            simplex[i] = cgal_point_to_dealii_point<3>(
-              fitted_surface_mesh_copy.point(vertex));
-            i += 1;
-          }
-        // compute quadrature and fill vectors
-        mapping->transform_points_real_to_unit_cell(cell,
-                                                    simplex,
-                                                    unit_simplex);
-        auto quadrature = QGaussSimplex<2>(quadrature_order)
-                            .compute_affine_transformation(unit_simplex);
-        auto points  = quadrature.get_points();
-        auto weights = quadrature.get_weights();
-        quadrature_points.insert(quadrature_points.end(),
-                                 points.begin(),
-                                 points.end());
-        quadrature_weights.insert(quadrature_weights.end(),
-                                  weights.begin(),
-                                  weights.end());
-
-        const Tensor<1, 3> v1     = simplex[2] - simplex[1];
-        const Tensor<1, 3> v2     = simplex[0] - simplex[1];
-        Tensor<1, 3>       normal = cross_product_3d(v1, v2);
-        normal /= normal.norm();
-        normals.insert(normals.end(), quadrature.size(), normal);
-      }
-    quad_surface = NonMatching::ImmersedSurfaceQuadrature<3>(quadrature_points,
-                                                             quadrature_weights,
-                                                             normals);
-
-    if (quadrature_weights.empty())
-      std::cout << "small intersection ignored this should not happen to much"
-                << std::endl;
-    */
   }
 
   template <>
@@ -857,212 +745,11 @@ namespace CGALWrappers
                   quadrature_weights.insert(quadrature_weights.end(),
                                             weights.begin(),
                                             weights.end());
-
-                  /*
-                  std::array<dealii::Point<2>, 2> unit_segment;
-                  mapping->transform_points_real_to_unit_cell(cell,
-                                {{cgal_point_to_dealii_point<2>(p_cut_1),
-                                  cgal_point_to_dealii_point<2>(p_cut_2)}},
-                                unit_segment);
-                  
-                  Quadrature<1> quadrature;
-                  if (cell->reference_cell() == ReferenceCells::Quadrilateral)
-                    {
-                      if (face_index == 0 || face_index == 1)
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][1]),
-                                             Point<1>(unit_segment[1][1])}});
-                        }
-                      else
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][0]),
-                                             Point<1>(unit_segment[1][0])}});
-                        }
-                    }
-                  else if (cell->reference_cell() == ReferenceCells::Triangle)
-                    {
-                      // still need to test. Assume so far:
-                      //      v2
-                      //     | \
-                      //  f0 |   \ f2
-                      //     |     \
-                      //    v0 ----- v1
-                      //         f1
-                      if (face_index == 0)
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][1]),
-                                             Point<1>(unit_segment[1][1])}});
-                        }
-                      else if (face_index == 1)
-                        {
-                          quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation(
-                                           {{Point<1>(unit_segment[0][0]),
-                                             Point<1>(unit_segment[1][0])}});
-                        }
-                      else
-                        {
-                          double distance1 =
-                            unit_segment[0].distance(cell->vertex(1));
-                          double distance2 =
-                            unit_segment[0].distance(unit_segment[1]);
-                          quadrature =
-                            QGaussSimplex<1>(quadrature_order)
-                              .compute_affine_transformation(
-                                {{Point<1>(distance1), Point<1>(distance2)}});
-                        }
-                    }
-                  auto points  = quadrature.get_points();
-                  auto weights = quadrature.get_weights();
-                  quadrature_points.insert(quadrature_points.end(),
-                                           points.begin(),
-                                           points.end());
-                  quadrature_weights.insert(quadrature_weights.end(),
-                                            weights.begin(),
-                                            weights.end());
-                  */
                 }
           }
       }
       quad_dg_face = Quadrature<1>(quadrature_points,
                                   quadrature_weights);
-
-        /*
-    // old version
-    auto face = cell->face(face_index);
-    auto p_1 =
-      dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(0));
-    auto p_2 =
-      dealii_point_to_cgal_point<CGALPoint2, 2>(face->vertex(1));
-    CGALSegment2 face_seg(p_1, p_2);
-
-    auto bs_1 = CGAL::bounded_side_2(fitted_2D_mesh.begin(),
-      fitted_2D_mesh.end(),
-      p_1);
-    auto bs_2 = CGAL::bounded_side_2(fitted_2D_mesh.begin(),
-      fitted_2D_mesh.end(),
-      p_2);
-
-    CGAL::Bounded_side outside_domain;
-    CGAL::Bounded_side inside_domain;
-    if (boolean_operation == BooleanOperation::compute_intersection)
-      {
-        outside_domain = CGAL::ON_UNBOUNDED_SIDE;
-        inside_domain = CGAL::ON_BOUNDED_SIDE;
-      }
-    else if (boolean_operation == BooleanOperation::compute_difference)
-      {
-        outside_domain = CGAL::ON_BOUNDED_SIDE;
-        inside_domain = CGAL::ON_UNBOUNDED_SIDE;
-      }
-
-    std::array<Point<2>, 2> segment;
-    if(bs_1 != inside_domain && bs_2 != inside_domain)
-    {
-      quad_dg_face = Quadrature<1>();
-      return;
-    }
-    else if(bs_1 == inside_domain && bs_2 == inside_domain)
-    {
-      segment[0] = face->vertex(0);
-      segment[1] = face->vertex(1);
-    }
-    else
-    {
-      for (const auto &edge_boundary : fitted_2D_mesh.edges())
-      {
-        auto result = CGAL::intersection(face_seg, edge_boundary);
-        if (result)
-          {
-            if (const CGALPoint2 *point =
-                  boost::get<CGALPoint2>(&*result))
-              {
-                auto p =
-                  cgal_point_to_dealii_point<2>(*point);
-                if(bs_1 != outside_domain && p.distance(face->vertex(0)) > 1e-12 )
-                {
-                  segment[0] = face->vertex(0);
-                  segment[1] = p;
-                  break;
-                }
-                else if(bs_2 != outside_domain && p.distance(face->vertex(1)) > 1e-12)
-                {
-                  segment[0] = face->vertex(1);
-                  segment[1] = p;
-                  break;
-                }
-              }
-          }
-      }
-
-    }
-
-    std::array<Point<2>, 2> face_points_unit;
-                // only linear mapping!!!
-    mapping->transform_points_real_to_unit_cell(cell,
-                segment, face_points_unit);
-
-    Quadrature<1> quadrature;
-    if (cell->reference_cell() == ReferenceCells::Quadrilateral)
-      {
-        if (face_index == 0 || face_index == 1)
-          {
-            quadrature = QGaussSimplex<1>(quadrature_order)
-                           .compute_affine_transformation(
-                             {{Point<1>(face_points_unit[0][1]),
-                               Point<1>(face_points_unit[1][1])}});
-          }
-        else
-          {
-            quadrature = QGaussSimplex<1>(quadrature_order)
-                           .compute_affine_transformation(
-                             {{Point<1>(face_points_unit[0][0]),
-                               Point<1>(face_points_unit[1][0])}});
-          }
-      }
-    else if (cell->reference_cell() == ReferenceCells::Triangle)
-      {
-        // still need to test. Assume so far:
-        //      v2
-        //     | \
-        //  f0 |   \ f2
-        //     |     \
-        //    v0 ----- v1
-        //         f1
-        if (face_index == 0)
-          {
-            quadrature = QGaussSimplex<1>(quadrature_order)
-                           .compute_affine_transformation(
-                             {{Point<1>(face_points_unit[0][1]),
-                               Point<1>(face_points_unit[1][1])}});
-          }
-        else if (face_index == 1)
-          {
-            quadrature = QGaussSimplex<1>(quadrature_order)
-                           .compute_affine_transformation(
-                             {{Point<1>(face_points_unit[0][0]),
-                               Point<1>(face_points_unit[1][0])}});
-          }
-        else
-          {
-            double distance1 =
-              face_points_unit[0].distance(cell->vertex(1));
-            double distance2 =
-              face_points_unit[0].distance(face_points_unit[1]);
-            quadrature =
-              QGaussSimplex<1>(quadrature_order)
-                .compute_affine_transformation(
-                  {{Point<1>(distance1), Point<1>(distance2)}});
-          }
-      }
-    quad_dg_face = quadrature;
-    */
   }
 
   template <>
