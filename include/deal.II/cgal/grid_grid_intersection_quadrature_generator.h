@@ -529,24 +529,24 @@ namespace CGALWrappers
                 }
               else if (false) //change to true if want to use precomputed dg
                 {
-                  auto p_unit_1 = mapping->project_real_point_to_unit_point_on_face(
-                  cell, face_index, cgal_point_to_dealii_point<2>(p_cut_1));
+                  // auto p_unit_1 = mapping->project_real_point_to_unit_point_on_face(
+                  // cell, face_index, cgal_point_to_dealii_point<2>(p_cut_1));
 
-                  auto p_unit_2 = mapping->project_real_point_to_unit_point_on_face(
-                  cell, face_index, cgal_point_to_dealii_point<2>(p_cut_2));
+                  // auto p_unit_2 = mapping->project_real_point_to_unit_point_on_face(
+                  // cell, face_index, cgal_point_to_dealii_point<2>(p_cut_2));
 
-                  Quadrature<1> quadrature = QGaussSimplex<1>(quadrature_order)
-                                         .compute_affine_transformation({{p_unit_1,
-                                                                        p_unit_2}});
+                  // Quadrature<1> quadrature = QGaussSimplex<1>(quadrature_order)
+                  //                        .compute_affine_transformation({{p_unit_1,
+                  //                                                       p_unit_2}});
 
-                  quadrature_dg_faces_cell[dg_face_index] = quadrature;
+                  // quadrature_dg_faces_cell[dg_face_index] = quadrature;
                 }
           }
       }
     quad_surface = NonMatching::ImmersedSurfaceQuadrature<2>(quadrature_points,
                                                              quadrature_weights,
                                                              normals);
-    quad_dg_face_vec[cell->active_cell_index()] = quadrature_dg_faces_cell; //if want to use precomputed dg
+    // quad_dg_face_vec[cell->active_cell_index()] = quadrature_dg_faces_cell; //if want to use precomputed dg
   }
 
   template <>
