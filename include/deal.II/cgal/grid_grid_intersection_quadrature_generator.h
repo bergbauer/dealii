@@ -378,19 +378,21 @@ namespace CGALWrappers
   GridGridIntersectionQuadratureGenerator<2>::generate(
     const typename Triangulation<2>::cell_iterator &cell)
   {
+    // generate polygon for current cell
     CGALPolygon polygon_cell;
     dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
 
+    // performe boolean operation on cell and fitted mesh
+    // result is a polygon with holes
     std::vector<CGALPolygonWithHoles> polygon_out_vec;
-
     compute_boolean_operation(polygon_cell,
                               fitted_2D_mesh,
                               boolean_operation,
                               polygon_out_vec);
 
     // quadrature area in a cell could be split into two polygons
-    // code should be able to handle this. But occurence is not expected for
-    // smooth boundaries as needed for reclassify (+not tested enough)
+    // occurence is not expected for smooth boundaries
+    // -> outer for loop here for eventual extension
     Assert(polygon_out_vec.size() == 1,
            ExcMessage(
              "Not a single polygon with holes, disconnected domain!!"));
@@ -400,14 +402,15 @@ namespace CGALWrappers
       {
         Assert(polygon_out_vec[i].outer_boundary().is_simple(),
                ExcMessage("The Polygon outer boundary is not simple"));
-        // no usecase where a quadrature area in a cell should be a polygon with
-        // holes
+        // quadrature area in a cell cannot be a polygon with holes
         Assert(!polygon_out_vec[i].has_holes(),
                ExcMessage("The Polygon has holes"));
         
+        // partition polygon into convex polygons
+        // these can be meshed as convex hull
+        // Note: could use CGAL::approx_convex_partition_2
         Traits partition_traits;
         std::list<Traits::Polygon_2> convex_polygons;
-        //Note: could use CGAL::approx_convex_partition_2
         CGAL::optimal_convex_partition_2(
           polygon_out_vec[i].outer_boundary().vertices_begin(),
           polygon_out_vec[i].outer_boundary().vertices_end(),
@@ -423,7 +426,6 @@ namespace CGALWrappers
             tria.insert_constraint(convex_poly.vertices_begin(),
                     convex_poly.vertices_end(), true);
 
-            
             // Extract simplices and construct quadratures
             for (const auto &face : tria.finite_face_handles())
               {
@@ -464,7 +466,7 @@ namespace CGALWrappers
               {
                 const typename Triangulation<2, 2>::face_iterator &face =
                   cell->face(i);
-                if (cell->face(i)->at_boundary() || location_to_geometry(
+                if (face->at_boundary() || location_to_geometry(
                     cell->neighbor(i)) == NonMatching::LocationToLevelSet::outside )
                   {
                     continue;
@@ -474,6 +476,7 @@ namespace CGALWrappers
                   face->vertex(0));
                 auto p_uncut_2 = dealii_point_to_cgal_point<CGALPoint2, 2>(
                   face->vertex(1));
+                
                 if(CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_1) &&
                    CGAL::collinear(p_uncut_1, p_uncut_2, p_cut_2))
                   {
@@ -496,26 +499,22 @@ namespace CGALWrappers
                   auto weights = quadrature.get_weights();
 
                   // compute normals
-                  Tensor<1, 2> normal = unit_segment[1] - unit_segment[0];
-                  std::swap(normal[0], normal[1]);
+                  Tensor<1, 2> vector = unit_segment[1] - unit_segment[0];
+                  Tensor<1, 2> normal;
+                  if (boolean_operation == BooleanOperation::compute_intersection)
+                  {
+                    normal[0] = vector[1];
+                    normal[1] = -vector[0];
+                  }
+                  else if(boolean_operation == BooleanOperation::compute_difference)
+                  {
+                    normal[0] = -vector[1];
+                    normal[1] = vector[0];
+                  }else
+                  {
+                    DEAL_II_ASSERT_UNREACHABLE();
+                  }
 
-                  auto test_point =
-                    0.5 * (unit_segment[1] + unit_segment[0]) + normal * 0.1;
-                  auto flip =
-                    CGAL::bounded_side_2(polygon_cell.begin(),
-                                         polygon_cell.end(),
-                                         CGALPoint2(test_point[0], test_point[1]));
-
-                  if (boolean_operation == BooleanOperation::compute_intersection &&
-                      flip == CGAL::ON_BOUNDED_SIDE)
-                    {
-                      normal *= -1;
-                    }
-                  else if (boolean_operation == BooleanOperation::compute_difference &&
-                           flip == CGAL::ON_UNBOUNDED_SIDE)
-                    {
-                      normal *= -1;
-                    }
                   normal /= normal.norm();
                   
                   
