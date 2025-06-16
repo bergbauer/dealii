@@ -47,7 +47,7 @@ namespace CGALWrappers
    *
    * @param[in] cell The input deal.II cell iterator
    * @param[in] mapping The mapping used to map the vertices of the cell
-   * @param[out] mesh The output CGAL::Polygon_2
+   * @param[out] polygon The output CGAL::Polygon_2
    */
   template <typename KernelType>
   void
