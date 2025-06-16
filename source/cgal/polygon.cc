@@ -105,13 +105,13 @@ namespace CGALWrappers
       }
 
     const auto &vertices = tria.get_vertices();
-    fitted_2D_mesh.clear();
+    polygon.clear();
 
     unsigned int current_index = face_vertex_indices.begin()->first;
 
     for (size_t i = face_vertex_indices.size(); i > 0; --i)
       {
-        fitted_2D_mesh.push_back(
+        polygon.push_back(
           dealii_point_to_cgal_point<CGAL::Point_2<KernelType>, 2>(
             vertices[current_index]));
         auto it       = face_vertex_indices.find(current_index);
