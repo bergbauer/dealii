@@ -23,7 +23,7 @@ for (cgal_kernel : CGAL_KERNELS)
 
     template void dealii_tria_to_cgal_polygon<cgal_kernel>(
       const Triangulation<2, 2>    &tria,
-      CGAL::Polygon_2<cgal_kernel> &fitted_2D_mesh);
+      CGAL::Polygon_2<cgal_kernel> &polygon);
 
     template void compute_boolean_operation<cgal_kernel>(
       const CGAL::Polygon_2<cgal_kernel>                   &polygon_1,

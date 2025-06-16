@@ -77,7 +77,7 @@ namespace CGALWrappers
   template <typename KernelType>
   void
   dealii_tria_to_cgal_polygon(const Triangulation<2, 2>   &tria,
-                              CGAL::Polygon_2<KernelType> &fitted_2D_mesh)
+                              CGAL::Polygon_2<KernelType> &polygon)
   {
     std::map<unsigned int, unsigned int> face_vertex_indices;
 

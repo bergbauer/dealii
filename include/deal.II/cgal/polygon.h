@@ -29,6 +29,26 @@ DEAL_II_NAMESPACE_OPEN
 
 namespace CGALWrappers
 {
+  /**
+   * Build a CGAL::Polygon_2 from a deal.II cell.
+   *
+   * The class Polygon_2 is a wrapper around a container of points that can
+   * be used to represent polygons. 
+   * The points must be added in counterclockwise order to a Polygon_2
+   *
+   * More information on this class is available at
+   * https://doc.cgal.org/latest/Polygon/index.html
+   *
+   * The functions are for two dimensional triangulations in two dimensional space.
+   * Projecting 3D points is possible with CGAL but not implemented.
+   *
+   * The generated boundary representation is useful when performing 
+   * geometric operations using compute boolean operations.
+   *
+   * @param[in] cell The input deal.II cell iterator
+   * @param[in] mapping The mapping used to map the vertices of the cell
+   * @param[out] mesh The output CGAL::Polygon_2
+   */
   template <typename KernelType>
   void
   dealii_cell_to_cgal_polygon(
@@ -38,12 +58,40 @@ namespace CGALWrappers
 
 
 
+  /**
+   * Convert a deal.II triangulation to a CGAL::Polygon_2.
+   *
+   * Triangulations that have holes are not supported. The output
+   * is a Polygon_2, the function would need to be extended.
+   *
+   * @param[in] tria The input deal.II triangulation
+   * @param[out] polygon The output CGAL::Polygon_2
+   */
   template <typename KernelType>
   void
   dealii_tria_to_cgal_polygon(const Triangulation<2, 2>   &tria,
-                              CGAL::Polygon_2<KernelType> &fitted_2D_mesh);
+                              CGAL::Polygon_2<KernelType> &polygon);
 
 
+
+  /**
+   * Perform a BooleanOperation on two CGAL::Polygon_2.
+   *
+   * The output is a vector of CGAL::Polygon_2_with_holes, since this
+   * can generally be the result of a boolean operation.
+   * 
+   * For the union the vector will always have length one.
+   * 
+   * For the difference operation the second polygon is subtracted
+   * from the first one.
+   * 
+   * Corefinement is not supported as boolean operation. 
+   *
+   * @param[in] polygon_1 The first input CGAL::Polygon_2
+   * @param[in] polygon_2 The second input CGAL::Polygon_2
+   * @param[in] boolean_operation The input BooleanOperation
+   * @param[out] polygon_out The output CGAL::Polygon_2_with_holes
+   */                            
   template <typename KernelType>
   void
   compute_boolean_operation(
