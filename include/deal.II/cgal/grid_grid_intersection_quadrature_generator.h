@@ -20,7 +20,7 @@
 
 #  include <CGAL/Boolean_set_operations_2.h>
 #  include <CGAL/Delaunay_triangulation_2.h>
-#  include <CGAL/Constrained_Delaunay_triangulation_2.h> //test
+#  include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #  include <CGAL/Polygon_mesh_processing/clip.h>
 #  include <CGAL/Polygon_with_holes_2.h>
 #  include <CGAL/Side_of_triangle_mesh.h>
@@ -28,13 +28,6 @@
 #  include <CGAL/partition_2.h>
 #  include <CGAL/Partition_traits_2.h>
 
-
-// try to make 3D run, remove afterwards ...
-#  include <CGAL/Exact_predicates_exact_constructions_kernel_with_sqrt.h>
-#  include <CGAL/Polygon_mesh_processing/repair.h> //test
-#include <CGAL/Surface_mesh_simplification/edge_collapse.h>
-#include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Edge_length_stop_predicate.h>
-//
 
 #  include "polygon.h"
 
@@ -54,19 +47,10 @@ namespace CGALWrappers
   class GridGridIntersectionQuadratureGenerator
   {
     using K = CGAL::Exact_predicates_exact_constructions_kernel;
-    using K_with_sqrt = CGAL::Exact_predicates_exact_constructions_kernel;
 
     // 3D
-    using CGALPoint         = CGAL::Point_3<K_with_sqrt>;
-    using CGALTriangulation = CGAL::Triangulation_3<K_with_sqrt>;
-
-    using Mesh_domain = CGAL::Polyhedral_mesh_domain_with_features_3<
-      K_with_sqrt, CGAL::Surface_mesh<CGALPoint>>;
-    using Tr = CGAL::Mesh_triangulation_3<
-      Mesh_domain, CGAL::Default, ConcurrencyTag>::type;
-    using Mesh_criteria = CGAL::Mesh_criteria_3<Tr>;
-    using C3t3 = CGAL::Mesh_complex_3_in_triangulation_3<Tr,
-      Mesh_domain::Corner_index, Mesh_domain::Curve_index>;
+    using CGALPoint         = CGAL::Point_3<K>;
+    using CGALTriangulation = CGAL::Triangulation_3<K>;
 
     // 2D
     using Traits               = CGAL::Partition_traits_2<K>;
@@ -350,7 +334,7 @@ namespace CGALWrappers
     location_to_geometry_vec.clear();
     location_to_geometry_vec.resize(tria_unfitted.n_active_cells());
 
-    CGAL::Side_of_triangle_mesh<CGAL::Surface_mesh<CGALPoint>, K_with_sqrt> inside_test(
+    CGAL::Side_of_triangle_mesh<CGAL::Surface_mesh<CGALPoint>, K> inside_test(
       fitted_surface_mesh);
 
     CGAL::Bounded_side inside_domain;
@@ -591,7 +575,7 @@ namespace CGALWrappers
     CGALTriangulation tria;
     tria.insert(out_surface.points().begin(), out_surface.points().end());
 
-    CGAL::Side_of_triangle_mesh<CGAL::Surface_mesh<CGALPoint>, K_with_sqrt> inside_test(
+    CGAL::Side_of_triangle_mesh<CGAL::Surface_mesh<CGALPoint>, K> inside_test(
       out_surface);
 
     // Extract simplices and construct quadratures
@@ -715,62 +699,6 @@ namespace CGALWrappers
     quad_surface = NonMatching::ImmersedSurfaceQuadrature<3>(quadrature_points,
                                                              quadrature_weights,
                                                              normals);
-    
-
-                                                 
-    // // double target_edge_length = cell->diameter() * 0.1;
-    // // CGAL::Polygon_mesh_processing::isotropic_remeshing(faces(out_surface), target_edge_length
-    // //             ,out_surface ,CGAL::parameters::number_of_iterations(3).protect_constraints(true));
-
-    // double th = 10e-8;
-    // CGAL::Surface_mesh_simplification::Edge_length_stop_predicate<double> stop(th);
-    // CGAL::Surface_mesh_simplification::edge_collapse(out_surface, stop);
-
-    // CGAL::Polygon_mesh_processing::experimental::remove_self_intersections(
-    //   out_surface);
-    // CGAL::Polygon_mesh_processing::remove_degenerate_faces(
-    //    out_surface);
-
-    // Assert(CGAL::is_closed(out_surface),
-    //            ExcMessage("The surface must be closed after boolean operation."));
-    // Assert(!CGAL::Polygon_mesh_processing::does_self_intersect(out_surface),
-    //            ExcMessage("The surface must be closed after boolean operation."));
-    // Assert(out_surface.is_valid(),
-    //            ExcMessage("The surface must be closed after boolean operation."));
-    // Assert(out_surface.is_valid(),
-    //            ExcMessage("The surface must be closed after boolean operation."));
-
-    // // for (const auto &f : faces_to_remove)
-    // //   out_surface.remove_face(f);
-    
-    // // out_surface.collect_garbage();
-
-    // C3t3 c3t3;
-    // AdditionalData<3> data;
-    // data.cell_size = .1;
-    // cgal_surface_mesh_to_cgal_triangulation(out_surface, c3t3, data);
-
-    // auto tria = c3t3.triangulation();
-
-    // // Extract simplices and construct quadratures
-    // std::vector<std::array<dealii::Point<3>, 4>> vec_of_simplices;
-    // for (const auto &face : tria.finite_cell_handles())
-    //   {
-    //     std::array<dealii::Point<3>, 4> simplex;
-    //     std::array<dealii::Point<3>, 4> unit_simplex;
-    //     for (unsigned int i = 0; i < 4; ++i)
-    //       {
-    //         simplex[i] = cgal_point_to_dealii_point<3>(
-    //           face->vertex(i)->point());
-    //       }
-    //     mapping->transform_points_real_to_unit_cell(cell,
-    //                                                 simplex,
-    //                                                 unit_simplex);
-    //     vec_of_simplices.push_back(unit_simplex);
-    //   }
-    // quad_cells =
-    //   QGaussSimplex<3>(quadrature_order).mapped_quadrature(vec_of_simplices);
-
   }
 
   template <>
