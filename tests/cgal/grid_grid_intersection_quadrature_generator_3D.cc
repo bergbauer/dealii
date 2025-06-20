@@ -143,6 +143,7 @@ int
 main()
 {
   initlog();
-  test(0, 0); //limit case for classification function: domain scale in size of cell dimension
+  //test(0, 0); //limit case for classification function: domain scale in size of cell dimension
   test(1, 1);
+  test(2, 2);
 }

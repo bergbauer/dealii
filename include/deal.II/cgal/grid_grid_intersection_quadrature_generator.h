@@ -3,16 +3,12 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/distributed/tria.h> //think of this and normal tria header
-
-#include <deal.II/lac/la_parallel_vector.h> // for parallel calssification
+#include <deal.II/distributed/tria.h>
 
 #include <deal.II/fe/mapping_q.h> //think of this and mapping header
 
 #include <deal.II/non_matching/immersed_surface_quadrature.h>
 #include <deal.II/non_matching/mesh_classifier.h>
-
-#include <deal.II/lac/trilinos_vector.h> //for parallelization
 
 #ifdef DEAL_II_WITH_CGAL
 #  include <deal.II/cgal/surface_mesh.h>
@@ -33,7 +29,6 @@
 
 // output
 #  include <deal.II/base/timer.h>
-
 #  include <CGAL/IO/VTK.h>
 #  include <CGAL/IO/output_to_vtu.h>
 #  include <CGAL/boost/graph/IO/polygon_mesh_io.h>
@@ -200,14 +195,8 @@ namespace CGALWrappers
   void
   GridGridIntersectionQuadratureGenerator<2>::setup_domain_boundary(const TriangulationType &tria_fitted_in)
   {
-    Timer timer; // debug
     fitted_2D_mesh.clear();
     dealii_tria_to_cgal_polygon(tria_fitted_in, fitted_2D_mesh);
-    timer.stop();
-    std::cout << "Elapsed CPU time: " << timer.cpu_time()
-              << " seconds.\n"; // debug
-    std::cout << "Elapsed wall time: " << timer.wall_time()
-              << " seconds.\n"; // debug
 
     Assert(fitted_2D_mesh.is_simple(), ExcMessage("Polygon not simple"));
     Assert(fitted_2D_mesh.is_counterclockwise_oriented(),
@@ -223,6 +212,14 @@ namespace CGALWrappers
     dealii_tria_to_cgal_surface_mesh<CGALPoint>(
       tria_fitted_in, fitted_surface_mesh);
     CGAL::Polygon_mesh_processing::triangulate_faces(fitted_surface_mesh);
+
+    Assert(fitted_surface_mesh.is_valid(),
+                 ExcMessage("The CGAL mesh is not valid"));
+    Assert(CGAL::is_closed(fitted_surface_mesh),
+                 ExcMessage("The CGAL mesh is not closed"));
+    Assert(CGAL::Polygon_mesh_processing::is_outward_oriented(
+           fitted_surface_mesh), ExcMessage(
+            "The normal vectors of the CGAL mesh are not oriented outwards"));
   }
 
   // The classification inside is only valid if no vertex is on the
@@ -240,18 +237,6 @@ namespace CGALWrappers
     location_to_geometry_vec.clear();
     location_to_geometry_vec.resize(tria_unfitted.n_active_cells());
 
-    //MPI To do:
-    // change vector LinearAlgebra::distributed::Vector<> -> not for int 
-    // IndexSet locally_owned(tria_unfitted.n_global_active_cells());
-    // for (const auto &cell : tria_unfitted.active_cell_iterators())
-    //   if (cell->is_locally_owned())
-    //     locally_owned.add_index(cell->global_active_cell_index());
-    // locally_owned.compress();
-    // location_to_geometry_vec_parallel.reinit(locally_owned, tria_unfitted.get_communicator());
-
-    //other option:
-    // std::vector<NonMatching::LocationToLevelSet> local_location_to_geometry_vec;
-
     CGAL::Bounded_side inside_domain;
     if (boolean_operation == BooleanOperation::compute_intersection)
       {
@@ -262,14 +247,11 @@ namespace CGALWrappers
         inside_domain = CGAL::ON_UNBOUNDED_SIDE;
       }
 
-
     // now find out if inside or not
     for (const auto &cell : tria_unfitted.active_cell_iterators())
       {
         if (!cell->is_locally_owned())
           continue;
-
-        
 
         CGALPolygon polygon_cell;
         dealii_cell_to_cgal_polygon(cell, *mapping, polygon_cell);
@@ -564,12 +546,12 @@ namespace CGALWrappers
                                      *mapping,
                                      surface_cell);
     CGAL::Polygon_mesh_processing::triangulate_faces(surface_cell);
-
+  
     CGAL::Surface_mesh<CGALPoint> out_surface;
     compute_boolean_operation(surface_cell,
                               fitted_surface_mesh,
                               boolean_operation,
-                              out_surface);
+                              out_surface);                      
 
     // Fill triangulation with vertices from surface mesh
     CGALTriangulation tria;
@@ -582,12 +564,12 @@ namespace CGALWrappers
     std::vector<std::array<dealii::Point<3>, 4>> vec_of_simplices;
     for (const auto &face : tria.finite_cell_handles())
       {
-        std::array<CGALPoint, 4> simplex_cgal; //new
+        std::array<CGALPoint, 4> simplex_cgal;
         std::array<dealii::Point<3>, 4> simplex;
         std::array<dealii::Point<3>, 4> unit_simplex;
         for (unsigned int i = 0; i < 4; ++i)
           {
-            simplex_cgal[i] = face->vertex(i)->point();  //new
+            simplex_cgal[i] = face->vertex(i)->point();
             simplex[i] = cgal_point_to_dealii_point<3>(
               face->vertex(i)->point());
           }
@@ -596,7 +578,7 @@ namespace CGALWrappers
                                        simplex_cgal[1],
                                        simplex_cgal[2],
                                        simplex_cgal[3]);
-
+        // dont consider convex hull triangles that are not inside
         if(inside_test(centroid) != CGAL::ON_BOUNDED_SIDE)
           continue;
 
@@ -607,10 +589,7 @@ namespace CGALWrappers
       }
     quad_cells =
       QGaussSimplex<3>(quadrature_order).mapped_quadrature(vec_of_simplices);
-    
 
-    // need repair for volume mesh generation
-    std::vector<CGAL::Surface_mesh<CGALPoint>::Face_index> faces_to_remove;
     // surface quadrature
     std::vector<Point<3>>     quadrature_points;
     std::vector<double>       quadrature_weights;
@@ -621,7 +600,6 @@ namespace CGALWrappers
         if (CGAL::abs(CGAL::Polygon_mesh_processing::face_area(
               out_surface_face, out_surface)) < ref_area)
           {
-            faces_to_remove.push_back(out_surface_face);
             continue;
           }
 
@@ -801,28 +779,36 @@ namespace CGALWrappers
                                 fitted_surface_mesh,
                                 boolean_operation,
                                 out_surface);
-
-    auto p_1 = dealii_point_to_cgal_point<CGALPoint, 3>(
-      face->vertex(0));
-    auto p_2 = dealii_point_to_cgal_point<CGALPoint, 3>(
-      face->vertex(1));
-    auto p_3 = dealii_point_to_cgal_point<CGALPoint, 3>(
-      face->vertex(2));
+    
+    std::vector<CGALPoint> dealii_vertices;                            
+    for (unsigned int i_dealii_vertex = 0; i_dealii_vertex < face->n_vertices(); ++i_dealii_vertex)
+    {
+      dealii_vertices.push_back(dealii_point_to_cgal_point<CGALPoint, 3>(
+        face->vertex(i_dealii_vertex)));
+    }
 
     std::vector<Point<2>>       quadrature_points;
     std::vector<double>         quadrature_weights;    
     for (const auto &face_surface : out_surface.faces())
       {
-        int count = 0;
+        int i_cgal_vertex = 0;
+        std::array<CGALPoint, 3> cgal_vertices; 
         for (const auto &vertex :
              CGAL::vertices_around_face(
              out_surface.halfedge(face_surface),
              out_surface))
           {
-            count += CGAL::coplanar(p_1, p_2, p_3, out_surface.point(vertex));
+            cgal_vertices[i_cgal_vertex] = out_surface.point(vertex);
+            i_cgal_vertex += 1;
           }
 
-        if(count == 3)
+        int count = 0;
+        for(auto &vertex : dealii_vertices)
+        {
+          count += CGAL::coplanar(cgal_vertices[0], cgal_vertices[1], cgal_vertices[2], vertex);
+        }
+
+        if(count >= 3)
           {
             std::array<Point<2>, 3> simplex;
             int                     i = 0;
