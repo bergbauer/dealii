@@ -1,0 +1,93 @@
+// ------------------------------------------------------------------------
+//
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 - 2024 by the deal.II authors
+//
+// This file is part of the deal.II library.
+//
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
+//
+// ------------------------------------------------------------------------
+
+
+
+for (dim : SPACE_DIMENSIONS)
+  {
+#if dim == 2 || dim == 3
+
+    template void
+    GridGridIntersectionQuadratureGenerator<dim>::setup_domain_boundary(
+      const parallel::distributed::Triangulation<dim> &tria_fitted_in);
+
+    template void
+    GridGridIntersectionQuadratureGenerator<dim>::setup_domain_boundary(
+      const Triangulation<dim> &tria_fitted_in);
+
+    template CGAL::Bounded_side
+    GridGridIntersectionQuadratureGenerator<dim>::side_of_surface_mesh(
+      const Point<dim> &point) const;
+
+    template void GridGridIntersectionQuadratureGenerator<dim>::reclassify(
+      const parallel::distributed::Triangulation<dim> &tria_unfitted);
+
+    template void GridGridIntersectionQuadratureGenerator<dim>::reclassify(
+      const Triangulation<dim> &tria_unfitted);
+
+    template GridGridIntersectionQuadratureGenerator<
+      dim>::GridGridIntersectionQuadratureGenerator();
+
+    template GridGridIntersectionQuadratureGenerator<dim>::
+      GridGridIntersectionQuadratureGenerator(
+        const Mapping<dim> &mapping_in,
+        unsigned int        n_quadrature_points_1D_in,
+        BooleanOperation    boolean_operation_in,
+        bool                precompute_dg_faces_in = false);
+
+    template void GridGridIntersectionQuadratureGenerator<dim>::reinit(
+      const Mapping<dim> &mapping_in,
+      unsigned int        n_quadrature_points_1D_in,
+      BooleanOperation    boolean_operation_in,
+      bool                precompute_dg_faces_in = false);
+
+    template void
+    GridGridIntersectionQuadratureGenerator<dim>::set_n_quadrature_points_1D(
+      unsigned int n_quadrature_points_1D_in);
+
+    template NonMatching::ImmersedSurfaceQuadrature<dim>
+    GridGridIntersectionQuadratureGenerator<dim>::get_surface_quadrature()
+      const;
+
+    template Quadrature<dim>
+    GridGridIntersectionQuadratureGenerator<dim>::get_inside_quadrature() const;
+
+    template Quadrature<dim>
+    GridGridIntersectionQuadratureGenerator<dim>::get_outside_quadrature() const;
+
+    template Quadrature<dim - 1> GridGridIntersectionQuadratureGenerator<
+      dim>::get_inside_quadrature_dg_face() const;
+
+    template Quadrature<dim - 1>
+    GridGridIntersectionQuadratureGenerator<dim>::get_outside_quadrature_dg_face() const;
+
+    template Quadrature<dim - 1>
+    GridGridIntersectionQuadratureGenerator<dim>::get_inside_quadrature_dg_face(
+      unsigned int face_index) const;
+
+    template NonMatching::LocationToLevelSet
+    GridGridIntersectionQuadratureGenerator<dim>::location_to_geometry(
+      unsigned int cell_index) const;
+
+    template NonMatching::LocationToLevelSet
+    GridGridIntersectionQuadratureGenerator<dim>::location_to_geometry(
+      const typename Triangulation<dim>::cell_iterator &cell) const;
+
+    template NonMatching::LocationToLevelSet
+    GridGridIntersectionQuadratureGenerator<dim>::location_to_geometry(
+      const typename Triangulation<dim>::cell_iterator &cell,
+      unsigned int                                      face_index) const;
+
+#endif
+  }

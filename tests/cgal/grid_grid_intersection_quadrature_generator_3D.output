@@ -1,0 +1,51 @@
+
+DEAL::name: hyper_cube
+DEAL::Area :0.00000 , surface :0.00000
+DEAL::
+DEAL::Area :1.00000 , surface :6.00000
+DEAL::
+DEAL::name: hyper_cube
+DEAL::Area :0.271000 , surface :6.00000
+DEAL::
+DEAL::Area :0.729000 , surface :4.86000
+DEAL::
+DEAL::name: hyper_rectangle
+DEAL::Area :0.500000 , surface :4.00000
+DEAL::
+DEAL::Area :0.500000 , surface :4.00000
+DEAL::
+DEAL::name: hyper_rectangle
+DEAL::Area :0.500000 , surface :4.00000
+DEAL::
+DEAL::Area :0.500000 , surface :4.00000
+DEAL::
+DEAL::name: hyper_rectangle
+DEAL::Area :1.00000 , surface :6.00000
+DEAL::
+DEAL::Area :0.00000 , surface :0.00000
+DEAL::
+DEAL::name: simplex
+DEAL::Area :0.833333 , surface :5.36603
+DEAL::
+DEAL::Area :0.166667 , surface :2.36603
+DEAL::
+DEAL::name: simplex
+DEAL::Area :0.942833 , surface :5.68935
+DEAL::
+DEAL::Area :0.0571667 , surface :1.15935
+DEAL::
+DEAL::name: simplex
+DEAL::Area :0.916667 , surface :6.46593
+DEAL::
+DEAL::Area :0.0833333 , surface :1.46593
+DEAL::
+DEAL::name: hyper_ball_balanced
+DEAL::Area :0.515156 , surface :5.22384
+DEAL::
+DEAL::Area :0.491157 , surface :3.81604
+DEAL::
+DEAL::name: hyper_ball_balanced
+DEAL::Area :0.961193 , surface :5.83966
+DEAL::
+DEAL::Area :0.0429317 , surface :0.764709
+DEAL::
