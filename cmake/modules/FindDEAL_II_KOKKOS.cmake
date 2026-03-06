@@ -130,7 +130,7 @@ if(KOKKOS_FOUND)
       # "[...] contains a vector, which is not supported in device code". We
       # would like to set the variable in check_01_cpu_feature but at that point
       # we don't know if CUDA support is enabled in Kokkos
-      set(DEAL_II_VECTORIZATION_WIDTH_IN_BITS 0)
+      #set(DEAL_II_VECTORIZATION_WIDTH_IN_BITS 0)
     endif()
 
     # Require lambda support and expt-relaxed-constexpr for Cuda

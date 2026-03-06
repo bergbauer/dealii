@@ -42,7 +42,16 @@
 // test, 'check_01_cpu_features.cmake', ensures that these feature are not only
 // present in the compilation unit but also working properly.
 
-#if DEAL_II_VECTORIZATION_WIDTH_IN_BITS > 0
+#if defined(__CUDACC__) && defined(__CUDA_ARCH__)
+#  define DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS 0
+#  define DEAL_II_CUDA_GENERIC_VECTOR_ARRAY_FALLBACK 1
+#else
+#  define DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS \
+  DEAL_II_VECTORIZATION_WIDTH_IN_BITS
+#  define DEAL_II_CUDA_GENERIC_VECTOR_ARRAY_FALLBACK 0
+#endif
+
+#if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS > 0
 
 // These error messages try to detect the case that deal.II was compiled with
 // a wider instruction set extension as the current compilation unit, for
@@ -51,11 +60,12 @@
 // very strange errors as the size of data structures differs between the
 // compiled deal.II code sitting in libdeal_II.so and the user code if not
 // detected.
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 256 && !defined(__AVX__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 256 && !defined(__AVX__)
 #    error \
       "Mismatch in vectorization capabilities: AVX was detected during configuration of deal.II and switched on, but it is apparently not available for the file you are trying to compile at the moment. Check compilation flags controlling the instruction set, such as -march=native."
 #  endif
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 512 && !defined(__AVX512F__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 512 && \
+  !defined(__AVX512F__)
 #    error \
       "Mismatch in vectorization capabilities: AVX-512F was detected during configuration of deal.II and switched on, but it is apparently not available for the file you are trying to compile at the moment. Check compilation flags controlling the instruction set, such as -march=native."
 #  endif
@@ -442,9 +452,15 @@ public:
  */
 template <typename Number, std::size_t width>
 class VectorizedArray
-  : public VectorizedArrayBase<VectorizedArray<Number, width>, 1>
+  : public VectorizedArrayBase<
+      VectorizedArray<Number, width>,
+      (DEAL_II_CUDA_GENERIC_VECTOR_ARRAY_FALLBACK == 1 && width > 1) ? width :
+                                                                         1>
 {
 public:
+  static constexpr bool use_array_storage =
+    (DEAL_II_CUDA_GENERIC_VECTOR_ARRAY_FALLBACK == 1 && width > 1);
+
   /**
    * The scalar type of the array elements.
    */
@@ -458,7 +474,7 @@ public:
    * defined depending on the instruction sets available) the boolean is
    * set to true as well.
    */
-  static constexpr bool is_implemented = (width == 1);
+  static constexpr bool is_implemented = (width == 1 || use_array_storage);
 
   /**
    * Default empty constructor, leaving the data in an uninitialized state
@@ -471,7 +487,7 @@ public:
    */
   VectorizedArray(const Number scalar)
   {
-    static_assert(width == 1,
+    static_assert(width == 1 || use_array_storage,
                   "You specified an illegal width that is not supported.");
 
     this->operator=(scalar);
@@ -484,7 +500,7 @@ public:
   VectorizedArray(const std::initializer_list<U> &list)
     : VectorizedArrayBase<VectorizedArray<Number, width>, 1>(list)
   {
-    static_assert(width == 1,
+    static_assert(width == 1 || use_array_storage,
                   "You specified an illegal width that is not supported.");
   }
 
@@ -495,7 +511,11 @@ public:
   VectorizedArray &
   operator=(const Number scalar) &
   {
-    data = scalar;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] = scalar;
+    else
+      data = scalar;
     return *this;
   }
 
@@ -515,9 +535,17 @@ public:
   Number &
   operator[](const unsigned int comp)
   {
-    (void)comp;
-    AssertIndexRange(comp, 1);
-    return data;
+    if constexpr (use_array_storage)
+      {
+        AssertIndexRange(comp, width);
+        return data[comp];
+      }
+    else
+      {
+        (void)comp;
+        AssertIndexRange(comp, 1);
+        return data;
+      }
   }
 
   /**
@@ -528,9 +556,17 @@ public:
   const Number &
   operator[](const unsigned int comp) const
   {
-    (void)comp;
-    AssertIndexRange(comp, 1);
-    return data;
+    if constexpr (use_array_storage)
+      {
+        AssertIndexRange(comp, width);
+        return data[comp];
+      }
+    else
+      {
+        (void)comp;
+        AssertIndexRange(comp, 1);
+        return data;
+      }
   }
 
   /**
@@ -540,7 +576,11 @@ public:
   VectorizedArray &
   operator+=(const VectorizedArray &vec)
   {
-    data += vec.data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] += vec.data[v];
+    else
+      data += vec.data;
     return *this;
   }
 
@@ -551,7 +591,11 @@ public:
   VectorizedArray &
   operator-=(const VectorizedArray &vec)
   {
-    data -= vec.data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] -= vec.data[v];
+    else
+      data -= vec.data;
     return *this;
   }
 
@@ -562,7 +606,11 @@ public:
   VectorizedArray &
   operator*=(const VectorizedArray &vec)
   {
-    data *= vec.data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] *= vec.data[v];
+    else
+      data *= vec.data;
     return *this;
   }
 
@@ -573,7 +621,11 @@ public:
   VectorizedArray &
   operator/=(const VectorizedArray &vec)
   {
-    data /= vec.data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] /= vec.data[v];
+    else
+      data /= vec.data;
     return *this;
   }
 
@@ -587,7 +639,11 @@ public:
   DEAL_II_ALWAYS_INLINE void
   load(const OtherNumber *ptr)
   {
-    data = *ptr;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] = ptr[v];
+    else
+      data = *ptr;
   }
 
   /**
@@ -600,7 +656,11 @@ public:
   DEAL_II_ALWAYS_INLINE void
   store(OtherNumber *ptr) const
   {
-    *ptr = data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        ptr[v] = data[v];
+    else
+      *ptr = data;
   }
 
   /**
@@ -653,7 +713,11 @@ public:
   void
   streaming_store(Number *ptr) const
   {
-    *ptr = data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        ptr[v] = data[v];
+    else
+      *ptr = data;
   }
 
   /**
@@ -672,7 +736,11 @@ public:
   void
   gather(const Number *base_ptr, const unsigned int *offsets)
   {
-    data = base_ptr[offsets[0]];
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        data[v] = base_ptr[offsets[v]];
+    else
+      data = base_ptr[offsets[0]];
   }
 
   /**
@@ -691,7 +759,11 @@ public:
   void
   scatter(const unsigned int *offsets, Number *base_ptr) const
   {
-    base_ptr[offsets[0]] = data;
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        base_ptr[offsets[v]] = data[v];
+    else
+      base_ptr[offsets[0]] = data;
   }
 
   /**
@@ -702,7 +774,15 @@ public:
   Number
   sum() const
   {
-    return data;
+    if constexpr (use_array_storage)
+      {
+        Number result = data[0];
+        for (unsigned int v = 1; v < width; ++v)
+          result += data[v];
+        return result;
+      }
+    else
+      return data;
   }
 
   /**
@@ -710,7 +790,11 @@ public:
    * enable interaction with external SIMD functionality, this member is
    * declared public.
    */
-  Number data;
+  using storage_type = std::conditional_t<use_array_storage,
+                                          std::array<Number, width>,
+                                          Number>;
+
+  storage_type data;
 
 private:
   /**
@@ -722,7 +806,11 @@ private:
   get_sqrt() const
   {
     VectorizedArray res;
-    res.data = std::sqrt(data);
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        res.data[v] = std::sqrt(data[v]);
+    else
+      res.data = std::sqrt(data);
     return res;
   }
 
@@ -735,7 +823,11 @@ private:
   get_abs() const
   {
     VectorizedArray res;
-    res.data = std::fabs(data);
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        res.data[v] = std::fabs(data[v]);
+    else
+      res.data = std::fabs(data);
     return res;
   }
 
@@ -748,7 +840,11 @@ private:
   get_max(const VectorizedArray &other) const
   {
     VectorizedArray res;
-    res.data = std::max(data, other.data);
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        res.data[v] = std::max(data[v], other.data[v]);
+    else
+      res.data = std::max(data, other.data);
     return res;
   }
 
@@ -761,7 +857,11 @@ private:
   get_min(const VectorizedArray &other) const
   {
     VectorizedArray res;
-    res.data = std::min(data, other.data);
+    if constexpr (use_array_storage)
+      for (unsigned int v = 0; v < width; ++v)
+        res.data[v] = std::min(data[v], other.data[v]);
+    else
+      res.data = std::min(data, other.data);
     return res;
   }
 
@@ -1004,7 +1104,8 @@ vectorized_transpose_and_store(const bool                            add_into,
 
 #ifndef DOXYGEN
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 128 && defined(__ARM_NEON)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 128 && \
+  defined(__ARM_NEON)
 
 /**
  * Specialization for double and ARM Neon.
@@ -1575,7 +1676,8 @@ private:
 
 #  endif
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 128 && defined(__SSE2__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 128 && \
+  defined(__SSE2__)
 
 /**
  * Specialization for double and SSE2.
@@ -2580,7 +2682,8 @@ vectorized_transpose_and_store(const bool                       add_into,
 
 #  endif // if DEAL_II_VECTORIZATION_WIDTH_IN_BITS > 0 && defined(__SSE2__)
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 256 && defined(__AVX__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 256 && \
+  defined(__AVX__)
 
 /**
  * Specialization of VectorizedArray class for double and AVX.
@@ -3771,7 +3874,8 @@ vectorized_transpose_and_store(const bool                       add_into,
 // for safety, also check that __AVX512F__ is defined in case the user manually
 // set some conflicting compile flags which prevent compilation
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 512 && defined(__AVX512F__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 512 && \
+  defined(__AVX512F__)
 
 /**
  * Specialization of VectorizedArray class for double and AVX-512.
@@ -5124,7 +5228,8 @@ vectorized_transpose_and_store(const bool                        add_into,
 
 #  endif
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 128 && defined(__ALTIVEC__) && \
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 128 && \
+  defined(__ALTIVEC__) && \
     defined(__VSX__)
 
 template <>
@@ -6029,7 +6134,7 @@ operator<<(std::ostream &out, const VectorizedArray<Number, width> &p)
  */
 enum class SIMDComparison : int
 {
-#if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 256 && defined(__AVX__)
+#if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 256 && defined(__AVX__)
   equal                 = _CMP_EQ_OQ,
   not_equal             = _CMP_NEQ_OQ,
   less_than             = _CMP_LT_OQ,
@@ -6163,10 +6268,30 @@ compare_and_apply_mask(const VectorizedArray<Number, 1> &left,
   return result;
 }
 
+#if defined(__CUDACC__)
+template <SIMDComparison predicate, typename Number, std::size_t width>
+DEAL_II_ALWAYS_INLINE inline std::enable_if_t<(width > 1),
+                                               VectorizedArray<Number, width>>
+compare_and_apply_mask(const VectorizedArray<Number, width> &left,
+                       const VectorizedArray<Number, width> &right,
+                       const VectorizedArray<Number, width> &true_value,
+                       const VectorizedArray<Number, width> &false_value)
+{
+  VectorizedArray<Number, width> result;
+  for (unsigned int i = 0; i < VectorizedArray<Number, width>::size(); ++i)
+    result[i] = compare_and_apply_mask<predicate, Number>(left[i],
+                                                          right[i],
+                                                          true_value[i],
+                                                          false_value[i]);
+  return result;
+}
+#endif
+
 /** @} */
 
 #ifndef DOXYGEN
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 512 && defined(__AVX512F__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 512 && \
+  defined(__AVX512F__)
 
 template <SIMDComparison predicate>
 DEAL_II_ALWAYS_INLINE inline VectorizedArray<float, 16>
@@ -6200,7 +6325,8 @@ compare_and_apply_mask(const VectorizedArray<double, 8> &left,
 
 #  endif
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 256 && defined(__AVX__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 256 && \
+  defined(__AVX__)
 
 template <SIMDComparison predicate>
 DEAL_II_ALWAYS_INLINE inline VectorizedArray<float, 8>
@@ -6235,7 +6361,8 @@ compare_and_apply_mask(const VectorizedArray<double, 4> &left,
 
 #  endif
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 128 && defined(__SSE2__)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 128 && \
+  defined(__SSE2__)
 
 template <SIMDComparison predicate>
 DEAL_II_ALWAYS_INLINE inline VectorizedArray<float, 4>
@@ -6314,7 +6441,8 @@ compare_and_apply_mask(const VectorizedArray<double, 2> &left,
 
 #  endif
 
-#  if DEAL_II_VECTORIZATION_WIDTH_IN_BITS >= 128 && defined(__ARM_NEON)
+#  if DEAL_II_EFFECTIVE_VECTORIZATION_WIDTH_IN_BITS >= 128 && \
+  defined(__ARM_NEON)
 
 template <SIMDComparison predicate>
 DEAL_II_ALWAYS_INLINE inline VectorizedArray<float, 4>
