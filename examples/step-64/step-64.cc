@@ -41,12 +41,17 @@
 #include <deal.II/matrix_free/portable_matrix_free.h>
 #include <deal.II/matrix_free/operators.h>
 
+#include <chrono>
 #include <fstream>
+#include <limits>
+#include <string>
 
 
 // As usual, we enclose everything into a namespace of its own:
 namespace Step64
 {
+  inline bool use_framework_fused_helmholtz = false;
+
   using namespace dealii;
 
 
@@ -59,16 +64,16 @@ namespace Step64
   // values provided in the constructor for a given cell. This operator
   // needs to run on the device, so it needs to be marked as
   // `DEAL_II_HOST_DEVICE` for the compiler.
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number>
   class VaryingCoefficientFunctor
   {
   public:
-    VaryingCoefficientFunctor(double *coefficient)
+    VaryingCoefficientFunctor(Number *coefficient)
       : coef(coefficient)
     {}
 
     DEAL_II_HOST_DEVICE void
-    operator()(const typename Portable::MatrixFree<dim, double>::Data *gpu_data,
+    operator()(const typename Portable::MatrixFree<dim, Number>::Data *gpu_data,
                const unsigned int                                      cell,
                const unsigned int                                      q) const;
 
@@ -80,7 +85,7 @@ namespace Step64
     static const unsigned int n_q_points   = Utilities::pow(fe_degree + 1, dim);
 
   private:
-    double *coef;
+    Number *coef;
   };
 
 
@@ -88,23 +93,23 @@ namespace Step64
   // The following function implements this coefficient. Recall from
   // the introduction that we have defined it as $a(\mathbf
   // x)=\frac{10}{0.05 + 2\|\mathbf x\|^2}$
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number>
   DEAL_II_HOST_DEVICE void
-  VaryingCoefficientFunctor<dim, fe_degree>::operator()(
-    const typename Portable::MatrixFree<dim, double>::Data *gpu_data,
+  VaryingCoefficientFunctor<dim, fe_degree, Number>::operator()(
+    const typename Portable::MatrixFree<dim, Number>::Data *gpu_data,
     const unsigned int                                      cell,
     const unsigned int                                      q) const
   {
     const unsigned int pos = gpu_data->local_q_point_id(cell, n_q_points, q);
-    const Point<dim>   q_point = gpu_data->get_quadrature_point(cell, q);
+    const Point<dim, Number> q_point = gpu_data->get_quadrature_point(cell, q);
 
-    double p_square = 0.;
+    Number p_square = Number();
     for (unsigned int i = 0; i < dim; ++i)
       {
-        const double coord = q_point[i];
+        const Number coord = q_point[i];
         p_square += coord * coord;
       }
-    coef[pos] = 10. / (0.05 + 2. * p_square);
+    coef[pos] = Number(10.) / (Number(0.05) + Number(2.) * p_square);
   }
 
 
@@ -118,17 +123,17 @@ namespace Step64
   // index. As before, the functions of this class need to run on
   // the device, so need to be marked as `DEAL_II_HOST_DEVICE` for the
   // compiler.
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number>
   class HelmholtzOperatorQuad
   {
   public:
-    DEAL_II_HOST_DEVICE HelmholtzOperatorQuad(double *coef)
+    DEAL_II_HOST_DEVICE HelmholtzOperatorQuad(Number *coef)
       : coef(coef)
     {}
 
-    DEAL_II_HOST_DEVICE void operator()(
-      Portable::FEEvaluation<dim, fe_degree, fe_degree + 1, 1, double> *fe_eval,
-      const int q_point) const;
+    template <typename FEEvalType>
+    DEAL_II_HOST_DEVICE void operator()(FEEvalType *fe_eval,
+                                        const int   q_point) const;
 
 
 
@@ -138,7 +143,7 @@ namespace Step64
     static const unsigned int n_local_dofs = n_q_points;
 
   private:
-    double *coef;
+    Number *coef;
   };
 
 
@@ -149,13 +154,15 @@ namespace Step64
   // If you have seen step-37, then it will be obvious that
   // the two terms on the left-hand side correspond to the two function calls
   // here:
-  template <int dim, int fe_degree>
-  DEAL_II_HOST_DEVICE void HelmholtzOperatorQuad<dim, fe_degree>::operator()(
-    Portable::FEEvaluation<dim, fe_degree, fe_degree + 1, 1, double> *fe_eval,
-    const int q_point) const
+  template <int dim, int fe_degree, typename Number>
+  template <typename FEEvalType>
+  DEAL_II_HOST_DEVICE void
+  HelmholtzOperatorQuad<dim, fe_degree, Number>::operator()(
+    FEEvalType *fe_eval,
+    const int   q_point) const
   {
     const int cell_index = fe_eval->get_current_cell_index();
-    const typename Portable::MatrixFree<dim, double>::Data *data =
+    const typename Portable::MatrixFree<dim, Number>::Data *data =
       fe_eval->get_matrix_free_data();
 
     const unsigned int position =
@@ -174,7 +181,7 @@ namespace Step64
   // Finally, we need to define a class that implements the whole operator
   // evaluation that corresponds to a matrix-vector product in matrix-based
   // approaches.
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number>
   class LocalHelmholtzOperator
   {
   public:
@@ -186,17 +193,19 @@ namespace Step64
     static constexpr unsigned int n_q_points =
       Utilities::pow(fe_degree + 1, dim);
 
-    LocalHelmholtzOperator(double *coefficient)
+    LocalHelmholtzOperator(Number *coefficient, const bool use_fused_kernel)
       : coef(coefficient)
+      , use_fused_kernel(use_fused_kernel)
     {}
 
     DEAL_II_HOST_DEVICE void
-    operator()(const typename Portable::MatrixFree<dim, double>::Data *data,
-               const Portable::DeviceVector<double>                   &src,
-               Portable::DeviceVector<double> &dst) const;
+    operator()(const typename Portable::MatrixFree<dim, Number>::Data *data,
+               const Portable::DeviceVector<Number>                   &src,
+               Portable::DeviceVector<Number> &dst) const;
 
   private:
-    double *coef;
+    Number *coef;
+    bool    use_fused_kernel;
   };
 
 
@@ -205,20 +214,34 @@ namespace Step64
   // In particular, we need access to both values and gradients of the source
   // vector and we write value and gradient information to the destination
   // vector.
-  template <int dim, int fe_degree>
-  DEAL_II_HOST_DEVICE void LocalHelmholtzOperator<dim, fe_degree>::operator()(
-    const typename Portable::MatrixFree<dim, double>::Data *data,
-    const Portable::DeviceVector<double>                   &src,
-    Portable::DeviceVector<double>                         &dst) const
+  template <int dim, int fe_degree, typename Number>
+  DEAL_II_HOST_DEVICE void
+  LocalHelmholtzOperator<dim, fe_degree, Number>::operator()(
+    const typename Portable::MatrixFree<dim, Number>::Data *data,
+    const Portable::DeviceVector<Number>                   &src,
+    Portable::DeviceVector<Number>                         &dst) const
   {
-    Portable::FEEvaluation<dim, fe_degree, fe_degree + 1, 1, double> fe_eval(
-      data);
-    fe_eval.read_dof_values(src);
-    fe_eval.evaluate(EvaluationFlags::values | EvaluationFlags::gradients);
-    fe_eval.apply_for_each_quad_point(
-      HelmholtzOperatorQuad<dim, fe_degree>(coef));
-    fe_eval.integrate(EvaluationFlags::values | EvaluationFlags::gradients);
-    fe_eval.distribute_local_to_global(dst);
+    if (use_fused_kernel)
+      {
+        Portable::apply_fused<dim, fe_degree, fe_degree + 1, 1, Number>(
+          data,
+          src,
+          dst,
+          HelmholtzOperatorQuad<dim, fe_degree, Number>(coef),
+          EvaluationFlags::values | EvaluationFlags::gradients,
+          EvaluationFlags::values | EvaluationFlags::gradients);
+      }
+    else
+      {
+        Portable::FEEvaluation<dim, fe_degree, fe_degree + 1, 1, Number>
+          fe_eval(data);
+        fe_eval.read_dof_values(src);
+        fe_eval.evaluate(EvaluationFlags::values | EvaluationFlags::gradients);
+        fe_eval.apply_for_each_quad_point(
+          HelmholtzOperatorQuad<dim, fe_degree, Number>(coef));
+        fe_eval.integrate(EvaluationFlags::values | EvaluationFlags::gradients);
+        fe_eval.distribute_local_to_global(dst);
+      }
   }
 
 
@@ -230,40 +253,43 @@ namespace Step64
   // class that implements the interface of a linear operator, it
   // needs to have a `vmult()` function that performs the action of
   // the linear operator on a source vector.
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number = double>
   class HelmholtzOperator : public EnableObserverPointer
   {
   public:
     HelmholtzOperator(const DoFHandler<dim>           &dof_handler,
-                      const AffineConstraints<double> &constraints);
+                      const AffineConstraints<Number> &constraints,
+                      const bool                       thread_per_cell,
+                      const bool                       use_fused_kernel);
 
     void
-    vmult(LinearAlgebra::distributed::Vector<double, MemorySpace::Default> &dst,
-          const LinearAlgebra::distributed::Vector<double, MemorySpace::Default>
+    vmult(LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &dst,
+          const LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
             &src) const;
 
     void initialize_dof_vector(
-      LinearAlgebra::distributed::Vector<double, MemorySpace::Default> &vec)
+      LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &vec)
       const;
 
     void compute_diagonal();
 
     std::shared_ptr<DiagonalMatrix<
-      LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>>
+      LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>>>
     get_matrix_diagonal_inverse() const;
 
     types::global_dof_index m() const;
 
     types::global_dof_index n() const;
 
-    double el(const types::global_dof_index row,
+    Number el(const types::global_dof_index row,
               const types::global_dof_index col) const;
 
   private:
-    Portable::MatrixFree<dim, double>                                mf_data;
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default> coef;
+    Portable::MatrixFree<dim, Number>                                mf_data;
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> coef;
+    bool use_fused_kernel;
     std::shared_ptr<DiagonalMatrix<
-      LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>>
+      LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>>>
       inverse_diagonal_entries;
   };
 
@@ -282,16 +308,20 @@ namespace Step64
   // parallel::TriangulationBase object, we have to downcast the return value.
   // This is safe to do here because we know that the triangulation is a
   // parallel::distributed::Triangulation object in fact.
-  template <int dim, int fe_degree>
-  HelmholtzOperator<dim, fe_degree>::HelmholtzOperator(
+  template <int dim, int fe_degree, typename Number>
+  HelmholtzOperator<dim, fe_degree, Number>::HelmholtzOperator(
     const DoFHandler<dim>           &dof_handler,
-    const AffineConstraints<double> &constraints)
+    const AffineConstraints<Number> &constraints,
+    const bool                       thread_per_cell,
+    const bool                       use_fused_kernel)
+    : use_fused_kernel(use_fused_kernel)
   {
     const MappingQ<dim> mapping(fe_degree);
-    typename Portable::MatrixFree<dim, double>::AdditionalData additional_data;
+    typename Portable::MatrixFree<dim, Number>::AdditionalData additional_data;
     additional_data.mapping_update_flags = update_values | update_gradients |
                                            update_JxW_values |
                                            update_quadrature_points;
+    additional_data.thread_per_cell = thread_per_cell;
     const QGauss<1> quad(fe_degree + 1);
     mf_data.reinit(mapping, dof_handler, constraints, quad, additional_data);
 
@@ -302,7 +332,8 @@ namespace Step64
         ->n_locally_owned_active_cells();
     coef.reinit(Utilities::pow(fe_degree + 1, dim) * n_owned_cells);
 
-    const VaryingCoefficientFunctor<dim, fe_degree> functor(coef.get_values());
+    const VaryingCoefficientFunctor<dim, fe_degree, Number> functor(
+      coef.get_values());
     mf_data.evaluate_coefficients(functor);
   }
 
@@ -315,51 +346,51 @@ namespace Step64
   // boundary conditions correctly. Since the local operator doesn't know about
   // constraints, we have to copy the correct values from the source to the
   // destination vector afterwards.
-  template <int dim, int fe_degree>
-  void HelmholtzOperator<dim, fe_degree>::vmult(
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>       &dst,
-    const LinearAlgebra::distributed::Vector<double, MemorySpace::Default> &src)
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzOperator<dim, fe_degree, Number>::vmult(
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>       &dst,
+    const LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &src)
     const
   {
     dst = 0.;
-    LocalHelmholtzOperator<dim, fe_degree> helmholtz_operator(
-      coef.get_values());
+    LocalHelmholtzOperator<dim, fe_degree, Number> helmholtz_operator(
+      coef.get_values(), use_fused_kernel);
     mf_data.cell_loop(helmholtz_operator, src, dst);
     mf_data.copy_constrained_values(src, dst);
   }
 
 
 
-  template <int dim, int fe_degree>
-  void HelmholtzOperator<dim, fe_degree>::initialize_dof_vector(
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default> &vec) const
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzOperator<dim, fe_degree, Number>::initialize_dof_vector(
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &vec) const
   {
     mf_data.initialize_dof_vector(vec);
   }
 
 
 
-  template <int dim, int fe_degree>
-  void HelmholtzOperator<dim, fe_degree>::compute_diagonal()
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzOperator<dim, fe_degree, Number>::compute_diagonal()
   {
     this->inverse_diagonal_entries.reset(
       new DiagonalMatrix<
-        LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>());
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>
+        LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>>());
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
       &inverse_diagonal = inverse_diagonal_entries->get_vector();
     initialize_dof_vector(inverse_diagonal);
 
-    HelmholtzOperatorQuad<dim, fe_degree> helmholtz_operator_quad(
+    HelmholtzOperatorQuad<dim, fe_degree, Number> helmholtz_operator_quad(
       coef.get_values());
 
-    MatrixFreeTools::compute_diagonal<dim, fe_degree, fe_degree + 1, 1, double>(
+    MatrixFreeTools::compute_diagonal<dim, fe_degree, fe_degree + 1, 1, Number>(
       mf_data,
       inverse_diagonal,
       helmholtz_operator_quad,
       EvaluationFlags::values | EvaluationFlags::gradients,
       EvaluationFlags::values | EvaluationFlags::gradients);
 
-    double *raw_diagonal = inverse_diagonal.get_values();
+    Number *raw_diagonal = inverse_diagonal.get_values();
 
     Kokkos::parallel_for(
       inverse_diagonal.locally_owned_size(), KOKKOS_LAMBDA(int i) {
@@ -372,36 +403,36 @@ namespace Step64
 
 
 
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number>
   std::shared_ptr<DiagonalMatrix<
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>>
-  HelmholtzOperator<dim, fe_degree>::get_matrix_diagonal_inverse() const
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>>>
+  HelmholtzOperator<dim, fe_degree, Number>::get_matrix_diagonal_inverse() const
   {
     return inverse_diagonal_entries;
   }
 
 
 
-  template <int dim, int fe_degree>
-  types::global_dof_index HelmholtzOperator<dim, fe_degree>::m() const
+  template <int dim, int fe_degree, typename Number>
+  types::global_dof_index HelmholtzOperator<dim, fe_degree, Number>::m() const
   {
     return mf_data.get_vector_partitioner()->size();
   }
 
 
 
-  template <int dim, int fe_degree>
-  types::global_dof_index HelmholtzOperator<dim, fe_degree>::n() const
+  template <int dim, int fe_degree, typename Number>
+  types::global_dof_index HelmholtzOperator<dim, fe_degree, Number>::n() const
   {
     return mf_data.get_vector_partitioner()->size();
   }
 
 
 
-  template <int dim, int fe_degree>
-  double
-  HelmholtzOperator<dim, fe_degree>::el(const types::global_dof_index row,
-                                        const types::global_dof_index col) const
+  template <int dim, int fe_degree, typename Number>
+  Number HelmholtzOperator<dim, fe_degree, Number>::el(
+    const types::global_dof_index row,
+    const types::global_dof_index col) const
   {
     (void)col;
     Assert(row == col, ExcNotImplemented());
@@ -419,11 +450,13 @@ namespace Step64
   // framework we use for tutorial programs. The only point worth
   // commenting on is the `solve()` function and the choice of vector
   // types.
-  template <int dim, int fe_degree>
+  template <int dim, int fe_degree, typename Number = double>
   class HelmholtzProblem
   {
   public:
-    HelmholtzProblem();
+    HelmholtzProblem(const bool thread_per_cell,
+                     const bool use_constraints,
+                     const bool solve_linear_system);
 
     void run();
 
@@ -432,7 +465,7 @@ namespace Step64
 
     void assemble_rhs();
 
-    void solve();
+    void solve(const bool copy_solution_to_host);
 
     void output_results(const unsigned int cycle) const;
 
@@ -446,8 +479,13 @@ namespace Step64
     IndexSet locally_owned_dofs;
     IndexSet locally_relevant_dofs;
 
-    AffineConstraints<double>                          constraints;
-    std::unique_ptr<HelmholtzOperator<dim, fe_degree>> system_matrix_dev;
+    AffineConstraints<Number> constraints;
+    std::unique_ptr<HelmholtzOperator<dim, fe_degree, Number>>
+      system_matrix_dev;
+
+    bool thread_per_cell;
+    bool use_constraints;
+    bool solve_linear_system;
 
     // Since all the operations in the `solve()` function are executed on the
     // graphics card, it is necessary for the vectors used to store their values
@@ -461,11 +499,11 @@ namespace Step64
     //
     // In addition, we also keep a solution vector with CPU storage such that we
     // can view and display the solution as usual.
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Host>
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Host>
       ghost_solution_host;
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
       solution_dev;
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
       system_rhs_dev;
 
     ConditionalOStream pcout;
@@ -475,19 +513,25 @@ namespace Step64
   // The implementation of all the remaining functions of this class apart from
   // `Helmholtzproblem::solve()` doesn't contain anything new and we won't
   // further comment much on the overall approach.
-  template <int dim, int fe_degree>
-  HelmholtzProblem<dim, fe_degree>::HelmholtzProblem()
+  template <int dim, int fe_degree, typename Number>
+  HelmholtzProblem<dim, fe_degree, Number>::HelmholtzProblem(
+    const bool thread_per_cell,
+    const bool use_constraints,
+    const bool solve_linear_system)
     : mpi_communicator(MPI_COMM_WORLD)
     , triangulation(mpi_communicator)
     , fe(fe_degree)
     , dof_handler(triangulation)
+    , thread_per_cell(thread_per_cell)
+    , use_constraints(use_constraints)
+    , solve_linear_system(solve_linear_system)
     , pcout(std::cout, Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
   {}
 
 
 
-  template <int dim, int fe_degree>
-  void HelmholtzProblem<dim, fe_degree>::setup_system()
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzProblem<dim, fe_degree, Number>::setup_system()
   {
     dof_handler.distribute_dofs(fe);
 
@@ -498,15 +542,19 @@ namespace Step64
 
     constraints.clear();
     constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
-    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             0,
-                                             Functions::ZeroFunction<dim>(),
-                                             constraints);
+    if (use_constraints)
+      {
+        DoFTools::make_hanging_node_constraints(dof_handler, constraints);
+        VectorTools::interpolate_boundary_values(
+          dof_handler, 0, Functions::ZeroFunction<dim, Number>(), constraints);
+      }
     constraints.close();
 
-    system_matrix_dev.reset(
-      new HelmholtzOperator<dim, fe_degree>(dof_handler, constraints));
+    system_matrix_dev.reset(new HelmholtzOperator<dim, fe_degree, Number>(
+      dof_handler,
+      constraints,
+      thread_per_cell,
+      use_framework_fused_helmholtz));
 
     ghost_solution_host.reinit(locally_owned_dofs,
                                locally_relevant_dofs,
@@ -534,10 +582,10 @@ namespace Step64
   // from the host to the device but need to use an intermediate
   // object of type LinearAlgebra::ReadWriteVector to construct the
   // correct communication pattern necessary.
-  template <int dim, int fe_degree>
-  void HelmholtzProblem<dim, fe_degree>::assemble_rhs()
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzProblem<dim, fe_degree, Number>::assemble_rhs()
   {
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Host>
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::Host>
                       system_rhs_host(locally_owned_dofs,
                       locally_relevant_dofs,
                       mpi_communicator);
@@ -551,7 +599,7 @@ namespace Step64
     const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
     const unsigned int n_q_points    = quadrature_formula.size();
 
-    Vector<double> cell_rhs(dofs_per_cell);
+    Vector<Number> cell_rhs(dofs_per_cell);
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -565,8 +613,8 @@ namespace Step64
           for (unsigned int q_index = 0; q_index < n_q_points; ++q_index)
             {
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
-                cell_rhs(i) += (fe_values.shape_value(i, q_index) * 1.0 *
-                                fe_values.JxW(q_index));
+                cell_rhs(i) += (fe_values.shape_value(i, q_index) *
+                                Number(1.0) * fe_values.JxW(q_index));
             }
 
           cell->get_dof_indices(local_dof_indices);
@@ -576,7 +624,7 @@ namespace Step64
         }
     system_rhs_host.compress(VectorOperation::add);
 
-    LinearAlgebra::ReadWriteVector<double> rw_vector(locally_owned_dofs);
+    LinearAlgebra::ReadWriteVector<Number> rw_vector(locally_owned_dofs);
     rw_vector.import_elements(system_rhs_host, VectorOperation::insert);
     system_rhs_dev.import_elements(rw_vector, VectorOperation::insert);
   }
@@ -595,14 +643,51 @@ namespace Step64
   // copy the solution from the device to the host to be able to view its
   // values and display it in `output_results()`. This transfer works the same
   // as at the end of the previous function.
-  template <int dim, int fe_degree>
-  void HelmholtzProblem<dim, fe_degree>::solve()
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzProblem<dim, fe_degree, Number>::solve(
+    const bool copy_solution_to_host)
   {
+    {
+      constexpr unsigned int vmult_repetitions = 30;
+
+      LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
+        bench_src;
+      LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
+        bench_dst;
+
+      system_matrix_dev->initialize_dof_vector(bench_src);
+      system_matrix_dev->initialize_dof_vector(bench_dst);
+
+      bench_src = Number(1.0);
+      bench_dst = Number(0.0);
+
+      Kokkos::fence();
+      const auto start = std::chrono::steady_clock::now();
+      for (unsigned int i = 0; i < vmult_repetitions; ++i)
+        system_matrix_dev->vmult(bench_dst, bench_src);
+      Kokkos::fence();
+      const auto stop = std::chrono::steady_clock::now();
+
+      const std::chrono::duration<double> elapsed = stop - start;
+      const double                        dofs_per_second =
+        static_cast<double>(bench_src.locally_owned_size()) *
+        static_cast<double>(vmult_repetitions) / elapsed.count();
+
+      pcout << "  vmult benchmark: repetitions=" << vmult_repetitions
+            << ", dofs_per_call=" << bench_src.locally_owned_size()
+            << ", avg_time_per_call="
+            << elapsed.count() / static_cast<double>(vmult_repetitions)
+            << " s, throughput=" << dofs_per_second << " DoFs/s" << std::endl;
+    }
+
+    if (!solve_linear_system)
+      return;
+
     system_matrix_dev->compute_diagonal();
 
     using PreconditionerType = PreconditionChebyshev<
-      HelmholtzOperator<dim, fe_degree>,
-      LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>;
+      HelmholtzOperator<dim, fe_degree, Number>,
+      LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>>;
     typename PreconditionerType::AdditionalData additional_data;
     additional_data.smoothing_range     = 15.;
     additional_data.degree              = 5;
@@ -613,22 +698,27 @@ namespace Step64
     PreconditionerType preconditioner;
     preconditioner.initialize(*system_matrix_dev, additional_data);
 
+    const double relative_tolerance =
+      std::max(1e-12, 100.0 * std::numeric_limits<Number>::epsilon());
     SolverControl solver_control(system_rhs_dev.size(),
-                                 1e-12 * system_rhs_dev.l2_norm());
-    SolverCG<LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>
+                                 relative_tolerance * system_rhs_dev.l2_norm());
+    SolverCG<LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>>
       cg(solver_control);
     cg.solve(*system_matrix_dev, solution_dev, system_rhs_dev, preconditioner);
 
     pcout << "  Solved in " << solver_control.last_step() << " iterations."
           << std::endl;
 
-    LinearAlgebra::ReadWriteVector<double> rw_vector(locally_owned_dofs);
-    rw_vector.import_elements(solution_dev, VectorOperation::insert);
-    ghost_solution_host.import_elements(rw_vector, VectorOperation::insert);
+    if (copy_solution_to_host)
+      {
+        LinearAlgebra::ReadWriteVector<Number> rw_vector(locally_owned_dofs);
+        rw_vector.import_elements(solution_dev, VectorOperation::insert);
+        ghost_solution_host.import_elements(rw_vector, VectorOperation::insert);
 
-    constraints.distribute(ghost_solution_host);
+        constraints.distribute(ghost_solution_host);
 
-    ghost_solution_host.update_ghost_values();
+        ghost_solution_host.update_ghost_values();
+      }
   }
 
   // The output results function is as usual since we have already copied the
@@ -645,8 +735,8 @@ namespace Step64
   // of evaluating the error $\|u_h-u\|_{L_2(\Omega)}$, we are just
   // evaluating $\|u_h-0\|_{L_2(\Omega)}=\|u_h\|_{L_2(\Omega)}$
   // instead.
-  template <int dim, int fe_degree>
-  void HelmholtzProblem<dim, fe_degree>::output_results(
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzProblem<dim, fe_degree, Number>::output_results(
     const unsigned int cycle) const
   {
     DataOut<dim> data_out;
@@ -664,7 +754,7 @@ namespace Step64
     Vector<float> cellwise_norm(triangulation.n_active_cells());
     VectorTools::integrate_difference(dof_handler,
                                       ghost_solution_host,
-                                      Functions::ZeroFunction<dim>(),
+                                      Functions::ZeroFunction<dim, Number>(),
                                       cellwise_norm,
                                       QGauss<dim>(fe.degree + 2),
                                       VectorTools::L2_norm);
@@ -678,29 +768,42 @@ namespace Step64
 
   // There is nothing surprising in the `run()` function either. We simply
   // compute the solution on a series of (globally) refined meshes.
-  template <int dim, int fe_degree>
-  void HelmholtzProblem<dim, fe_degree>::run()
+  template <int dim, int fe_degree, typename Number>
+  void HelmholtzProblem<dim, fe_degree, Number>::run()
   {
-    for (unsigned int cycle = 0; cycle < 7 - dim; ++cycle)
+    bool is_benchmark = true;
+    if (is_benchmark)
       {
-        pcout << "Cycle " << cycle << std::endl;
+        GridGenerator::hyper_cube(triangulation, 0., 1.);
 
-        if (cycle == 0)
-          GridGenerator::hyper_cube(triangulation, 0., 1.);
-        triangulation.refine_global(1);
+        triangulation.refine_global(8 - (fe_degree < 4 ? fe_degree : 3));
 
         setup_system();
 
-        pcout << "   Number of active cells:       "
-              << triangulation.n_global_active_cells() << std::endl
-              << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-              << std::endl;
-
         assemble_rhs();
-        solve();
-        output_results(cycle);
-        pcout << std::endl;
+        solve(false);
       }
+    else
+      for (unsigned int cycle = 0; cycle < 7 - dim; ++cycle)
+        {
+          pcout << "Cycle " << cycle << std::endl;
+
+          if (cycle == 0)
+            GridGenerator::hyper_cube(triangulation, 0., 1.);
+          triangulation.refine_global(1);
+
+          setup_system();
+
+          pcout << "   Number of active cells:       "
+                << triangulation.n_global_active_cells() << std::endl
+                << "   Number of degrees of freedom: " << dof_handler.n_dofs()
+                << std::endl;
+
+          assemble_rhs();
+          solve(true);
+          output_results(cycle);
+          pcout << std::endl;
+        }
   }
 } // namespace Step64
 
@@ -722,10 +825,147 @@ int main(int argc, char *argv[])
     {
       using namespace Step64;
 
-      Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv, 1);
+      Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv, numbers::invalid_unsigned_int);
 
-      HelmholtzProblem<3, 3> helmholtz_problem;
-      helmholtz_problem.run();
+      const bool is_root =
+        Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0;
+
+      std::string selected_number           = "all";
+      int         selected_degree           = -1;
+      bool        selected_thread_per_cell  = false;
+      bool        selected_use_constraints  = true;
+      bool        selected_solve            = true;
+      bool        selected_use_fused_kernel = false;
+
+      if (argc >= 2)
+        selected_number = argv[1];
+
+      if (argc >= 3)
+        {
+          const std::string degree_arg = argv[2];
+          if (degree_arg != "all")
+            {
+              const int degree = std::stoi(degree_arg);
+              AssertThrow(degree >= 1 && degree <= 5,
+                          ExcMessage(
+                            "Degree argument must be in [1, 5] or 'all'."));
+              selected_degree = degree;
+            }
+        }
+
+      if (argc >= 4)
+        selected_thread_per_cell = (std::stoi(argv[3]) != 0);
+
+      if (argc >= 5)
+        selected_use_constraints = (std::stoi(argv[4]) != 0);
+
+      if (argc >= 6)
+        selected_solve = (std::stoi(argv[5]) != 0);
+
+      if (argc >= 7)
+        selected_use_fused_kernel = (std::stoi(argv[6]) != 0);
+
+      use_framework_fused_helmholtz = selected_use_fused_kernel;
+
+      AssertThrow(selected_number == "all" || selected_number == "double" ||
+                    selected_number == "float",
+                  ExcMessage(
+                    "First argument must be one of: all, double, float."));
+
+      if (is_root)
+        std::cout << "Benchmark config: thread_per_cell="
+                  << selected_thread_per_cell
+                  << ", use_constraints=" << selected_use_constraints
+                  << ", solve=" << selected_solve
+                  << ", fused=" << selected_use_fused_kernel << std::endl;
+
+      const auto should_run = [selected_degree](const int degree) {
+        return selected_degree == -1 || selected_degree == degree;
+      };
+
+      if (selected_number == "all" || selected_number == "double")
+        {
+          if (is_root)
+            std::cout << "Running Number=double" << std::endl;
+
+          if (should_run(1))
+            {
+              HelmholtzProblem<3, 1, double> problem(selected_thread_per_cell,
+                                                     selected_use_constraints,
+                                                     selected_solve);
+              problem.run();
+            }
+          if (should_run(2))
+            {
+              HelmholtzProblem<3, 2, double> problem(selected_thread_per_cell,
+                                                     selected_use_constraints,
+                                                     selected_solve);
+              problem.run();
+            }
+          if (should_run(3))
+            {
+              HelmholtzProblem<3, 3, double> problem(selected_thread_per_cell,
+                                                     selected_use_constraints,
+                                                     selected_solve);
+              problem.run();
+            }
+          if (should_run(4))
+            {
+              HelmholtzProblem<3, 4, double> problem(selected_thread_per_cell,
+                                                     selected_use_constraints,
+                                                     selected_solve);
+              problem.run();
+            }
+          if (should_run(5))
+            {
+              HelmholtzProblem<3, 5, double> problem(selected_thread_per_cell,
+                                                     selected_use_constraints,
+                                                     selected_solve);
+              problem.run();
+            }
+        }
+
+      if (selected_number == "all" || selected_number == "float")
+        {
+          if (is_root)
+            std::cout << "Running Number=float" << std::endl;
+
+          if (should_run(1))
+            {
+              HelmholtzProblem<3, 1, float> problem(selected_thread_per_cell,
+                                                    selected_use_constraints,
+                                                    selected_solve);
+              problem.run();
+            }
+          if (should_run(2))
+            {
+              HelmholtzProblem<3, 2, float> problem(selected_thread_per_cell,
+                                                    selected_use_constraints,
+                                                    selected_solve);
+              problem.run();
+            }
+          if (should_run(3))
+            {
+              HelmholtzProblem<3, 3, float> problem(selected_thread_per_cell,
+                                                    selected_use_constraints,
+                                                    selected_solve);
+              problem.run();
+            }
+          if (should_run(4))
+            {
+              HelmholtzProblem<3, 4, float> problem(selected_thread_per_cell,
+                                                    selected_use_constraints,
+                                                    selected_solve);
+              problem.run();
+            }
+          if (should_run(5))
+            {
+              HelmholtzProblem<3, 5, float> problem(selected_thread_per_cell,
+                                                    selected_use_constraints,
+                                                    selected_solve);
+              problem.run();
+            }
+        }
     }
   catch (std::exception &exc)
     {
