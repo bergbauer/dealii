@@ -1,0 +1,5 @@
+
+DEAL::dim=2, fe_degree=1, Number=double, max_error=4.441e-16
+DEAL::dim=2, fe_degree=1, Number=float, max_error=4.768e-07
+DEAL::dim=3, fe_degree=1, Number=double, max_error=8.882e-16
+DEAL::dim=3, fe_degree=1, Number=float, max_error=2.384e-07
