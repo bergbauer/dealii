@@ -135,6 +135,7 @@ namespace Portable
       // We need at least three colors when we are using device-aware MPI and
       // overlapping the communication
       data->n_cells.resize(std::max(n_colors, 3U), 0);
+      data->color_has_constrained_dofs.resize(std::max(n_colors, 3U), false);
       data->local_to_global.resize(n_colors);
       data->constraint_mask.resize(n_colors);
 
@@ -205,6 +206,7 @@ namespace Portable
       // Create the host mirrow Views and fill them
       auto constraint_mask_host =
         Kokkos::create_mirror_view(data->constraint_mask[color]);
+      bool has_constraints_in_color = false;
 
       typename std::remove_reference_t<
         decltype(data->q_points[color])>::HostMirror q_points_host;
@@ -264,6 +266,14 @@ namespace Portable
                                           lexicographic_dof_indices,
                                           cell_id_view);
 
+          for (unsigned int c = 0; c < n_components; ++c)
+            if (cell_id_view[c] != dealii::internal::MatrixFreeFunctions::
+                                     ConstraintKinds::unconstrained)
+              {
+                has_constraints_in_color = true;
+                break;
+              }
+
           for (unsigned int i = 0; i < dofs_per_cell; ++i)
             local_to_global_host(i, cell_id) = lexicographic_dof_indices[i];
 
@@ -301,6 +311,8 @@ namespace Portable
         Kokkos::deep_copy(data->JxW[color], JxW_host);
       if (update_flags & update_gradients)
         Kokkos::deep_copy(data->inv_jacobian[color], inv_jacobian_host);
+
+      data->color_has_constrained_dofs[color] = has_constraints_in_color;
     }
 
 
@@ -337,6 +349,13 @@ namespace Portable
     template <int dim, typename Number, typename Functor, bool IsBlock>
     struct ApplyKernel
     {
+      enum class CellSelection : unsigned char
+      {
+        all,
+        unconstrained_only,
+        constrained_only
+      };
+
       using TeamHandle = Kokkos::TeamPolicy<
         MemorySpace::Default::kokkos_space::execution_space>::member_type;
       using SharedViewValues =
@@ -354,17 +373,30 @@ namespace Portable
                      MemorySpace::Default::kokkos_space::execution_space::
                        scratch_memory_space,
                      Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+      using SharedViewShape = typename SharedData<dim, Number>::SharedViewShape;
+      using SharedViewShapeScratch =
+        Kokkos::View<Number *,
+                     MemorySpace::Default::kokkos_space::execution_space::
+                       scratch_memory_space,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 
       ApplyKernel(
         Functor                                                 func,
         const typename MatrixFree<dim, Number>::PrecomputedData gpu_data,
         const LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
                                                                          &src,
-        LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &dst)
+        LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &dst,
+        const bool          thread_per_cell = false,
+        const CellSelection cell_selection  = CellSelection::all)
         : func(func)
         , gpu_data(gpu_data)
         , src(DeviceVector<Number>(src.get_values(), src.locally_owned_size()))
         , dst(DeviceVector<Number>(dst.get_values(), dst.locally_owned_size()))
+        , use_shared_shape_data(thread_per_cell)
+        , thread_per_cell(thread_per_cell)
+        , cell_selection(cell_selection)
+        , shape_values_size(gpu_data.shape_values.extent(0))
+        , shape_gradients_size(gpu_data.shape_gradients.extent(0))
       {}
 
       ApplyKernel(
@@ -374,30 +406,62 @@ namespace Portable
                                                       MemorySpace::Default>
           &src,
         LinearAlgebra::distributed::BlockVector<Number, MemorySpace::Default>
-          &dst)
+                           &dst,
+        const bool          thread_per_cell = false,
+        const CellSelection cell_selection  = CellSelection::all)
         : func(func)
         , gpu_data(gpu_data)
         , src(src)
         , dst(dst)
+        , use_shared_shape_data(thread_per_cell)
+        , thread_per_cell(thread_per_cell)
+        , cell_selection(cell_selection)
+        , shape_values_size(gpu_data.shape_values.extent(0))
+        , shape_gradients_size(gpu_data.shape_gradients.extent(0))
       {}
 
       Functor                                                 func;
       const typename MatrixFree<dim, Number>::PrecomputedData gpu_data;
       const DeviceBlockVector<Number>                         src;
       DeviceBlockVector<Number>                               dst;
+      const bool          use_shared_shape_data;
+      const bool          thread_per_cell;
+      const CellSelection cell_selection;
+      const unsigned int  shape_values_size;
+      const unsigned int  shape_gradients_size;
+
 
 
       // Provide the shared memory capacity. This function takes the team_size
       // as an argument, which allows team_size dependent allocations.
       std::size_t
-      team_shmem_size(int /*team_size*/) const
+      team_shmem_size(int team_size) const
       {
-        return SharedViewValues::shmem_size(Functor::n_q_points,
-                                            gpu_data.n_components) +
-               SharedViewGradients::shmem_size(Functor::n_q_points,
-                                               dim,
-                                               gpu_data.n_components) +
-               SharedViewScratchPad::shmem_size(gpu_data.scratch_pad_size);
+        const unsigned int scratch_pad_size = gpu_data.scratch_pad_size;
+
+        const std::size_t n_cell_slots =
+          use_shared_shape_data ? static_cast<std::size_t>(team_size) : 1;
+
+        const std::size_t values_entries =
+          static_cast<std::size_t>(Functor::n_q_points) *
+          static_cast<std::size_t>(gpu_data.n_components) * n_cell_slots;
+        const std::size_t gradients_entries =
+          static_cast<std::size_t>(Functor::n_q_points) *
+          static_cast<std::size_t>(dim) *
+          static_cast<std::size_t>(gpu_data.n_components) * n_cell_slots;
+        const std::size_t scratch_entries =
+          static_cast<std::size_t>(scratch_pad_size) * n_cell_slots;
+
+        const std::size_t bytes =
+          SharedViewScratchPad::shmem_size(values_entries) +
+          SharedViewScratchPad::shmem_size(gradients_entries) +
+          SharedViewScratchPad::shmem_size(scratch_entries);
+
+        if (use_shared_shape_data)
+          return bytes + SharedViewShapeScratch::shmem_size(shape_values_size) +
+                 SharedViewShapeScratch::shmem_size(shape_gradients_size);
+
+        return bytes;
       }
 
 
@@ -405,36 +469,170 @@ namespace Portable
       void
       operator()(const TeamHandle &team_member) const
       {
+        const int team_size             = team_member.team_size();
+        const int team_rank             = team_member.team_rank();
+        const int active_cells_per_team = thread_per_cell ? team_size : 1;
+
+        const auto should_process_cell = [&](const int cell_index) {
+          using ConstraintKinds =
+            dealii::internal::MatrixFreeFunctions::ConstraintKinds;
+
+          bool cell_is_constrained = false;
+          for (unsigned int c = 0; c < gpu_data.n_components; ++c)
+            if (gpu_data.constraint_mask(cell_index * gpu_data.n_components +
+                                         c) != ConstraintKinds::unconstrained)
+              {
+                cell_is_constrained = true;
+                break;
+              }
+
+          if (cell_selection == CellSelection::all)
+            return true;
+          if (cell_selection == CellSelection::unconstrained_only)
+            return !cell_is_constrained;
+
+          return cell_is_constrained;
+        };
+
         // Get the scratch memory
-        SharedViewValues     values(team_member.team_shmem(),
-                                Functor::n_q_points,
-                                gpu_data.n_components);
-        SharedViewGradients  gradients(team_member.team_shmem(),
-                                      Functor::n_q_points,
-                                      dim,
-                                      gpu_data.n_components);
-        SharedViewScratchPad scratch_pad(team_member.team_shmem(),
-                                         gpu_data.scratch_pad_size);
+        const std::size_t n_cell_slots =
+          thread_per_cell ? static_cast<std::size_t>(team_size) : 1;
+        const std::size_t values_per_cell =
+          static_cast<std::size_t>(Functor::n_q_points) *
+          static_cast<std::size_t>(gpu_data.n_components);
+        const std::size_t gradients_per_cell =
+          static_cast<std::size_t>(Functor::n_q_points) *
+          static_cast<std::size_t>(dim) *
+          static_cast<std::size_t>(gpu_data.n_components);
+        const std::size_t scratch_per_cell =
+          static_cast<std::size_t>(gpu_data.scratch_pad_size);
 
-        SharedData<dim, Number> shared_data(values, gradients, scratch_pad);
+        SharedViewScratchPad values_storage(team_member.team_shmem(),
+                                            values_per_cell * n_cell_slots);
+        SharedViewScratchPad gradients_storage(team_member.team_shmem(),
+                                               gradients_per_cell *
+                                                 n_cell_slots);
+        SharedViewScratchPad scratch_storage(team_member.team_shmem(),
+                                             scratch_per_cell * n_cell_slots);
 
-        const int cell_index = team_member.league_rank();
+        SharedViewValues     values;
+        SharedViewGradients  gradients;
+        SharedViewScratchPad scratch_pad;
+        const std::size_t    slot =
+          thread_per_cell ? static_cast<std::size_t>(team_rank) : 0;
+        values =
+          SharedViewValues(values_storage.data() + slot * values_per_cell,
+                           Functor::n_q_points,
+                           gpu_data.n_components);
+        gradients = SharedViewGradients(gradients_storage.data() +
+                                          slot * gradients_per_cell,
+                                        Functor::n_q_points,
+                                        dim,
+                                        gpu_data.n_components);
+        scratch_pad =
+          SharedViewScratchPad(scratch_storage.data() + slot * scratch_per_cell,
+                               gpu_data.scratch_pad_size);
 
-        typename MatrixFree<dim, Number>::Data data{team_member,
-                                                    /* n_dofhandler */ 1,
-                                                    cell_index,
-                                                    &gpu_data,
-                                                    &shared_data};
-
-        if constexpr (IsBlock)
+        SharedViewShape shape_values;
+        SharedViewShape shape_gradients;
+        if (use_shared_shape_data)
           {
-            DeviceBlockVector<Number> nonconstdst = dst;
-            func(&data, src, nonconstdst);
+            SharedViewShapeScratch shape_values_shared(team_member.team_shmem(),
+                                                       shape_values_size);
+            SharedViewShapeScratch shape_gradients_shared(
+              team_member.team_shmem(), shape_gradients_size);
+
+            Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member,
+                                                         shape_values_size),
+                                 [&](const int i) {
+                                   shape_values_shared(i) =
+                                     gpu_data.shape_values(i);
+                                 });
+
+            Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member,
+                                                         shape_gradients_size),
+                                 [&](const int i) {
+                                   shape_gradients_shared(i) =
+                                     gpu_data.shape_gradients(i);
+                                 });
+            team_member.team_barrier();
+
+            shape_values =
+              SharedViewShape(shape_values_shared.data(), shape_values_size);
+            shape_gradients = SharedViewShape(shape_gradients_shared.data(),
+                                              shape_gradients_size);
+          }
+
+        SharedData<dim, Number> shared_data =
+          use_shared_shape_data ?
+            SharedData<dim, Number>(
+              values, gradients, scratch_pad, shape_values, shape_gradients) :
+            SharedData<dim, Number>(values, gradients, scratch_pad);
+
+        const int first_cell =
+          static_cast<int>(team_member.league_rank() * active_cells_per_team);
+
+        if (thread_per_cell)
+          {
+            const int cell_index = first_cell + team_rank;
+
+            if (team_rank < active_cells_per_team &&
+                cell_index < static_cast<int>(gpu_data.n_cells))
+              {
+                if (!should_process_cell(cell_index))
+                  return;
+
+                typename MatrixFree<dim, Number>::Data data{
+                  team_member,
+                  /* n_dofhandler */ 1,
+                  cell_index,
+                  true,
+                  team_rank,
+                  &gpu_data,
+                  &shared_data};
+
+                if constexpr (IsBlock)
+                  {
+                    DeviceBlockVector<Number> nonconstdst = dst;
+                    func(&data, src, nonconstdst);
+                  }
+                else
+                  {
+                    DeviceVector<Number> nonconstdst = dst.block(0);
+                    func(&data, src.block(0), nonconstdst);
+                  }
+              }
           }
         else
           {
-            DeviceVector<Number> nonconstdst = dst.block(0);
-            func(&data, src.block(0), nonconstdst);
+            const int cell_index = first_cell;
+
+            if (cell_index >= static_cast<int>(gpu_data.n_cells))
+              return;
+
+            if (!should_process_cell(cell_index))
+              return;
+
+            typename MatrixFree<dim, Number>::Data data{team_member,
+                                                        /* n_dofhandler */ 1,
+                                                        cell_index,
+                                                        false,
+                                                        team_rank,
+                                                        &gpu_data,
+                                                        &shared_data};
+
+            if constexpr (IsBlock)
+              {
+                DeviceBlockVector<Number> nonconstdst = dst;
+                func(&data, src, nonconstdst);
+              }
+            else
+              {
+                DeviceVector<Number> nonconstdst = dst.block(0);
+                func(&data, src.block(0), nonconstdst);
+              }
+
+            team_member.team_barrier();
           }
       }
     };
@@ -445,6 +643,9 @@ namespace Portable
   template <int dim, typename Number>
   MatrixFree<dim, Number>::MatrixFree()
     : my_id(-1)
+    , use_coloring(false)
+    , overlap_communication_computation(false)
+    , thread_per_cell(false)
     , n_dofs(0)
     , padding_length(0)
     , dof_handler(nullptr)
@@ -532,19 +733,20 @@ namespace Portable
       data_copy.inv_jacobian = inv_jacobian[color];
     if (JxW.size() > 0)
       data_copy.JxW = JxW[color];
-    data_copy.local_to_global    = local_to_global[color];
-    data_copy.constraint_mask    = constraint_mask[color];
-    data_copy.shape_values       = shape_values;
-    data_copy.shape_gradients    = shape_gradients;
-    data_copy.co_shape_gradients = co_shape_gradients;
-    data_copy.constraint_weights = constraint_weights;
-    data_copy.n_cells            = n_cells[color];
-    data_copy.n_components       = n_components;
-    data_copy.padding_length     = padding_length;
-    data_copy.row_start          = row_start[color];
-    data_copy.use_coloring       = use_coloring;
-    data_copy.element_type       = element_type;
-    data_copy.scratch_pad_size   = scratch_pad_size;
+    data_copy.local_to_global      = local_to_global[color];
+    data_copy.constraint_mask      = constraint_mask[color];
+    data_copy.shape_values         = shape_values;
+    data_copy.shape_gradients      = shape_gradients;
+    data_copy.co_shape_gradients   = co_shape_gradients;
+    data_copy.constraint_weights   = constraint_weights;
+    data_copy.n_cells              = n_cells[color];
+    data_copy.n_components         = n_components;
+    data_copy.padding_length       = padding_length;
+    data_copy.row_start            = row_start[color];
+    data_copy.use_coloring         = use_coloring;
+    data_copy.element_type         = element_type;
+    data_copy.scratch_pad_size     = scratch_pad_size;
+    data_copy.has_constrained_dofs = color_has_constrained_dofs[color];
 
     return data_copy;
   }
@@ -564,21 +766,18 @@ namespace Portable
            ExcMessage("src and dst vectors have different size."));
     // FIXME When using C++17, we can use KOKKOS_CLASS_LAMBDA and this
     // work-around can be removed.
-    auto               constr_dofs = constrained_dofs;
-    const unsigned int size = internal::VectorLocalSize<VectorType>::get(dst);
-    const Number      *src_ptr = src.get_values();
-    Number            *dst_ptr = dst.get_values();
+    auto constr_dofs = partitioner ? constrained_owned_dofs : constrained_dofs;
+    const unsigned int n_dofs_to_copy =
+      partitioner ? n_owned_constrained_dofs : n_constrained_dofs;
+    const Number *src_ptr = src.get_values();
+    Number       *dst_ptr = dst.get_values();
     Kokkos::parallel_for(
       "dealii::copy_constrained_values",
       Kokkos::RangePolicy<MemorySpace::Default::kokkos_space::execution_space>(
-        0, n_constrained_dofs),
+        0, n_dofs_to_copy),
       KOKKOS_LAMBDA(int dof) {
-        // When working with distributed vectors, the constrained dofs are
-        // computed for ghosted vectors but we want to copy the values of the
-        // constrained dofs of non-ghosted vectors.
         const auto constrained_dof = constr_dofs[dof];
-        if (constrained_dof < size)
-          dst_ptr[constrained_dof] = src_ptr[constrained_dof];
+        dst_ptr[constrained_dof]   = src_ptr[constrained_dof];
       });
   }
 
@@ -596,20 +795,14 @@ namespace Portable
     Number *dst_ptr = dst.get_values();
     // FIXME When using C++17, we can use KOKKOS_CLASS_LAMBDA and this
     // work-around can be removed.
-    auto constr_dofs = constrained_dofs;
-    // When working with distributed vectors, the constrained dofs are
-    // computed for ghosted vectors but we want to set the values of the
-    // constrained dofs of non-ghosted vectors.
-    const unsigned int size =
-      partitioner ? dst.locally_owned_size() : dst.size();
+    auto constr_dofs = partitioner ? constrained_owned_dofs : constrained_dofs;
+    const unsigned int n_dofs_to_set =
+      partitioner ? n_owned_constrained_dofs : n_constrained_dofs;
     Kokkos::parallel_for(
       "dealii::set_constrained_values",
       Kokkos::RangePolicy<MemorySpace::Default::kokkos_space::execution_space>(
-        0, n_constrained_dofs),
-      KOKKOS_LAMBDA(int dof) {
-        if (constr_dofs[dof] < size)
-          dst_ptr[constr_dofs[dof]] = val;
-      });
+        0, n_dofs_to_set),
+      KOKKOS_LAMBDA(int dof) { dst_ptr[constr_dofs[dof]] = val; });
   }
 
 
@@ -684,6 +877,8 @@ namespace Portable
                                      Data data{team_member,
                                                /* n_dofhandler */ 1,
                                                cell_index,
+                                               false,
+                                               0,
                                                &color_data,
                                                /* shared_data */ nullptr};
 
@@ -784,6 +979,7 @@ namespace Portable
     this->use_coloring = additional_data.use_coloring;
     this->overlap_communication_computation =
       additional_data.overlap_communication_computation;
+    this->thread_per_cell = additional_data.thread_per_cell;
 
     n_dofs = dof_handler->n_dofs();
 
@@ -966,25 +1162,33 @@ namespace Portable
       row_start[i] = row_start[i - 1] + n_cells[i - 1] * get_padding_length();
 
     // Constrained indices
-    n_constrained_dofs = constraints.n_constraints();
+    n_constrained_dofs       = constraints.n_constraints();
+    n_owned_constrained_dofs = 0;
 
     if (n_constrained_dofs != 0)
       {
         std::vector<dealii::types::global_dof_index> constrained_dofs_host(
           n_constrained_dofs);
+        std::vector<dealii::types::global_dof_index>
+          constrained_owned_dofs_host;
+        constrained_owned_dofs_host.reserve(n_constrained_dofs);
 
         if (partitioner)
           {
             const unsigned int n_local_dofs =
               locally_relevant_dofs.n_elements();
+            const auto  &owned_dofs   = dof_handler->locally_owned_dofs();
             unsigned int i_constraint = 0;
             for (unsigned int i = 0; i < n_local_dofs; ++i)
               {
                 // is_constrained uses a global dof id but
                 // constrained_dofs_host works on the local id
-                if (constraints.is_constrained(partitioner->local_to_global(i)))
+                const auto global_index = partitioner->local_to_global(i);
+                if (constraints.is_constrained(global_index))
                   {
                     constrained_dofs_host[i_constraint] = i;
+                    if (owned_dofs.is_element(global_index))
+                      constrained_owned_dofs_host.push_back(i);
                     ++i_constraint;
                   }
               }
@@ -998,6 +1202,7 @@ namespace Portable
                 if (constraints.is_constrained(i))
                   {
                     constrained_dofs_host[i_constraint] = i;
+                    constrained_owned_dofs_host.push_back(i);
                     ++i_constraint;
                   }
               }
@@ -1014,6 +1219,22 @@ namespace Portable
           constrained_dofs_host_view(constrained_dofs_host.data(),
                                      constrained_dofs_host.size());
         Kokkos::deep_copy(constrained_dofs, constrained_dofs_host_view);
+
+        n_owned_constrained_dofs = constrained_owned_dofs_host.size();
+        constrained_owned_dofs =
+          Kokkos::View<types::global_dof_index *,
+                       MemorySpace::Default::kokkos_space>(
+            Kokkos::view_alloc("constrained_owned_dofs",
+                               Kokkos::WithoutInitializing),
+            n_owned_constrained_dofs);
+
+        Kokkos::View<types::global_dof_index *,
+                     MemorySpace::Default::kokkos_space,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+          constrained_owned_dofs_host_view(constrained_owned_dofs_host.data(),
+                                           constrained_owned_dofs_host.size());
+        Kokkos::deep_copy(constrained_owned_dofs,
+                          constrained_owned_dofs_host_view);
       }
   }
 
@@ -1026,23 +1247,42 @@ namespace Portable
                                             const VectorType &src,
                                             VectorType       &dst) const
   {
+    using Selection = typename internal::
+      ApplyKernel<dim, Number, Functor, IsBlockVector<VectorType>::value>::
+        CellSelection;
+
     // Execute the loop on the cells
     for (unsigned int color = 0; color < n_colors; ++color)
       if (n_cells[color] > 0)
         {
+          const auto color_data = get_data(color);
           MemorySpace::Default::kokkos_space::execution_space exec;
-          Kokkos::TeamPolicy<
-            MemorySpace::Default::kokkos_space::execution_space>
-            team_policy(exec, n_cells[color], Kokkos::AUTO);
 
+          const auto launch_pass = [&](const bool      launch_thread_per_cell,
+                                       const Selection selection) {
+            internal::ApplyKernel<dim,
+                                  Number,
+                                  Functor,
+                                  IsBlockVector<VectorType>::value>
+              apply_kernel(
+                func, color_data, src, dst, launch_thread_per_cell, selection);
 
-          internal::
-            ApplyKernel<dim, Number, Functor, IsBlockVector<VectorType>::value>
-              apply_kernel(func, get_data(color), src, dst);
+            Kokkos::TeamPolicy<
+              MemorySpace::Default::kokkos_space::execution_space>
+              team_policy(exec, n_cells[color], Kokkos::AUTO);
 
-          Kokkos::parallel_for("dealii::MatrixFree::serial_cell_loop",
-                               team_policy,
-                               apply_kernel);
+            Kokkos::parallel_for("dealii::MatrixFree::serial_cell_loop",
+                                 team_policy,
+                                 apply_kernel);
+          };
+
+          if (thread_per_cell && color_data.has_constrained_dofs)
+            {
+              launch_pass(true, Selection::unconstrained_only);
+              launch_pass(false, Selection::constrained_only);
+            }
+          else
+            launch_pass(thread_per_cell, Selection::all);
         }
     Kokkos::fence();
   }
@@ -1073,6 +1313,42 @@ namespace Portable
     LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &dst) const
   {
     MemorySpace::Default::kokkos_space::execution_space exec;
+    using Selection = typename internal::
+      ApplyKernel<dim, Number, Functor, false>::CellSelection;
+
+    const auto launch_color = [&](const unsigned int color,
+                                  const auto        &src_vector,
+                                  auto              &dst_vector,
+                                  const std::string &name) {
+      if (n_cells[color] == 0)
+        return;
+
+      const auto color_data  = get_data(color);
+      const auto launch_pass = [&](const bool         launch_thread_per_cell,
+                                   const Selection    selection,
+                                   const std::string &suffix) {
+        internal::ApplyKernel<dim, Number, Functor, false> apply_kernel(
+          func,
+          color_data,
+          src_vector,
+          dst_vector,
+          launch_thread_per_cell,
+          selection);
+
+        Kokkos::TeamPolicy<MemorySpace::Default::kokkos_space::execution_space>
+          team_policy(exec, n_cells[color], Kokkos::AUTO);
+
+        Kokkos::parallel_for(name + suffix, team_policy, apply_kernel);
+      };
+
+      if (thread_per_cell && color_data.has_constrained_dofs)
+        {
+          launch_pass(true, Selection::unconstrained_only, "_unconstrained");
+          launch_pass(false, Selection::constrained_only, "_constrained");
+        }
+      else
+        launch_pass(thread_per_cell, Selection::all, "");
+    };
 
     // in case we have compatible partitioners, we can simply use the provided
     // vectors
@@ -1087,36 +1363,20 @@ namespace Portable
             // In parallel, it's possible that some processors do not own any
             // cells.
             if (n_cells[0] > 0)
-              {
-                Kokkos::TeamPolicy<
-                  MemorySpace::Default::kokkos_space::execution_space>
-                  team_policy(exec, n_cells[0], Kokkos::AUTO);
-
-                internal::ApplyKernel<dim, Number, Functor, false> apply_kernel(
-                  func, get_data(0), src, dst);
-
-                Kokkos::parallel_for(
-                  "dealii::MatrixFree::distributed_cell_loop_0",
-                  team_policy,
-                  apply_kernel);
-              }
+              launch_color(0,
+                           src,
+                           dst,
+                           "dealii::MatrixFree::distributed_cell_loop_0");
             src.update_ghost_values_finish();
 
             // In serial this color does not exist because there are no ghost
             // cells
             if (n_cells[1] > 0)
               {
-                Kokkos::TeamPolicy<
-                  MemorySpace::Default::kokkos_space::execution_space>
-                  team_policy(exec, n_cells[1], Kokkos::AUTO);
-
-                internal::ApplyKernel<dim, Number, Functor, false> apply_kernel(
-                  func, get_data(1), src, dst);
-
-                Kokkos::parallel_for(
-                  "dealii::MatrixFree::distributed_cell_loop_1",
-                  team_policy,
-                  apply_kernel);
+                launch_color(1,
+                             src,
+                             dst,
+                             "dealii::MatrixFree::distributed_cell_loop_1");
 
                 // We need a synchronization point because we don't want
                 // device-aware MPI to start the MPI communication until the
@@ -1128,19 +1388,10 @@ namespace Portable
             // When the mesh is coarse it is possible that some processors do
             // not own any cells
             if (n_cells[2] > 0)
-              {
-                Kokkos::TeamPolicy<
-                  MemorySpace::Default::kokkos_space::execution_space>
-                  team_policy(exec, n_cells[2], Kokkos::AUTO);
-
-                internal::ApplyKernel<dim, Number, Functor, false> apply_kernel(
-                  func, get_data(2), src, dst);
-
-                Kokkos::parallel_for(
-                  "dealii::MatrixFree::distributed_cell_loop_2",
-                  team_policy,
-                  apply_kernel);
-              }
+              launch_color(2,
+                           src,
+                           dst,
+                           "dealii::MatrixFree::distributed_cell_loop_2");
             dst.compress_finish(VectorOperation::add);
           }
         else
@@ -1156,20 +1407,11 @@ namespace Portable
             // Execute the loop on the cells
             for (unsigned int i = 0; i < n_colors; ++i)
               if (n_cells[i] > 0)
-                {
-                  Kokkos::TeamPolicy<
-                    MemorySpace::Default::kokkos_space::execution_space>
-                    team_policy(exec, n_cells[i], Kokkos::AUTO);
-
-                  internal::ApplyKernel<dim, Number, Functor, false>
-                    apply_kernel(func, get_data(i), src, dst);
-
-                  Kokkos::parallel_for(
-                    "dealii::MatrixFree::distributed_cell_loop_" +
-                      std::to_string(i),
-                    team_policy,
-                    apply_kernel);
-                }
+                launch_color(i,
+                             src,
+                             dst,
+                             "dealii::MatrixFree::distributed_cell_loop_" +
+                               std::to_string(i));
             dst.compress(VectorOperation::add);
           }
         src.zero_out_ghost_values();
@@ -1188,20 +1430,11 @@ namespace Portable
         // Execute the loop on the cells
         for (unsigned int i = 0; i < n_colors; ++i)
           if (n_cells[i] > 0)
-            {
-              Kokkos::TeamPolicy<
-                MemorySpace::Default::kokkos_space::execution_space>
-                team_policy(exec, n_cells[i], Kokkos::AUTO);
-
-              internal::ApplyKernel<dim, Number, Functor, false> apply_kernel(
-                func, get_data(i), ghosted_src, ghosted_dst);
-
-              Kokkos::parallel_for(
-                "dealii::MatrixFree::distributed_cell_loop_" +
-                  std::to_string(i),
-                team_policy,
-                apply_kernel);
-            }
+            launch_color(i,
+                         ghosted_src,
+                         ghosted_dst,
+                         "dealii::MatrixFree::distributed_cell_loop_" +
+                           std::to_string(i));
 
         // Add the ghosted values
         ghosted_dst.compress(VectorOperation::add);

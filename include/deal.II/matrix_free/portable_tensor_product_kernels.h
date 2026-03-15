@@ -57,19 +57,31 @@ namespace Portable
                       &team_member,
       ViewTypeOut      dst,
       const ViewTypeIn src,
-      const int        N)
+      const int        N,
+      const bool       thread_per_cell = false)
     {
       Assert(dst.size() >= static_cast<unsigned int>(N), ExcInternalError());
       Assert(src.size() >= static_cast<unsigned int>(N), ExcInternalError());
-      Kokkos::parallel_for(Kokkos::TeamVectorRange(team_member, N),
-                           [&](const int i) {
-                             if constexpr (add)
-                               Kokkos::atomic_add(&dst(i), src(i));
-                             else
-                               dst(i) = src(i);
-                           });
+      if (thread_per_cell)
+        {
+          for (int i = 0; i < N; ++i)
+            if constexpr (add)
+              Kokkos::atomic_add(&dst(i), src(i));
+            else
+              dst(i) = src(i);
+        }
+      else
+        {
+          Kokkos::parallel_for(Kokkos::TeamVectorRange(team_member, N),
+                               [&](const int i) {
+                                 if constexpr (add)
+                                   Kokkos::atomic_add(&dst(i), src(i));
+                                 else
+                                   dst(i) = src(i);
+                               });
 
-      team_member.team_barrier();
+          team_member.team_barrier();
+        }
     }
 
 
@@ -84,16 +96,17 @@ namespace Portable
               typename Number,
               bool contract_over_rows,
               bool add,
+              typename ShapeViewType,
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
     apply_1d(const Kokkos::TeamPolicy<
                MemorySpace::Default::kokkos_space::execution_space>::member_type
-               &team_member,
-             const Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-                              shape_data,
-             const ViewTypeIn in,
-             ViewTypeOut      out)
+                                &team_member,
+             const ShapeViewType shape_data,
+             const bool          thread_per_cell,
+             const ViewTypeIn    in,
+             ViewTypeOut         out)
     {
       constexpr int Nk = (contract_over_rows ? n_rows : n_columns),
                     Nq = (contract_over_rows ? n_columns : n_rows);
@@ -102,24 +115,33 @@ namespace Portable
       Assert(in.size() >= Nk, ExcInternalError());
       Assert(out.size() >= Nq, ExcInternalError());
 
-      Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member, Nq),
-                           [&](const int q) {
-                             Number sum = 0;
-                             for (int k = 0; k < Nk; ++k)
-                               {
-                                 const int shape_idx =
-                                   (contract_over_rows ? q + k * Nq :
-                                                         k + q * Nk);
-                                 sum += shape_data(shape_idx) * in(k);
-                               }
+      auto inner_kernel = [&](const int q) {
+        Number sum = 0;
+        for (int k = 0; k < Nk; ++k)
+          {
+            const int shape_idx =
+              (contract_over_rows ? q + k * Nq : k + q * Nk);
+            sum += shape_data(shape_idx) * in(k);
+          }
 
-                             if constexpr (add)
-                               Kokkos::atomic_add(&out(q), sum);
-                             else
-                               out(q) = sum;
-                           });
+        if constexpr (add)
+          Kokkos::atomic_add(&out(q), sum);
+        else
+          out(q) = sum;
+      };
 
-      team_member.team_barrier();
+      if (thread_per_cell)
+        {
+          for (int q = 0; q < Nq; ++q)
+            inner_kernel(q);
+        }
+      else
+        {
+          Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member, Nq),
+                               inner_kernel);
+
+          team_member.team_barrier();
+        }
     }
 
 
@@ -133,16 +155,17 @@ namespace Portable
               typename Number,
               bool contract_over_rows,
               bool add,
+              typename ShapeViewType,
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
     apply_2d(const Kokkos::TeamPolicy<
                MemorySpace::Default::kokkos_space::execution_space>::member_type
-               &team_member,
-             const Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-                              shape_data,
-             const ViewTypeIn in,
-             ViewTypeOut      out)
+                                &team_member,
+             const ShapeViewType shape_data,
+             const bool          thread_per_cell,
+             const ViewTypeIn    in,
+             ViewTypeOut         out)
     {
       using TeamType = Kokkos::TeamPolicy<
         MemorySpace::Default::kokkos_space::execution_space>::member_type;
@@ -172,11 +195,7 @@ namespace Portable
       Assert(in.size() >= Nj * Nk, ExcInternalError());
       Assert(out.size() >= Nj * Nq, ExcInternalError());
 
-      auto thread_policy =
-        Kokkos::TeamThreadMDRange<Kokkos::Rank<2>, TeamType>(team_member,
-                                                             Nj,
-                                                             Nq);
-      Kokkos::parallel_for(thread_policy, [&](const int j, const int q) {
+      auto inner_kernel = [&](const int j, const int q) {
         const int base_shape   = contract_over_rows ? q : q * n_columns;
         const int stride_shape = contract_over_rows ? n_columns : 1;
 
@@ -194,9 +213,24 @@ namespace Portable
           Kokkos::atomic_add(&out(index_out), sum);
         else
           out(index_out) = sum;
-      });
+      };
 
-      team_member.team_barrier();
+      if (thread_per_cell)
+        {
+          for (int j = 0; j < Nj; ++j)
+            for (int q = 0; q < Nq; ++q)
+              inner_kernel(j, q);
+        }
+      else
+        {
+          auto thread_policy =
+            Kokkos::TeamThreadMDRange<Kokkos::Rank<2>, TeamType>(team_member,
+                                                                 Nj,
+                                                                 Nq);
+          Kokkos::parallel_for(thread_policy, inner_kernel);
+
+          team_member.team_barrier();
+        }
     }
 
 
@@ -210,16 +244,17 @@ namespace Portable
               typename Number,
               bool contract_over_rows,
               bool add,
+              typename ShapeViewType,
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
     apply_3d(const Kokkos::TeamPolicy<
                MemorySpace::Default::kokkos_space::execution_space>::member_type
-               &team_member,
-             const Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-                              shape_data,
-             const ViewTypeIn in,
-             ViewTypeOut      out)
+                                &team_member,
+             const ShapeViewType shape_data,
+             const bool          thread_per_cell,
+             const ViewTypeIn    in,
+             ViewTypeOut         out)
     {
       using TeamType = Kokkos::TeamPolicy<
         MemorySpace::Default::kokkos_space::execution_space>::member_type;
@@ -254,35 +289,49 @@ namespace Portable
       Assert(in.size() >= Ni * Nj * Nk, ExcInternalError());
       Assert(out.size() >= Ni * Nj * Nq, ExcInternalError());
 
-      auto thread_policy = Kokkos::TeamThreadMDRange<Kokkos::Rank<3>, TeamType>(
-        team_member, Ni, Nj, Nq);
-      Kokkos::parallel_for(
-        thread_policy, [&](const int i, const int j, const int q) {
-          const int base_shape   = contract_over_rows ? q : q * n_columns;
-          const int stride_shape = contract_over_rows ? n_columns : 1;
+      auto inner_kernel = [&](const int i, const int j, const int q) {
+        const int base_shape   = contract_over_rows ? q : q * n_columns;
+        const int stride_shape = contract_over_rows ? n_columns : 1;
 
-          const int base_in =
-            (direction == 0 ? (i * Nj + j) * Nk :
-                              (direction == 1 ? i + j * Ni * Nk : i * Nj + j));
-          const int stride_in = Utilities::pow(n_columns, direction);
+        const int base_in =
+          (direction == 0 ? (i * Nj + j) * Nk :
+                            (direction == 1 ? i + j * Ni * Nk : i * Nj + j));
+        const int stride_in = Utilities::pow(n_columns, direction);
 
-          Number sum = shape_data(base_shape) * in(base_in);
-          for (int k = 1; k < Nk; ++k)
-            sum += shape_data(base_shape + k * stride_shape) *
-                   in(base_in + k * stride_in);
+        Number sum = shape_data(base_shape) * in(base_in);
+        for (int k = 1; k < Nk; ++k)
+          sum += shape_data(base_shape + k * stride_shape) *
+                 in(base_in + k * stride_in);
 
-          const int index_out =
-            (direction == 0 ? (i * Nj + j) * Nq + q :
-                              (direction == 1 ? i + (j * Nq + q) * Ni :
-                                                (i + q * Ni) * Nj + j));
+        const int index_out =
+          (direction == 0 ?
+             (i * Nj + j) * Nq + q :
+             (direction == 1 ? i + (j * Nq + q) * Ni : (i + q * Ni) * Nj + j));
 
-          if constexpr (add)
-            Kokkos::atomic_add(&out(index_out), sum);
-          else
-            out(index_out) = sum;
-        });
+        if constexpr (add)
+          Kokkos::atomic_add(&out(index_out), sum);
+        else
+          out(index_out) = sum;
+      };
 
-      team_member.team_barrier();
+      if (thread_per_cell)
+        {
+          for (int i = 0; i < Ni; ++i)
+            for (int j = 0; j < Nj; ++j)
+              for (int q = 0; q < Nq; ++q)
+                inner_kernel(i, j, q);
+        }
+      else
+        {
+          auto thread_policy =
+            Kokkos::TeamThreadMDRange<Kokkos::Rank<3>, TeamType>(team_member,
+                                                                 Ni,
+                                                                 Nj,
+                                                                 Nq);
+          Kokkos::parallel_for(thread_policy, inner_kernel);
+
+          team_member.team_barrier();
+        }
     }
 #endif
 
@@ -295,27 +344,46 @@ namespace Portable
               int  direction,
               bool contract_over_rows,
               bool add,
+              typename ShapeViewType,
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
     apply(const Kokkos::TeamPolicy<
             MemorySpace::Default::kokkos_space::execution_space>::member_type
-            &team_member,
-          const Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-                           shape_data,
-          const ViewTypeIn in,
-          ViewTypeOut      out)
+                             &team_member,
+          const ShapeViewType shape_data,
+          const bool          thread_per_cell,
+          const ViewTypeIn    in,
+          ViewTypeOut         out)
     {
 #if DEAL_II_KOKKOS_VERSION_GTE(4, 0, 0)
       if constexpr (dim == 1)
-        apply_1d<n_rows, n_columns, direction, Number, contract_over_rows, add>(
-          team_member, shape_data, in, out);
+        apply_1d<n_rows,
+                 n_columns,
+                 direction,
+                 Number,
+                 contract_over_rows,
+                 add,
+                 ShapeViewType>(
+          team_member, shape_data, thread_per_cell, in, out);
       if constexpr (dim == 2)
-        apply_2d<n_rows, n_columns, direction, Number, contract_over_rows, add>(
-          team_member, shape_data, in, out);
+        apply_2d<n_rows,
+                 n_columns,
+                 direction,
+                 Number,
+                 contract_over_rows,
+                 add,
+                 ShapeViewType>(
+          team_member, shape_data, thread_per_cell, in, out);
       if constexpr (dim == 3)
-        apply_3d<n_rows, n_columns, direction, Number, contract_over_rows, add>(
-          team_member, shape_data, in, out);
+        apply_3d<n_rows,
+                 n_columns,
+                 direction,
+                 Number,
+                 contract_over_rows,
+                 add,
+                 ShapeViewType>(
+          team_member, shape_data, thread_per_cell, in, out);
 #else
       // I: [0, m^{dim - direction - 1})
       // J: [0, n^direction)
@@ -332,32 +400,42 @@ namespace Portable
       constexpr int N      = NI * NJ * Nq;
       constexpr int stride = Utilities::pow(n_columns, direction);
 
-      Kokkos::parallel_for(
-        Kokkos::TeamThreadRange(team_member, N), [&](const int index_out) {
-          // index_in  = (I Nk + k) n^direction + J
-          // index_out = (I Nq + q) n^direction + J
-          const int q = (index_out / stride) % Nq;
-          const int I = (index_out / stride) / Nq;
-          const int J = index_out % stride;
+      auto inner_kernel = [&](const int index_out) {
+        // index_in  = (I Nk + k) n^direction + J
+        // index_out = (I Nq + q) n^direction + J
+        const int q = (index_out / stride) % Nq;
+        const int I = (index_out / stride) / Nq;
+        const int J = index_out % stride;
 
-          const int base_shape   = contract_over_rows ? q : q * n_columns;
-          const int stride_shape = contract_over_rows ? n_columns : 1;
-          const int base_in      = I * Nk * stride + J;
+        const int base_shape   = contract_over_rows ? q : q * n_columns;
+        const int stride_shape = contract_over_rows ? n_columns : 1;
+        const int base_in      = I * Nk * stride + J;
 
-          Number sum = shape_data(base_shape) * in(base_in);
-          for (int k = 1; k < Nk; ++k)
-            {
-              const int index_in = (I * Nk + k) * stride + J;
-              sum += shape_data(base_shape + k * stride_shape) * in(index_in);
-            }
+        Number sum = shape_data(base_shape) * in(base_in);
+        for (int k = 1; k < Nk; ++k)
+          {
+            const int index_in = (I * Nk + k) * stride + J;
+            sum += shape_data(base_shape + k * stride_shape) * in(index_in);
+          }
 
-          if constexpr (add)
-            Kokkos::atomic_add(&out(index_out), sum);
-          else
-            out(index_out) = sum;
-        });
+        if constexpr (add)
+          Kokkos::atomic_add(&out(index_out), sum);
+        else
+          out(index_out) = sum;
+      };
 
-      team_member.team_barrier();
+      if (thread_per_cell)
+        {
+          for (int index_out = 0; index_out < N; ++index_out)
+            inner_kernel(index_out);
+        }
+      else
+        {
+          Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member, N),
+                               inner_kernel);
+
+          team_member.team_barrier();
+        }
 #endif
     }
 
@@ -370,7 +448,10 @@ namespace Portable
               int              dim,
               int              n_rows,
               int              n_columns,
-              typename Number>
+              typename Number,
+              typename ShapeViewType =
+                Kokkos::View<Number *, MemorySpace::Default::kokkos_space>,
+              typename CoShapeViewType = ShapeViewType>
     struct EvaluatorTensorProduct
     {};
 
@@ -380,12 +461,19 @@ namespace Portable
      * Internal evaluator for 1d-3d shape function using the tensor product form
      * of the basis functions.
      */
-    template <int dim, int n_rows, int n_columns, typename Number>
+    template <int dim,
+              int n_rows,
+              int n_columns,
+              typename Number,
+              typename ShapeViewType,
+              typename CoShapeViewType>
     struct EvaluatorTensorProduct<evaluate_general,
                                   dim,
                                   n_rows,
                                   n_columns,
-                                  Number>
+                                  Number,
+                                  ShapeViewType,
+                                  CoShapeViewType>
     {
     public:
       using TeamHandle = Kokkos::TeamPolicy<
@@ -397,14 +485,12 @@ namespace Portable
                                       Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 
       DEAL_II_HOST_DEVICE
-      EvaluatorTensorProduct(
-        const TeamHandle                                          &team_member,
-        Kokkos::View<Number *, MemorySpace::Default::kokkos_space> shape_values,
-        Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-          shape_gradients,
-        Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-                   co_shape_gradients,
-        SharedView temp);
+      EvaluatorTensorProduct(const TeamHandle      &team_member,
+                             const ShapeViewType   &shape_values,
+                             const ShapeViewType   &shape_gradients,
+                             const CoShapeViewType &co_shape_gradients,
+                             SharedView             temp,
+                             const bool             thread_per_cell = false);
 
       /**
        * Evaluate/integrate the values of a finite element function at the
@@ -453,49 +539,67 @@ namespace Portable
       /**
        * Values of the shape functions.
        */
-      Kokkos::View<Number *, MemorySpace::Default::kokkos_space> shape_values;
+      ShapeViewType shape_values;
 
       /**
        * Values of the shape function gradients.
        */
-      Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-        shape_gradients;
+      ShapeViewType shape_gradients;
 
       /**
        * Values of the shape function gradients for collocation methods.
        */
-      Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-        co_shape_gradients;
+      CoShapeViewType co_shape_gradients;
 
       /**
        * Temporary storage for in-place evaluations.
        */
       SharedView temp;
+
+      /**
+       * If true, run scalar loops and avoid team collectives.
+       */
+      bool thread_per_cell;
     };
 
 
 
-    template <int dim, int n_rows, int n_columns, typename Number>
+    template <int dim,
+              int n_rows,
+              int n_columns,
+              typename Number,
+              typename ShapeViewType,
+              typename CoShapeViewType>
     DEAL_II_HOST_DEVICE
-    EvaluatorTensorProduct<evaluate_general, dim, n_rows, n_columns, Number>::
-      EvaluatorTensorProduct(
-        const TeamHandle                                          &team_member,
-        Kokkos::View<Number *, MemorySpace::Default::kokkos_space> shape_values,
-        Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-          shape_gradients,
-        Kokkos::View<Number *, MemorySpace::Default::kokkos_space>
-                   co_shape_gradients,
-        SharedView temp)
+    EvaluatorTensorProduct<evaluate_general,
+                           dim,
+                           n_rows,
+                           n_columns,
+                           Number,
+                           ShapeViewType,
+                           CoShapeViewType>::
+      EvaluatorTensorProduct(const TeamHandle      &team_member,
+                             const ShapeViewType   &shape_values,
+                             const ShapeViewType   &shape_gradients,
+                             const CoShapeViewType &co_shape_gradients,
+                             SharedView             temp,
+                             const bool             thread_per_cell)
       : team_member(team_member)
       , shape_values(shape_values)
       , shape_gradients(shape_gradients)
       , co_shape_gradients(co_shape_gradients)
       , temp(temp)
+      , thread_per_cell(thread_per_cell)
     {}
 
 
 
-    template <int dim, int n_rows, int n_columns, typename Number>
+    template <int dim,
+              int n_rows,
+              int n_columns,
+              typename Number,
+              typename ShapeViewType,
+              typename CoShapeViewType>
     template <int  direction,
               bool dof_to_quad,
               bool add,
@@ -503,24 +607,36 @@ namespace Portable
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
-    EvaluatorTensorProduct<evaluate_general, dim, n_rows, n_columns, Number>::
-      values(const ViewTypeIn in, ViewTypeOut out) const
+    EvaluatorTensorProduct<evaluate_general,
+                           dim,
+                           n_rows,
+                           n_columns,
+                           Number,
+                           ShapeViewType,
+                           CoShapeViewType>::values(const ViewTypeIn in,
+                                                    ViewTypeOut      out) const
     {
       if constexpr (in_place)
         {
           apply<dim, n_rows, n_columns, Number, direction, dof_to_quad, false>(
-            team_member, shape_values, in, temp);
+            team_member, shape_values, thread_per_cell, in, temp);
 
-          populate_view<add>(team_member, out, temp, out.extent(0));
+          populate_view<add>(
+            team_member, out, temp, out.extent(0), thread_per_cell);
         }
       else
         apply<dim, n_rows, n_columns, Number, direction, dof_to_quad, add>(
-          team_member, shape_values, in, out);
+          team_member, shape_values, thread_per_cell, in, out);
     }
 
 
 
-    template <int dim, int n_rows, int n_columns, typename Number>
+    template <int dim,
+              int n_rows,
+              int n_columns,
+              typename Number,
+              typename ShapeViewType,
+              typename CoShapeViewType>
     template <int  direction,
               bool dof_to_quad,
               bool add,
@@ -528,24 +644,36 @@ namespace Portable
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
-    EvaluatorTensorProduct<evaluate_general, dim, n_rows, n_columns, Number>::
-      gradients(const ViewTypeIn in, ViewTypeOut out) const
+    EvaluatorTensorProduct<evaluate_general,
+                           dim,
+                           n_rows,
+                           n_columns,
+                           Number,
+                           ShapeViewType,
+                           CoShapeViewType>::gradients(const ViewTypeIn in,
+                                                       ViewTypeOut out) const
     {
       if constexpr (in_place)
         {
           apply<dim, n_rows, n_columns, Number, direction, dof_to_quad, false>(
-            team_member, shape_gradients, in, temp);
+            team_member, shape_gradients, thread_per_cell, in, temp);
 
-          populate_view<add>(team_member, out, temp, out.extent(0));
+          populate_view<add>(
+            team_member, out, temp, out.extent(0), thread_per_cell);
         }
       else
         apply<dim, n_rows, n_columns, Number, direction, dof_to_quad, add>(
-          team_member, shape_gradients, in, out);
+          team_member, shape_gradients, thread_per_cell, in, out);
     }
 
 
 
-    template <int dim, int n_rows, int n_columns, typename Number>
+    template <int dim,
+              int n_rows,
+              int n_columns,
+              typename Number,
+              typename ShapeViewType,
+              typename CoShapeViewType>
     template <int  direction,
               bool dof_to_quad,
               bool add,
@@ -553,8 +681,14 @@ namespace Portable
               typename ViewTypeIn,
               typename ViewTypeOut>
     DEAL_II_HOST_DEVICE void
-    EvaluatorTensorProduct<evaluate_general, dim, n_rows, n_columns, Number>::
-      co_gradients(const ViewTypeIn in, ViewTypeOut out) const
+    EvaluatorTensorProduct<evaluate_general,
+                           dim,
+                           n_rows,
+                           n_columns,
+                           Number,
+                           ShapeViewType,
+                           CoShapeViewType>::co_gradients(const ViewTypeIn in,
+                                                          ViewTypeOut out) const
     {
       if constexpr (in_place)
         {
@@ -564,13 +698,15 @@ namespace Portable
                 Number,
                 direction,
                 dof_to_quad,
-                false>(team_member, co_shape_gradients, in, temp);
+                false>(
+            team_member, co_shape_gradients, thread_per_cell, in, temp);
 
-          populate_view<add>(team_member, out, temp, out.extent(0));
+          populate_view<add>(
+            team_member, out, temp, out.extent(0), thread_per_cell);
         }
       else
         apply<dim, n_columns, n_columns, Number, direction, dof_to_quad, add>(
-          team_member, co_shape_gradients, in, out);
+          team_member, co_shape_gradients, thread_per_cell, in, out);
     }
   } // namespace internal
 } // namespace Portable

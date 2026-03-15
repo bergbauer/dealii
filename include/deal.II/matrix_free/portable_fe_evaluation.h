@@ -281,7 +281,7 @@ namespace Portable
     : data(data)
     , precomputed_data(data->precomputed_data)
     , shared_data(data->shared_data)
-    , cell_id(data->team_member.league_rank())
+    , cell_id(data->cell_index)
   {
     AssertIndexRange(dof_index, data->n_dofhandler);
   }
@@ -329,16 +329,25 @@ namespace Portable
   FEEvaluation<dim, fe_degree, n_q_points_1d, n_components_, Number>::
     read_dof_values(const DeviceVector<Number> &src)
   {
-    // Populate the scratch memory
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(data->team_member,
-                                                 tensor_dofs_per_component),
-                         [&](const int &i) {
-                           for (unsigned int c = 0; c < n_components_; ++c)
-                             shared_data->values(i, c) =
-                               src[precomputed_data->local_to_global(
-                                 i + tensor_dofs_per_component * c, cell_id)];
-                         });
-    data->team_member.team_barrier();
+    if (data->thread_per_cell)
+      {
+        for (unsigned int i = 0; i < tensor_dofs_per_component; ++i)
+          for (unsigned int c = 0; c < n_components_; ++c)
+            shared_data->values(i, c) = src[precomputed_data->local_to_global(
+              i + tensor_dofs_per_component * c, cell_id)];
+      }
+    else
+      {
+        // Populate the scratch memory
+        Kokkos::parallel_for(
+          Kokkos::TeamThreadRange(data->team_member, tensor_dofs_per_component),
+          [&](const int &i) {
+            for (unsigned int c = 0; c < n_components_; ++c)
+              shared_data->values(i, c) = src[precomputed_data->local_to_global(
+                i + tensor_dofs_per_component * c, cell_id)];
+          });
+        data->team_member.team_barrier();
+      }
 
     for (unsigned int c = 0; c < n_components_; ++c)
       {
@@ -378,25 +387,51 @@ namespace Portable
 
     if (precomputed_data->use_coloring)
       {
-        Kokkos::parallel_for(
-          Kokkos::TeamThreadRange(data->team_member, tensor_dofs_per_component),
-          [&](const int &i) {
-            for (unsigned int c = 0; c < n_components_; ++c)
-              dst[precomputed_data->local_to_global(
-                i + tensor_dofs_per_component * c, cell_id)] +=
-                shared_data->values(i, c);
-          });
+        if (data->thread_per_cell)
+          {
+            for (unsigned int i = 0; i < tensor_dofs_per_component; ++i)
+              for (unsigned int c = 0; c < n_components_; ++c)
+                dst[precomputed_data->local_to_global(
+                  i + tensor_dofs_per_component * c, cell_id)] +=
+                  shared_data->values(i, c);
+          }
+        else
+          {
+            Kokkos::parallel_for(
+              Kokkos::TeamThreadRange(data->team_member,
+                                      tensor_dofs_per_component),
+              [&](const int &i) {
+                for (unsigned int c = 0; c < n_components_; ++c)
+                  dst[precomputed_data->local_to_global(
+                    i + tensor_dofs_per_component * c, cell_id)] +=
+                    shared_data->values(i, c);
+              });
+          }
       }
     else
       {
-        Kokkos::parallel_for(
-          Kokkos::TeamThreadRange(data->team_member, tensor_dofs_per_component),
-          [&](const int &i) {
-            for (unsigned int c = 0; c < n_components_; ++c)
-              Kokkos::atomic_add(&dst[precomputed_data->local_to_global(
-                                   i + (tensor_dofs_per_component)*c, cell_id)],
-                                 shared_data->values(i, c));
-          });
+        if (data->thread_per_cell)
+          {
+            for (unsigned int i = 0; i < tensor_dofs_per_component; ++i)
+              for (unsigned int c = 0; c < n_components_; ++c)
+                Kokkos::atomic_add(
+                  &dst[precomputed_data->local_to_global(
+                    i + (tensor_dofs_per_component)*c, cell_id)],
+                  shared_data->values(i, c));
+          }
+        else
+          {
+            Kokkos::parallel_for(
+              Kokkos::TeamThreadRange(data->team_member,
+                                      tensor_dofs_per_component),
+              [&](const int &i) {
+                for (unsigned int c = 0; c < n_components_; ++c)
+                  Kokkos::atomic_add(
+                    &dst[precomputed_data->local_to_global(
+                      i + (tensor_dofs_per_component)*c, cell_id)],
+                    shared_data->values(i, c));
+              });
+          }
       }
   }
 
@@ -747,9 +782,55 @@ namespace Portable
   FEEvaluation<dim, fe_degree, n_q_points_1d, n_components_, Number>::
     apply_for_each_quad_point(const Functor &func)
   {
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(data->team_member, n_q_points),
-                         [&](const int &i) { func(this, i); });
-    data->team_member.team_barrier();
+    if (data->thread_per_cell)
+      {
+        for (unsigned int i = 0; i < n_q_points; ++i)
+          func(this, i);
+      }
+    else
+      {
+        Kokkos::parallel_for(Kokkos::TeamThreadRange(data->team_member,
+                                                     n_q_points),
+                             [&](const int &i) { func(this, i); });
+        data->team_member.team_barrier();
+      }
+  }
+
+
+
+  template <int dim,
+            int fe_degree,
+            int n_q_points_1d = fe_degree + 1,
+            int n_components_ = 1,
+            typename Number,
+            typename QuadOp>
+  DEAL_II_HOST_DEVICE inline void
+  apply_fused(const typename MatrixFree<dim, Number>::Data *data,
+              const DeviceVector<Number>                   &src,
+              DeviceVector<Number>                         &dst,
+              const QuadOp                                 &quad_op,
+              const EvaluationFlags::EvaluationFlags        evaluate_flags,
+              const EvaluationFlags::EvaluationFlags        integrate_flags)
+  {
+    if (data->thread_per_cell)
+      {
+        internal::apply_fused_thread_per_cell<dim,
+                                              fe_degree,
+                                              n_q_points_1d,
+                                              n_components_,
+                                              Number>(
+          data, src, dst, quad_op, evaluate_flags, integrate_flags);
+      }
+    else
+      {
+        FEEvaluation<dim, fe_degree, n_q_points_1d, n_components_, Number>
+          fe_eval(data);
+        fe_eval.read_dof_values(src);
+        fe_eval.evaluate(evaluate_flags);
+        fe_eval.apply_for_each_quad_point(quad_op);
+        fe_eval.integrate(integrate_flags);
+        fe_eval.distribute_local_to_global(dst);
+      }
   }
 
 

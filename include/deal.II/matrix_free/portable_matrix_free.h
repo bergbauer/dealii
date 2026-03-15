@@ -215,10 +215,12 @@ namespace Portable
                        update_gradients | update_JxW_values |
                        update_quadrature_points,
                      const bool use_coloring                      = false,
-                     const bool overlap_communication_computation = false)
+                     const bool overlap_communication_computation = false,
+                     const bool thread_per_cell                   = false)
         : mapping_update_flags(mapping_update_flags)
         , use_coloring(use_coloring)
         , overlap_communication_computation(overlap_communication_computation)
+        , thread_per_cell(thread_per_cell)
       {
 #ifndef DEAL_II_MPI_WITH_DEVICE_SUPPORT
         AssertThrow(
@@ -255,6 +257,12 @@ namespace Portable
        * MPI and use_coloring must be false.
        */
       bool overlap_communication_computation;
+
+      /**
+       * Select launch strategy: false means one team per cell, true means one
+       * thread per cell using Kokkos::AUTO team size.
+       */
+      bool thread_per_cell;
     };
 
     /**
@@ -355,6 +363,11 @@ namespace Portable
        * Size of the scratch pad for temporary storage in shared memory.
        */
       unsigned int scratch_pad_size;
+
+      /**
+       * True if constrained DoFs are present.
+       */
+      bool has_constrained_dofs;
     };
 
 
@@ -377,6 +390,8 @@ namespace Portable
 
       const unsigned int       n_dofhandler;
       const int                cell_index;
+      const bool               thread_per_cell;
+      const int                thread_rank;
       const PrecomputedData   *precomputed_data;
       SharedData<dim, Number> *shared_data;
 
@@ -629,6 +644,12 @@ namespace Portable
     bool overlap_communication_computation;
 
     /**
+     * Select launch strategy: false means one team per cell, true means one
+     * thread per cell using Kokkos::AUTO team size.
+     */
+    bool thread_per_cell;
+
+    /**
      * Total number of degrees of freedom.
      */
     types::global_dof_index n_dofs;
@@ -670,6 +691,12 @@ namespace Portable
      */
     unsigned int n_constrained_dofs;
 
+
+    /**
+     * Number of constrained DoFs that are locally owned.
+     */
+    unsigned int n_owned_constrained_dofs;
+
     /**
      * Number of quadrature points per cells.
      */
@@ -684,6 +711,11 @@ namespace Portable
      * Number of cells in each color.
      */
     std::vector<unsigned int> n_cells;
+
+    /**
+     * True if a given color contains any constrained cell/component.
+     */
+    std::vector<bool> color_has_constrained_dofs;
 
     /**
      * Vector of Kokkos::View to the quadrature points associated to the cells
@@ -720,6 +752,12 @@ namespace Portable
      */
     Kokkos::View<types::global_dof_index *, MemorySpace::Default::kokkos_space>
       constrained_dofs;
+
+    /**
+     * Kokkos::View to locally owned constrained DoFs only.
+     */
+    Kokkos::View<types::global_dof_index *, MemorySpace::Default::kokkos_space>
+      constrained_owned_dofs;
 
     /**
      * Mask deciding where constraints are set on a given cell.
@@ -799,6 +837,10 @@ namespace Portable
       Number *,
       MemorySpace::Default::kokkos_space::execution_space::scratch_memory_space,
       Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+    using SharedViewShape =
+      Kokkos::View<Number *,
+                   MemorySpace::Default::kokkos_space,
+                   Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 
     DEAL_II_HOST_DEVICE
     SharedData(const SharedViewValues     &values,
@@ -807,6 +849,21 @@ namespace Portable
       : values(values)
       , gradients(gradients)
       , scratch_pad(scratch_pad)
+      , use_shared_shape_data(false)
+    {}
+
+    DEAL_II_HOST_DEVICE
+    SharedData(const SharedViewValues     &values,
+               const SharedViewGradients  &gradients,
+               const SharedViewScratchPad &scratch_pad,
+               const SharedViewShape      &shape_values,
+               const SharedViewShape      &shape_gradients)
+      : values(values)
+      , gradients(gradients)
+      , scratch_pad(scratch_pad)
+      , shape_values(shape_values)
+      , shape_gradients(shape_gradients)
+      , use_shared_shape_data(true)
     {}
 
     /**
@@ -823,6 +880,22 @@ namespace Portable
      * Memory for temporary arrays required by evaluation and integration.
      */
     SharedViewScratchPad scratch_pad;
+
+    /**
+     * Optional shared-memory-backed copy of shape values.
+     */
+    SharedViewShape shape_values;
+
+    /**
+     * Optional shared-memory-backed copy of shape gradients.
+     */
+    SharedViewShape shape_gradients;
+
+    /**
+     * True when shape_values and shape_gradients point to valid shared-memory
+     * buffers.
+     */
+    bool use_shared_shape_data;
   };
 
 

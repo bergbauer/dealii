@@ -1411,90 +1411,186 @@ namespace MatrixFreeTools
         const int cell     = data->cell_index;
 
         constexpr int dofs_per_cell = decltype(fe_eval)::tensor_dofs_per_cell;
-        typename decltype(fe_eval)::value_type
-          diagonal[dofs_per_cell / n_components] = {};
-        for (unsigned int i = 0; i < dofs_per_cell; ++i)
-          {
-            const auto c = i % n_components;
+        constexpr int dofs_per_component = dofs_per_cell / n_components;
 
-            Kokkos::parallel_for(
-              Kokkos::TeamThreadRange(data->team_member,
-                                      dofs_per_cell / n_components),
-              [&](unsigned int j) {
-                typename decltype(fe_eval)::value_type val = {};
+        typename decltype(fe_eval)::value_type
+          diagonal[dofs_per_component] = {};
+        const bool has_constrained_dofs = gpu_data->has_constrained_dofs;
+
+        if (data->thread_per_cell)
+          {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                const auto c = i % n_components;
+                const auto constraint_kind =
+                  has_constrained_dofs ?
+                    gpu_data->constraint_mask(cell * n_components + c) :
+                    dealii::internal::MatrixFreeFunctions::ConstraintKinds::
+                      unconstrained;
+
+                for (unsigned int j = 0; j < dofs_per_component; ++j)
+                  {
+                    typename decltype(fe_eval)::value_type val = {};
+                    if constexpr (n_components == 1)
+                      val = (i == j) ? 1 : 0;
+                    else
+                      val[c] = (i / n_components == j) ? 1 : 0;
+                    fe_eval.submit_dof_value(val, j);
+                  }
+
+                if (constraint_kind !=
+                    dealii::internal::MatrixFreeFunctions::ConstraintKinds::
+                      unconstrained)
+                  Portable::internal::
+                    resolve_hanging_nodes<dim, fe_degree, false, Number>(
+                      data->team_member,
+                      gpu_data->constraint_weights,
+                      constraint_kind,
+                      Kokkos::subview(data->shared_data->values,
+                                      Kokkos::ALL,
+                                      c));
+
+                fe_eval.evaluate(m_evaluation_flags);
+                fe_eval.apply_for_each_quad_point(m_quad_operation);
+                fe_eval.integrate(m_integration_flags);
+
+                if (constraint_kind !=
+                    dealii::internal::MatrixFreeFunctions::ConstraintKinds::
+                      unconstrained)
+                  Portable::internal::
+                    resolve_hanging_nodes<dim, fe_degree, true, Number>(
+                      data->team_member,
+                      gpu_data->constraint_weights,
+                      constraint_kind,
+                      Kokkos::subview(data->shared_data->values,
+                                      Kokkos::ALL,
+                                      c));
 
                 if constexpr (n_components == 1)
-                  {
-                    val = (i == j) ? 1 : 0;
-                  }
+                  diagonal[i] = fe_eval.get_dof_value(i);
                 else
-                  {
-                    val[c] = (i / n_components == j) ? 1 : 0;
-                  }
+                  diagonal[i / n_components][i % n_components] =
+                    fe_eval.get_dof_value(i / n_components)[i % n_components];
+              }
 
-                fe_eval.submit_dof_value(val, j);
-              });
+            for (unsigned int i = 0; i < dofs_per_component; ++i)
+              fe_eval.submit_dof_value(diagonal[i], i);
+          }
+        else
+          {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                const auto c = i % n_components;
+                const auto constraint_kind =
+                  has_constrained_dofs ?
+                    gpu_data->constraint_mask(cell * n_components + c) :
+                    dealii::internal::MatrixFreeFunctions::ConstraintKinds::
+                      unconstrained;
 
-            data->team_member.team_barrier();
+                Kokkos::parallel_for(
+                  Kokkos::TeamThreadRange(data->team_member,
+                                          dofs_per_component),
+                  [&](unsigned int j) {
+                    typename decltype(fe_eval)::value_type val = {};
+                    if constexpr (n_components == 1)
+                      val = (i == j) ? 1 : 0;
+                    else
+                      val[c] = (i / n_components == j) ? 1 : 0;
+                    fe_eval.submit_dof_value(val, j);
+                  });
 
-            Portable::internal::
-              resolve_hanging_nodes<dim, fe_degree, false, Number>(
-                data->team_member,
-                gpu_data->constraint_weights,
-                gpu_data->constraint_mask(cell * n_components + c),
-                Kokkos::subview(data->shared_data->values, Kokkos::ALL, c));
+                data->team_member.team_barrier();
 
-            fe_eval.evaluate(m_evaluation_flags);
-            fe_eval.apply_for_each_quad_point(m_quad_operation);
-            fe_eval.integrate(m_integration_flags);
+                if (constraint_kind !=
+                    dealii::internal::MatrixFreeFunctions::ConstraintKinds::
+                      unconstrained)
+                  Portable::internal::
+                    resolve_hanging_nodes<dim, fe_degree, false, Number>(
+                      data->team_member,
+                      gpu_data->constraint_weights,
+                      constraint_kind,
+                      Kokkos::subview(data->shared_data->values,
+                                      Kokkos::ALL,
+                                      c));
 
-            Portable::internal::
-              resolve_hanging_nodes<dim, fe_degree, true, Number>(
-                data->team_member,
-                gpu_data->constraint_weights,
-                gpu_data->constraint_mask(cell * n_components + c),
-                Kokkos::subview(data->shared_data->values, Kokkos::ALL, c));
+                fe_eval.evaluate(m_evaluation_flags);
+                fe_eval.apply_for_each_quad_point(m_quad_operation);
+                fe_eval.integrate(m_integration_flags);
+
+                if (constraint_kind !=
+                    dealii::internal::MatrixFreeFunctions::ConstraintKinds::
+                      unconstrained)
+                  Portable::internal::
+                    resolve_hanging_nodes<dim, fe_degree, true, Number>(
+                      data->team_member,
+                      gpu_data->constraint_weights,
+                      constraint_kind,
+                      Kokkos::subview(data->shared_data->values,
+                                      Kokkos::ALL,
+                                      c));
+
+                Kokkos::single(Kokkos::PerTeam(data->team_member), [&] {
+                  if constexpr (n_components == 1)
+                    diagonal[i] = fe_eval.get_dof_value(i);
+                  else
+                    diagonal[i / n_components][i % n_components] =
+                      fe_eval.get_dof_value(i / n_components)[i % n_components];
+                });
+
+                data->team_member.team_barrier();
+              }
 
             Kokkos::single(Kokkos::PerTeam(data->team_member), [&] {
-              if constexpr (n_components == 1)
-                diagonal[i] = fe_eval.get_dof_value(i);
-              else
-                diagonal[i / n_components][i % n_components] =
-                  fe_eval.get_dof_value(i / n_components)[i % n_components];
+              for (unsigned int i = 0; i < dofs_per_component; ++i)
+                fe_eval.submit_dof_value(diagonal[i], i);
             });
 
             data->team_member.team_barrier();
           }
 
-        Kokkos::single(Kokkos::PerTeam(data->team_member), [&] {
-          for (unsigned int i = 0; i < dofs_per_cell / n_components; ++i)
-            fe_eval.submit_dof_value(diagonal[i], i);
-        });
-
-        data->team_member.team_barrier();
-
         // We need to do the same as distribute_local_to_global but without
         // constraints since we have already taken care of them earlier
         if (gpu_data->use_coloring)
           {
-            Kokkos::parallel_for(
-              Kokkos::TeamThreadRange(data->team_member, dofs_per_cell),
-              [&](const int &i) {
-                dst[gpu_data->local_to_global(i, cell)] +=
-                  data->shared_data->values(i % (dofs_per_cell / n_components),
-                                            i / (dofs_per_cell / n_components));
-              });
+            if (data->thread_per_cell)
+              {
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  dst[gpu_data->local_to_global(i, cell)] +=
+                    data->shared_data->values(i % dofs_per_component,
+                                              i / dofs_per_component);
+              }
+            else
+              {
+                Kokkos::parallel_for(
+                  Kokkos::TeamThreadRange(data->team_member, dofs_per_cell),
+                  [&](const int &i) {
+                    dst[gpu_data->local_to_global(i, cell)] +=
+                      data->shared_data->values(i % dofs_per_component,
+                                                i / dofs_per_component);
+                  });
+              }
           }
         else
           {
-            Kokkos::parallel_for(
-              Kokkos::TeamThreadRange(data->team_member, dofs_per_cell),
-              [&](const int &i) {
-                Kokkos::atomic_add(&dst[gpu_data->local_to_global(i, cell)],
-                                   data->shared_data->values(
-                                     i % (dofs_per_cell / n_components),
-                                     i / (dofs_per_cell / n_components)));
-              });
+            if (data->thread_per_cell)
+              {
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  Kokkos::atomic_add(&dst[gpu_data->local_to_global(i, cell)],
+                                     data->shared_data->values(
+                                       i % dofs_per_component,
+                                       i / dofs_per_component));
+              }
+            else
+              {
+                Kokkos::parallel_for(
+                  Kokkos::TeamThreadRange(data->team_member, dofs_per_cell),
+                  [&](const int &i) {
+                    Kokkos::atomic_add(&dst[gpu_data->local_to_global(i, cell)],
+                                       data->shared_data->values(
+                                         i % dofs_per_component,
+                                         i / dofs_per_component));
+                  });
+              }
           }
       };
 
@@ -1538,6 +1634,7 @@ namespace MatrixFreeTools
     Assert(first_vector_component == 0, ExcNotImplemented());
 
     matrix_free.initialize_dof_vector(diagonal_global);
+    diagonal_global = Number();
 
 
     internal::ComputeDiagonalCellAction<dim,
